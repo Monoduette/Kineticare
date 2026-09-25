@@ -10,6 +10,7 @@ import {
 import {
   ALERT_MAIL_COOLDOWN_MS,
   createAlertSink,
+  MAIL_PROVIDER_MISSING_WARN_MS,
   MAX_ALERT_MAILS_PER_HOUR,
   type AlertSinkDeps,
 } from '../../lib/alerts/sink'
@@ -169,6 +170,69 @@ describe('riasztás-csatorna — levél', () => {
     log.error('RIASZTÁS: hiba')
     await h.handle.flush()
     expect(sendMail).toHaveBeenCalledTimes(2)
+  })
+
+  /**
+   * Codex P2 (PR #305): e-mail-szolgáltató nélkül (se RESEND_API_KEY, se
+   * SMTP_HOST) a levélmodul noop-szolgáltatója `{ ok: true, provider: 'noop' }`-t
+   * ad, holott semmi nem ment ki. A csatorna a küldés eredménye szerint dönt:
+   * a noop nem kézbesítés, tehát nem fogyaszt fojtást, levélplafont és
+   * elnyelt-ismétlés-számot.
+   */
+  it('Codex P2 (PR #305): a noop „küldés” nem elküldött levél: a kód nem némul el egy órára, és az elnyelt ismétlések száma megmarad', async () => {
+    const provider = { name: 'resend' as 'resend' | 'noop' }
+    const attempts: SendMailInput[] = []
+    const sendMail = vi.fn(async (input: SendMailInput): Promise<SendResult> => {
+      attempts.push(input)
+      return { ok: true, provider: provider.name }
+    })
+    const h = harness({ sendMail })
+    const log = createLogger()
+    log.error('RIASZTÁS: ismétlődő hiba')
+    await h.handle.flush()
+    h.clock.now = NOW + 5 * 60_000
+    log.error('RIASZTÁS: ismétlődő hiba')
+    await h.handle.flush()
+
+    // Egy óra múlva a levél noop-szolgáltatón „megy ki”.
+    provider.name = 'noop'
+    h.clock.now = NOW + ALERT_MAIL_COOLDOWN_MS
+    log.error('RIASZTÁS: ismétlődő hiba')
+    await h.handle.flush()
+    expect(sendMail).toHaveBeenCalledTimes(2)
+    expect(h.sinkLog.filter((entry) => entry.msg.includes('levél elküldve'))).toHaveLength(1)
+
+    // Egy perccel később a kód nem néma, és a levél a korábbi ismétlést is jelzi.
+    provider.name = 'resend'
+    h.clock.now = NOW + ALERT_MAIL_COOLDOWN_MS + 60_000
+    log.error('RIASZTÁS: ismétlődő hiba')
+    await h.handle.flush()
+    expect(attempts).toHaveLength(3)
+    expect(attempts[2]?.text).toContain('Az előző levél óta még 1 alkalommal jelentkezett.')
+  })
+
+  it('Codex P2 (PR #305): noop-szolgáltatónál a levélplafon nem telik be, és a hiányzó szolgáltatóról naponta egyszer szól', async () => {
+    const sendMail = vi.fn(async (): Promise<SendResult> => ({ ok: true, provider: 'noop' }))
+    const h = harness({ sendMail })
+    const log = createLogger()
+    // Egymás után érkező riasztások: a noop-próba után a plafon helye felszabadul.
+    for (let index = 0; index < MAX_ALERT_MAILS_PER_HOUR + 5; index += 1) {
+      log.error(`RIASZTÁS: vihar ${String.fromCharCode(97 + (index % 26))}${String(index)}`)
+      await h.handle.flush()
+    }
+    const providerWarns = () =>
+      h.sinkLog.filter(
+        (entry) => entry.level === 'warn' && entry.msg.includes('nincs e-mail-szolgáltató'),
+      )
+
+    expect(sendMail).toHaveBeenCalledTimes(MAX_ALERT_MAILS_PER_HOUR + 5)
+    expect(h.sinkLog.some((entry) => entry.msg.includes('levélplafon'))).toBe(false)
+    expect(providerWarns()).toHaveLength(1)
+
+    h.clock.now = NOW + MAIL_PROVIDER_MISSING_WARN_MS
+    log.error('RIASZTÁS: másnapi hiba')
+    await h.handle.flush()
+    expect(providerWarns()).toHaveLength(2)
   })
 
   it('OWNER_ALERT_EMAILS nélkül nincs levél, egyszer figyelmeztet, a PostHog-esemény megy', async () => {

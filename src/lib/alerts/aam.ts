@@ -24,6 +24,7 @@
 
 import type { Payload, Where } from 'payload'
 
+import { shouldEmitThrottledAlert } from '../alert-throttle'
 import { budapestDateString } from '../date/budapest'
 import { logger } from '../logger'
 import {
@@ -58,6 +59,10 @@ export interface AamOrderInput {
   /** A rendelés azonosítója: a lezárt visszatérítési szándékok ehhez kötődnek. */
   readonly id?: number | string
   readonly totalHufSnapshot?: number | null
+  /** A tételek (ár-snapshot és mennyiség): a snapshot nélküli régi rendelés tartaléka. */
+  readonly items?: unknown
+  /** A plugin „Összeg” mezője: a végösszeg tükre, a régi rendelés utolsó tartaléka. */
+  readonly amount?: number | null
   readonly invoiceStatus?: string | null
   readonly invoiceCompletionDate?: string | null
   readonly stornoStatus?: string | null
@@ -72,6 +77,78 @@ export interface AamOrderInput {
 
 function finiteAmount(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+}
+
+/** Véges, nem negatív összeg (a 0 is összeg), különben `null`. */
+function knownAmount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+}
+
+/**
+ * A tételek ár × mennyiség összege, ha MINDEN tételnek ismert az ára;
+ * különben `null`. A mennyiség a rendeléskori szabály szerint számít
+ * (src/lib/order-integrity.ts): a hiányzó vagy nem pozitív érték 1.
+ */
+function itemsAmountHuf(items: unknown): number | null {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null
+  }
+  let total = 0
+  for (const item of items as unknown[]) {
+    const fields =
+      typeof item === 'object' && item !== null ? (item as Record<string, unknown>) : {}
+    const price = knownAmount(fields.priceHufSnapshot)
+    if (price === null) {
+      return null
+    }
+    const quantity = fields.quantity
+    total +=
+      price *
+      (typeof quantity === 'number' && Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
+  }
+  return total
+}
+
+/**
+ * A kiállított számla összege (AAM mellett a számlán nincs áfa, ez tehát a
+ * nettó ellenérték is), a legmegbízhatóbb elérhető forrásból; `null`, ha
+ * egyik sem ismert.
+ *
+ * PR #305, Devin: a `totalHufSnapshot` nélküli régi rendelés számlája eddig
+ * 0 Ft-tal számított, így a keret-használat a valósnál kisebbnek látszhatott.
+ * A források, a megbízhatóság sorrendjében:
+ *  - A számla összegét a rendelés nem tárolja: kiállításkor csak az állapot,
+ *    a szám, a teljesítési dátum és a PDF-link íródik
+ *    (src/lib/szamlazz/invoice.ts, `writeOrderInvoicingState`).
+ *  - `totalHufSnapshot`: a tételek ár × mennyiség összege a rendeléskor
+ *    (src/lib/order-integrity.ts; csak létrehozáskor írható, a számla sorai
+ *    ugyanezekből a tételekből készülnek). Ha pozitív, ez számít, ahogy
+ *    eddig, és egy kisebb tartalék-érték sem írja felül.
+ *  - A tételek ár-snapshotja × mennyiség, ha minden tételnek van ára: a
+ *    számla sorai pontosan ebből készülnek (`itemsFromOrder`,
+ *    src/lib/szamlazz/invoice.ts), és hiányzó ár mellett számla sem áll ki.
+ *    A hiányos tétellista nem forrás: a statisztika
+ *    (src/lib/statistics/revenue.ts) a hiányzó árat 0-nak veszi, ami itt
+ *    alábecslés volna, ezért a statisztika összegzőjét nem használjuk.
+ *  - A plugin `amount` mezője: a rendeléskor a végösszeg tükre
+ *    (order-integrity.ts); a visszatérítés is ezt veszi tartaléknak
+ *    (src/lib/refund/refund-order.ts).
+ * Az első POZITÍV érték számít; a 0 Ft csak akkor, ha egyik forrás sem mutat
+ * többet (ingyenes tétel). Egy 0-s snapshot tehát nem írja felül egy
+ * tartalék pozitív összegét: kétség esetén túlbecsülünk, ahogy a statisztika
+ * tartaléka is csak pozitív összeggel pótol.
+ */
+function invoicedAmountHuf(order: AamOrderInput): number | null {
+  const sources = [
+    knownAmount(order.totalHufSnapshot),
+    itemsAmountHuf(order.items),
+    knownAmount(order.amount),
+  ]
+  return (
+    sources.find((amount) => amount !== null && amount > 0) ??
+    sources.find((amount) => amount !== null) ??
+    null
+  )
 }
 
 /** A tárgyév értékhatára; ismeretlen évre a legutolsó ismert (nem ellenőrzött). */
@@ -135,18 +212,31 @@ function countsForYear(order: AamOrderInput, year: number): boolean {
 /**
  * A rendelés nettó hozzájárulása a tárgyév keretéhez (0, ha nem az évé).
  * A `committedSequences` a rendelés `committed` visszatérítési szándékainak
- * sorszámai (hiányában csak a tárolt pár igazol).
+ * sorszámai (hiányában csak a tárolt pár igazol). `null`, ha a rendelés a
+ * tárgyévbe számít, de a számla összege nem ismert (`invoicedAmountHuf`):
+ * ilyenkor 0-val számolni alábecslés volna.
  */
 export function aamContribution(
   order: AamOrderInput,
   year: number,
   committedSequences: ReadonlySet<number> = NO_SEQUENCES,
-): number {
+): number | null {
   if (!countsForYear(order, year)) {
     return 0
   }
-  const gross = finiteAmount(order.totalHufSnapshot)
+  const gross = invoicedAmountHuf(order)
+  if (gross === null) {
+    return null
+  }
   return Math.max(0, gross - evidencedCorrectiveRefunds(order, committedSequences))
+}
+
+/** A tárgyévbe számító, ismeretlen összegű számlás rendelések. */
+function ordersWithoutAmount(
+  orders: readonly AamOrderInput[],
+  year: number,
+): readonly AamOrderInput[] {
+  return orders.filter((order) => aamContribution(order, year) === null)
 }
 
 function levelFor(ratio: number): AamLevel {
@@ -158,22 +248,28 @@ function levelFor(ratio: number): AamLevel {
 
 /**
  * A tárgyév keret-állapota. A `committedByOrder` rendelés-azonosítónként
- * (szövegként) a `committed` szándékok sorszámai.
+ * (szövegként) a `committed` szándékok sorszámai. Ha egy tárgyévi számla
+ * összege nem ismert, `AamIncompleteError`-t dob: részösszegből szint nem
+ * számolható.
  */
 export function computeAamStatus(
   orders: readonly AamOrderInput[],
   year: number,
   committedByOrder: ReadonlyMap<string, ReadonlySet<number>> = new Map(),
 ): AamStatus {
+  const withoutAmount = ordersWithoutAmount(orders, year).length
+  if (withoutAmount > 0) {
+    throw new AamIncompleteError(0, orders.length, withoutAmount)
+  }
   const netHuf = orders.reduce(
     (sum, order) =>
       sum +
-      aamContribution(
+      (aamContribution(
         order,
         year,
         (order.id === undefined ? undefined : committedByOrder.get(String(order.id))) ??
           NO_SEQUENCES,
-      ),
+      ) ?? 0),
     0,
   )
   const { limitHuf, verified } = aamLimitForYear(year)
@@ -216,20 +312,26 @@ export const AAM_INCOMPLETE_ALERT_CODE = 'aam-keret-nem-teljes'
 
 /**
  * A tárgyév rendelései nem olvashatók be teljesen (a lapozás a korlátnál úgy
- * állt meg, hogy lehet még adat). Részösszegből keret-szintet számolni TILOS,
+ * állt meg, hogy lehet még adat), vagy egy tárgyévi számla összege nem ismert
+ * (`ordersWithoutAmount` > 0). Részösszegből keret-szintet számolni TILOS,
  * mert az adóhatár-használatot alábecsülné: a hívó hibát kap, nem állapotot.
  */
 export class AamIncompleteError extends Error {
   readonly pagesRead: number
   readonly ordersRead: number
+  /** A tárgyévbe számító, ismeretlen összegű számlás rendelések száma (lapozási hibánál 0). */
+  readonly ordersWithoutAmount: number
 
-  constructor(pagesRead: number, ordersRead: number) {
+  constructor(pagesRead: number, ordersRead: number, ordersWithoutAmount = 0) {
     super(
-      `Az alanyi adómentes keret számítása nem teljes: ${String(pagesRead)} oldal (${String(ordersRead)} rendelés) után is volna még adat, keret-szint nem számolható.`,
+      ordersWithoutAmount > 0
+        ? `Az alanyi adómentes keret számítása nem teljes: ${String(ordersWithoutAmount)} rendelésnél hiányzik a kiállított számla összege, keret-szint nem számolható.`
+        : `Az alanyi adómentes keret számítása nem teljes: ${String(pagesRead)} oldal (${String(ordersRead)} rendelés) után is volna még adat, keret-szint nem számolható.`,
     )
     this.name = 'AamIncompleteError'
     this.pagesRead = pagesRead
     this.ordersRead = ordersRead
+    this.ordersWithoutAmount = ordersWithoutAmount
   }
 }
 
@@ -256,6 +358,9 @@ export class AamIncompleteError extends Error {
  * jelenhet meg az év összegeként, és szint sem számolható belőle. A hívók a
  * dobást látható hibaként kezelik (a napi összesítőnél a poll-watch
  * riasztása, a Figyelmet igényel blokkban a betöltési hiba szövege).
+ * Ugyanígy jár el, ha egy tárgyévi számla összege egyik forrásból sem ismert
+ * (`invoicedAmountHuf`): 0-val nem számol, hanem fojtott RIASZTÁST ír a
+ * hiányzó összegű rendelések számával, és `AamIncompleteError`-t dob.
  */
 export async function queryAamStatus(sources: AamSources, nowMs: number): Promise<AamStatus> {
   const year = budapestYear(nowMs)
@@ -286,6 +391,30 @@ export async function queryAamStatus(sources: AamSources, nowMs: number): Promis
       { module: 'alerts/aam', year, pagesRead, ordersRead: orders.length },
     )
     throw new AamIncompleteError(pagesRead, orders.length)
+  }
+  const withoutAmount = ordersWithoutAmount(orders, year)
+  if (withoutAmount.length > 0) {
+    // Évenként fojtva: a Figyelmet igényel blokk minden megnyitáskor újraszámol.
+    if (
+      shouldEmitThrottledAlert(
+        `${AAM_INCOMPLETE_ALERT_CODE}:osszeg:${String(year)}`,
+        undefined,
+        nowMs,
+      )
+    ) {
+      emitAlert(
+        logger,
+        AAM_INCOMPLETE_ALERT_CODE,
+        `RIASZTÁS: az alanyi adómentes keret felhasználása nem számolható, mert ${String(withoutAmount.length)} rendelésnél hiányzik a kiállított számla összege. A keret-szint ezért nem látszik. Egyeztesd a keretet a könyvelővel, és szólj a fejlesztőnek.`,
+        {
+          module: 'alerts/aam',
+          year,
+          ordersWithoutAmount: withoutAmount.length,
+          orderIds: withoutAmount.slice(0, 20).map((order) => order.id ?? null),
+        },
+      )
+    }
+    throw new AamIncompleteError(pagesRead, orders.length, withoutAmount.length)
   }
   const committedByOrder = await committedSequencesForOrders(sources.committedIntents, orders, year)
   return computeAamStatus(orders, year, committedByOrder)
@@ -347,11 +476,14 @@ async function committedSequencesForOrders(
 /**
  * A `find`-hez kért mezők: a helyesbítős levonáshoz a `refunds`, a helyesbítő
  * sorszáma és száma, a lezárt szándékokhoz az azonosító kell (lásd
- * `evidencedCorrectiveRefunds`).
+ * `evidencedCorrectiveRefunds`); a snapshot nélküli régi rendelés összegéhez
+ * a tételek és az `amount` (lásd `invoicedAmountHuf`).
  */
 export const AAM_ORDER_SELECT = {
   id: true,
   totalHufSnapshot: true,
+  items: true,
+  amount: true,
   invoiceStatus: true,
   invoiceCompletionDate: true,
   stornoStatus: true,

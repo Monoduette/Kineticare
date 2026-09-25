@@ -38,7 +38,10 @@
  *    kimenjen a levél;
  *  - címzett nélkül (üres OWNER_ALERT_EMAILS) nincs lekérdezés, és a nap
  *    nem zárul le: ha a címzettet aznap később beállítják, a következő futás
- *    küld (Devin). A hiányt naponta egyszer jelezzük.
+ *    küld (Devin). A hiányt naponta egyszer jelezzük;
+ *  - e-mail-szolgáltató nélkül (noop) a nap a folyamaton belül sem zárul le
+ *    (Codex): a kimenet `nincs-szolgaltato`, a próbálkozásokat a napi küldési
+ *    keret korlátozza, és a hiányt naponta egyszer jelezzük.
  */
 
 import type { Payload } from 'payload'
@@ -99,6 +102,8 @@ export interface DigestState {
   assemblyFailures: number
   /** A következő lekérdezés legkorábbi ideje (ms); 0, ha nincs várakozás. */
   retryNotBeforeMs: number
+  /** Aznap szóltunk-e már a hiányzó e-mail-szolgáltatóról (noop). */
+  providerWarned: boolean
   /** Aznap szóltunk-e már a hiányzó címzettről. */
   recipientWarned: boolean
   /**
@@ -123,6 +128,7 @@ export function createDigestState(): DigestState {
     sendAttempts: 0,
     assemblyFailures: 0,
     retryNotBeforeMs: 0,
+    providerWarned: false,
     recipientWarned: false,
     pendingClaim: null,
   }
@@ -153,6 +159,7 @@ export type DigestOutcome =
   | 'nem-esedekes'
   | 'nincs-teendo'
   | 'nincs-cimzett'
+  | 'nincs-szolgaltato'
   | 'elkuldve'
   | 'mar-elkuldve'
   | 'folyamatban'
@@ -480,6 +487,11 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
         if (result.ok && result.provider === 'noop') {
           // Nincs levélszolgáltató: semmi nem ment ki, ezért nyom sem kerül be,
           // hogy a szolgáltató beállítása és a deploy után még aznap kimenjen.
+          // A hiányról naponta egyszer szólunk.
+          if (state.providerWarned) {
+            return false
+          }
+          state.providerWarned = true
           log.warn(
             'napi összesítő: nincs levélszolgáltató beállítva (noop), a levél nem ment ki; a napi nyom nem íródik be',
           )
@@ -518,11 +530,14 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
     return 'mar-elkuldve'
   }
   const sent: SendResult = attempt.result ?? { ok: false, provider: 'noop', retryable: true }
+  if (sent.ok && sent.provider === 'noop') {
+    // Semmi nem ment ki: a nap nyitva marad (Codex, PR #305). Az újabb
+    // próbálkozásokat a napi küldési keret korlátozza, a noop is abból fogy.
+    return 'nincs-szolgaltato'
+  }
   if (sent.ok) {
     state.done = true
-    if (sent.provider !== 'noop') {
-      log.info('napi összesítő: levél elküldve', { teendo: total })
-    }
+    log.info('napi összesítő: levél elküldve', { teendo: total })
     return 'elkuldve'
   }
   if (sent.retryable !== true) {

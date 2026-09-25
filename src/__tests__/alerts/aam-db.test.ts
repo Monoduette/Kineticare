@@ -151,4 +151,48 @@ describe.skipIf(!hasDb)('AAM-keret jelöltjei (valódi PostgreSQL)', () => {
     expect(status.year).toBe(2026)
     expect(status.netHuf).toBe(21_500)
   })
+
+  // PR #305, Devin: a snapshot nélküli régi számla összegét a valódi sémán,
+  // a Payload `select`-jén át is ki kell olvasni (tételtábla, numeric oszlopok).
+  it('a snapshot nélküli régi számla összege a tételekből, ezek híján az amount mezőből jön', async () => {
+    const pool = adapter().pool
+    const email = `${run}-regi@example.test`
+    const created = await pool.query<{ id: number }>(
+      'INSERT INTO users (name, role, email) VALUES ($1, $2, $3) RETURNING id',
+      ['DUMMY aam legacy user', 'customer', email],
+    )
+    const legacyUserId = created.rows[0]?.id
+    try {
+      const withItems = await pool.query<{ id: number }>(
+        `INSERT INTO orders (customer_id, status, currency, created_at, updated_at,
+           invoice_status, invoice_completion_date)
+         VALUES ($1, 'paid', 'HUF', $2, $2, 'issued', '2026-02-10') RETURNING id`,
+        [legacyUserId, '2026-02-10T10:00:00.000Z'],
+      )
+      await pool.query(
+        `INSERT INTO orders_items (_order, _parent_id, id, quantity, price_huf_snapshot)
+         VALUES (1, $1, $2, 2, 19900), (2, $1, $3, 1, 39700)`,
+        [withItems.rows[0]?.id, `${run}-tetel-a`, `${run}-tetel-b`],
+      )
+      await pool.query(
+        `INSERT INTO orders (customer_id, status, amount, currency, created_at, updated_at,
+           invoice_status, invoice_completion_date)
+         VALUES ($1, 'paid', 12345, 'HUF', $2, $2, 'issued', '2026-02-11')`,
+        [legacyUserId, '2026-02-11T10:00:00.000Z'],
+      )
+
+      const sources = payloadAamFind(payload, { overrideAccess: true })
+      const orders: AamFindFn = (args) =>
+        sources.orders({
+          ...args,
+          where: { and: [args.where, { customer: { equals: legacyUserId } }] },
+        })
+      const status = await queryAamStatus({ ...sources, orders }, NOW)
+
+      expect(status.netHuf).toBe(2 * 19_900 + 39_700 + 12_345)
+    } finally {
+      await pool.query('DELETE FROM orders WHERE customer_id = $1', [legacyUserId])
+      await pool.query('DELETE FROM users WHERE id = $1 AND email = $2', [legacyUserId, email])
+    }
+  })
 })

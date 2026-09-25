@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { resetAlertThrottle } from '../../lib/alert-throttle'
 import {
   AAM_INCOMPLETE_ALERT_CODE,
   AamIncompleteError,
   aamContribution,
+  computeAamStatus,
   payloadAamFind,
   queryAamStatus,
   type AamFindFn,
@@ -37,6 +39,26 @@ const TWO_PARTIALS = [
   { type: 'partial', amountHuf: 10_000, refundedAt: '2026-03-05T09:00:00.000Z' },
   { type: 'partial', amountHuf: 20_000, refundedAt: '2026-03-06T09:00:00.000Z' },
 ]
+
+/** Memóriabeli Payload a `select`-szerződéssel: csak a kért mezők jönnek vissza. */
+function selectHonoringPayload(collections: Parameters<typeof createMemoryPayload>[0]) {
+  const memory = createMemoryPayload(collections)
+  const find = async (
+    args: Parameters<typeof memory.payload.find>[0] & { select?: Record<string, unknown> },
+  ) => {
+    const result = await memory.payload.find(args)
+    const select = args.select
+    return select
+      ? {
+          ...result,
+          docs: result.docs.map((doc) =>
+            Object.fromEntries(Object.entries(doc).filter(([field]) => select[field] === true)),
+          ),
+        }
+      : result
+  }
+  return { payload: { ...memory.payload, find }, findCalls: memory.findCalls }
+}
 
 describe('aamContribution: csak a saját helyesbítővel igazolt visszatérítés vonódik le', () => {
   it.each<[string, AamOrderInput, number]>([
@@ -188,25 +210,6 @@ describe('queryAamStatus: a levonáshoz szükséges mezők a lekérdezésből is
 describe('queryAamStatus: minden kiállt helyesbítő levonódik, nem csak a legutóbbi', () => {
   const NOW = Date.parse('2026-09-24T08:00:00Z')
 
-  function selectHonoringPayload(collections: Parameters<typeof createMemoryPayload>[0]) {
-    const memory = createMemoryPayload(collections)
-    const find = async (
-      args: Parameters<typeof memory.payload.find>[0] & { select?: Record<string, unknown> },
-    ) => {
-      const result = await memory.payload.find(args)
-      const select = args.select
-      return select
-        ? {
-            ...result,
-            docs: result.docs.map((doc) =>
-              Object.fromEntries(Object.entries(doc).filter(([field]) => select[field] === true)),
-            ),
-          }
-        : result
-    }
-    return { payload: { ...memory.payload, find }, findCalls: memory.findCalls }
-  }
-
   const order = (fields: Record<string, unknown>) => ({
     id: 1,
     createdAt: '2026-03-01T10:00:00.000Z',
@@ -318,6 +321,115 @@ describe('queryAamStatus: minden kiállt helyesbítő levonódik, nem csak a leg
     expect(intentCalls[0]?.where).toEqual({
       and: [{ order: { in: [11, 12, 13] } }, { state: { equals: 'committed' } }],
     })
+  })
+})
+
+/**
+ * PR #305, Devin 🔴 (aam.ts): a `totalHufSnapshot` nélküli régi, kiállított
+ * számla eddig 0 Ft-tal számított a keretbe, így egy küszöb-átlépés
+ * észrevétlen maradhatott. A számla összegét a rendelés nem tárolja; a számla
+ * sorai a tételek ár-snapshotjából készülnek (src/lib/szamlazz/invoice.ts,
+ * `itemsFromOrder`), a végösszeg tükre a plugin `amount` mezője. Ha egyik sem
+ * ismert, 0 helyett hiba és riasztás jön. A lekérdezés a `select`-szerződést
+ * követi, így a ki nem kért `items` vagy `amount` is buktatja a tesztet.
+ */
+describe('queryAamStatus: a snapshot nélküli régi számla összege nem vész el', () => {
+  const NOW = Date.parse('2026-09-24T08:00:00Z')
+  // Novemberi rendelés, 2026-os teljesítés, snapshot nélkül.
+  const LEGACY = {
+    createdAt: '2025-11-20T10:00:00.000Z',
+    invoiceStatus: 'issued',
+    invoiceCompletionDate: '2026-03-01',
+    totalHufSnapshot: null,
+  }
+
+  const sourcesOf = (orders: Record<string, unknown>[]) =>
+    payloadAamFind(selectHonoringPayload({ orders, 'refund-intents': [] }).payload as never, {
+      overrideAccess: true,
+    })
+
+  afterEach(() => {
+    resetAlertThrottle()
+    vi.restoreAllMocks()
+  })
+
+  it.each<[string, Record<string, unknown>, number]>([
+    [
+      'Devin-példa: snapshot nélkül a tételek ára számít',
+      { items: [{ priceHufSnapshot: 79_500, quantity: 1 }] },
+      79_500,
+    ],
+    [
+      'a tétel ára a mennyiséggel szorzódik',
+      {
+        items: [
+          { priceHufSnapshot: 19_900, quantity: 2 },
+          { priceHufSnapshot: 39_700, quantity: 1 },
+        ],
+      },
+      79_500,
+    ],
+    [
+      'hiányos tétel-ár mellett az amount mező számít, nem a tételek részösszege',
+      {
+        items: [
+          { priceHufSnapshot: 60_000, quantity: 1 },
+          { priceHufSnapshot: null, quantity: 1 },
+        ],
+        amount: 79_500,
+      },
+      79_500,
+    ],
+    [
+      'a meglévő snapshotot egy kisebb tétel- és amount-érték sem írja felül',
+      {
+        totalHufSnapshot: 100_000,
+        items: [{ priceHufSnapshot: 50_000, quantity: 1 }],
+        amount: 50_000,
+      },
+      100_000,
+    ],
+    [
+      'a 0 Ft-os snapshot mellett a tartalék pozitív összege számít (kétség esetén túlbecslés)',
+      { totalHufSnapshot: 0, amount: 79_500 },
+      79_500,
+    ],
+    [
+      'ingyenes tétel: ha minden forrás 0 Ft, a hozzájárulás 0, hiba nélkül',
+      { totalHufSnapshot: 0, items: [{ priceHufSnapshot: 0, quantity: 1 }], amount: 0 },
+      0,
+    ],
+    ['a stornózott régi számla összeg nélkül is 0, hiba nélkül', { stornoStatus: 'storned' }, 0],
+  ])('%s', async (_name, fields, expected) => {
+    const status = await queryAamStatus(sourcesOf([{ id: 1, ...LEGACY, ...fields }]), NOW)
+    expect(status.netHuf).toBe(expected)
+  })
+
+  it('ha egyik forrásból sem ismert az összeg: hiba és fojtott RIASZTÁS a darabszámmal, keret-szint nélkül', async () => {
+    const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined)
+    const orders = [
+      { id: 1, ...LEGACY, items: [{ priceHufSnapshot: null, quantity: 1 }] },
+      { id: 2, ...LEGACY },
+      { id: 3, ...LEGACY, totalHufSnapshot: 100_000 },
+    ]
+    const sources = sourcesOf(orders)
+
+    const failure = await queryAamStatus(sources, NOW).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(AamIncompleteError)
+    expect(failure).toMatchObject({ ordersWithoutAmount: 2 })
+    expect(errorLog).toHaveBeenCalledTimes(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^RIASZTÁS: az alanyi adómentes keret .* 2 rendelésnél hiányzik a kiállított számla összege\./,
+      ),
+      expect.objectContaining({ alertCode: AAM_INCOMPLETE_ALERT_CODE, year: 2026 }),
+    )
+
+    // A következő megnyitás is hibát kap, a riasztás viszont fojtott.
+    await expect(queryAamStatus(sources, NOW + 60_000)).rejects.toBeInstanceOf(AamIncompleteError)
+    expect(errorLog).toHaveBeenCalledTimes(1)
+    // A tiszta számoló sem ad szintet a hiányos összegből.
+    expect(() => computeAamStatus(orders, 2026)).toThrow(AamIncompleteError)
   })
 })
 

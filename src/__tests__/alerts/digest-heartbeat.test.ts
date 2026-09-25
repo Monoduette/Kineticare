@@ -490,7 +490,7 @@ describe('napi összesítő — küldés', () => {
       orders: openOrders(MORNING),
       send: async () => ({ ok: true, provider: provider.name }),
     })
-    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('nincs-szolgaltato')
     expect(h.memory.createCalls).toHaveLength(0)
     expect(h.entries.some((entry) => entry.level === 'warn' && entry.msg.includes('noop'))).toBe(
       true,
@@ -514,6 +514,33 @@ describe('napi összesítő — küldés', () => {
         data: expect.objectContaining({ action: 'daily-digest-sent', entityId: '2026-09-24' }),
       }),
     ])
+  })
+
+  it('Codex P2 (PR #305): noop-szolgáltatónál a nap a folyamaton belül sem zárul le, de nincs forró hurok: legfeljebb a napi keretnyi próba és naponta egy figyelmeztetés', async () => {
+    const h = digestHarness({
+      orders: openOrders(MORNING),
+      send: async () => ({ ok: true, provider: 'noop' }),
+    })
+    const outcomes: string[] = []
+    for (let minute = 0; minute <= 120; minute += 5) {
+      outcomes.push(await runDailyDigestIfDue(h.deps(MORNING + minute * 60_000)))
+    }
+    const noopWarns = () =>
+      h.entries.filter((entry) => entry.level === 'warn' && entry.msg.includes('noop'))
+
+    expect(outcomes.slice(0, MAX_DIGEST_ATTEMPTS_PER_DAY)).toEqual(
+      Array.from({ length: MAX_DIGEST_ATTEMPTS_PER_DAY }, () => 'nincs-szolgaltato'),
+    )
+    expect(new Set(outcomes.slice(MAX_DIGEST_ATTEMPTS_PER_DAY))).toEqual(new Set(['nem-esedekes']))
+    expect(h.sendMail).toHaveBeenCalledTimes(MAX_DIGEST_ATTEMPTS_PER_DAY)
+    expect(h.state.done).toBe(false)
+    expect(h.memory.createCalls).toHaveLength(0)
+    expect(noopWarns()).toHaveLength(1)
+
+    // Másnap újra próbál, és a hiányról újra egyszer szól.
+    const nextMorning = MORNING + 24 * 60 * 60_000
+    expect(await runDailyDigestIfDue(h.deps(nextMorning))).toBe('nincs-szolgaltato')
+    expect(noopWarns()).toHaveLength(2)
   })
 
   it('ha a zár a küldés előtt hibázik, nincs küldés, a hiba a hívóé, és a következő próba a lekérdezési hiba várakozása után jön', async () => {
