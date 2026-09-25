@@ -142,9 +142,10 @@ kiállítás az előző napra csúszott volna).
      pótlás kell);
    - helyesbítőnél nem igazolható áfakulcs (lásd fent) → `failed` +
      `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál csak
-     figyelmeztetés és újrapróbálható dobás, a státusz marad. Automatikus
-     újrapróbálás nincs: a visszatérítési panel „Feldolgozás folytatása”
-     gombjával próbálható újra (kézi kiállítás ilyenkor TILOS);
+     figyelmeztetés és újrapróbálható dobás, a státusz marad. Ezt a
+     `corrective-invoice-issue` job próbálja újra (4. lépés), és a
+     visszatérítési panel „Feldolgozás folytatása” gombja is (kézi kiállítás
+     ilyenkor TILOS);
    - helyesbítőnél a beküldés előtti egyéb átmeneti hiba (lekérdezés,
      elfogyott időkeret) → újrapróbálható dobás; a státusz marad, csak a
      hibaüzenet (`correctiveInvoiceLastError`) íródik;
@@ -162,14 +163,41 @@ kiállítás az előző napra csúszott volna).
      `szlahu_down`, 1-es és 55-ös agent-kód, illetve bizonytalan kimenetű
      válasz: értelmezhetetlen törzs, számlaszám nélküli siker vagy 56) → **dob**.
      Stornónál ez `RIASZTÁS:` is, mert a stornó létrejöhetett.
-4. A dobott hibát a refund-helyreállítás elkapja, **újrapróbálást nem állít
-   sorba**: egy kísérlet után (vagy `invoiceStarted` nyugta mellett) a
-   helyreállítás `manual_review`-ra áll. A `queueStornoIssueJob` és a
-   `queueCorrectiveInvoiceJob` exportálva van, de 2026-09-24-én semmi nem hívja
-   őket automatikusan. Stornónál az újrasorbaállítás egyébként is csapda volna:
-   a `storno-issue` job a `stornoAttempts > 0` miatt az F3-ágon `RIASZTÁS:`-sal
-   megállna. A helyesbítő újrapróbálása a beküldés előtti lekérdezés miatt
-   biztonságos, a bekötése a refund-oldal feladata.
+4. A dobott hibát a refund-helyreállítás (`src/lib/refund/refund-recovery.ts`)
+   elkapja.
+   - **Stornónál** automatikus újrapróbálás nincs (F3): egy beküldés után az
+     állapot bizonytalan, a vak ismétlés dupla stornót okozna. A
+     visszatérítési panel és a 05-ös útmutató a Számlázz.hu-fiók
+     ellenőrzésére küldi a tulajdonost. A `storno-issue` jobot
+     (`queueStornoIssueJob`) csak kézzel szabad sorba állítani, miután ember
+     megerősítette, hogy a fiókban nincs stornó.
+   - **Helyesbítőnél** az újrapróbálható hiba, és az igénylés
+     (`refund-invoice-started` nyugta) utáni bármilyen hiba a
+     `corrective-invoice-issue` jobot állítja sorba (`queueCorrectiveInvoiceJob`,
+     `orderId` + `refundSeq`, `retries: 3`), egyszer írható
+     `refund-invoice-retry-queued` jelzéssel. A job minden beküldés előtt
+     `szamlaKulsoAzon`-lekérdezést futtat, és találatnál átveszi a bizonylatot.
+     Beküldeni csak két esetben küld: ha a hiba az igénylés előtt történt (ez
+     az első beküldés), vagy ha az igénylés utáni első beküldés igazoltan
+     hatás nélkül maradt (`szlahu_down: true` fejléc, illetve kapcsolódás
+     előtti hálózati hiba; `refund-invoice-no-effect` nyugta). Ez az egyetlen
+     ismételt beküldés (`refund-invoice-resubmit-started`); minden más,
+     igénylés utáni esetben a job csak átvesz.
+   - Ha a helyesbítő megvan, a job a visszatérítés feldolgozását is befejezi
+     (`recoverRefundOrder`: lezárás és vevői értesítő), tulajdonosi gombnyomás
+     nélkül. Ha a refund-őr megtagadja a beküldést, a job `failed` kimenettel
+     és `helyesbito-nem-kuldheto-be-ujra` riasztással zárul; ha minden
+     újrapróbálás elfogy, `helyesbito-ujraprobalas-kimerult` riasztás megy.
+   - A sorba állítás után 2 órával (`CORRECTIVE_RETRY_ESCALATION_MS`, a
+     `refund-invoice-retry-queued` jelzés `queuedAt` idejétől) a refund-őr
+     ismételt beküldést már nem enged (a jelzés nélkül eleve nem). Ha az
+     igénylés megtörtént, és épp nem fut beküldés, a panel ekkortól a kézi
+     rendezést kéri: előbb keresés a Számlázz.hu-fiókban, és csak üres
+     találatnál kézi kiállítás. Igénylés nélkül a job még elvégezheti az első
+     beküldést, ezért a panel addig tiltja a kézi kiállítást, és egy nap után
+     az üzemeltetőhöz küld. Ha a folyamat a beküldés után leállt (nincs szám,
+     nincs sorba állított job), a panel a „Feldolgozás folytatása” gombot
+     mutatja, és az állítja sorba a jobot.
 5. A bizonylat hibája **soha nem befolyásolja** a már sikeres refundot:
    a bekötés minden ágat try/catch-ben tart, strukturált loggal
    (`src/lib/logger.ts`).
@@ -283,7 +311,7 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
 | Duplikátum-jelzés (71/152) — **helyesbítő**       | NEM hiba: lekérdezés a `szamlaKulsoAzon`-ra, és a meglévő bizonylat átvétele. Sikertelen lekérdezésnél `failed` + `RIASZTÁS:`, **fűzött** hibaüzenettel                                                                                                 |
 | Duplikátum-jelzés (71/152) — **stornó**           | `failed` + error-szintű `RIASZTÁS:` (nincs lekérdezés, nincs újraküldés): a stornó állapotát kézzel kell ellenőrizni a fiókban                                                                                                                          |
 | Bizonytalan stornó-állapot (nem az első kísérlet) | `failed` + error-szintű `RIASZTÁS:` — a vak újraküldés dupla stornót okozhatna, ami nem javítható                                                                                                                                                       |
-| Timeout / hálózat / HTTP 5xx / `szlahu_down`      | `SzamlazzApiError` (retryable) dob; a refund-helyreállítás nem állít sorba újrapróbálást (`manual_review`). Stornónál `RIASZTÁS:` is (a stornó létrejöhetett). A válasz-**törzs** olvasása közbeni megszakadás is ide sorolódik (nem nyers `TypeError`) |
+| Timeout / hálózat / HTTP 5xx / `szlahu_down`      | `SzamlazzApiError` (retryable) dob. Helyesbítőnél sorba áll a `corrective-invoice-issue` job (4. pont); stornónál `RIASZTÁS:`, automatikus újrapróbálás nincs. A válasz-**törzs** olvasása közbeni megszakadás is ide sorolódik (nem nyers `TypeError`) |
 | Kimerült kísérletszám (5)                         | Stornó: `failed`, hálózati hívás nélkül. Helyesbítő: egy záró lekérdezés (találatnál a meglévő bizonylat átvétele), különben `failed`, a kézi kiállítás előtti keresés kérésével. Mindkettő error-szintű owner-jelzéssel                                |
 | Bármely váratlan hiba                             | `RIASZTÁS:` error log, továbbdobva — a refund-helyreállítás elkapja, a refund HTTP-válasza változatlan                                                                                                                                                  |
 
@@ -305,8 +333,11 @@ utazik, a napló titokmentes.
    el sem indul (a többi kulcs hibája csak az első számlázási művelet
    futásakor derül ki).
 3. A job-workerek (`ENABLE_JOB_WORKERS=true`) futása szükséges ahhoz, hogy a
-   (kézzel) sorba állított `storno-issue` / `corrective-invoice-issue` taskok
-   ténylegesen lefussanak. Kézi rendezésnél a bizonylatot a Számlázz.hu-felületen
+   helyesbítő automatikusan sorba állított `corrective-invoice-issue` jobja (és a
+   kézzel sorba állított `storno-issue`) ténylegesen lefusson. Workerek nélkül
+   a helyesbítő nem készül el: igénylés után a panel a sorba állítás után 2
+   órával a kézi rendezést kéri (a 4. lépés szerint), igénylés előtt tovább
+   tiltja a kézi kiállítást. Kézi rendezésnél a bizonylatot a Számlázz.hu-felületen
    kell kiállítani; a számát a H2-es admin-művelet elkészültéig nem lehet a
    rendelésre visszavezetni (a mezők írásvédettek), lásd a
    `docs/szamlazz-megfeleles.md` kézi rendezési lépéseit.

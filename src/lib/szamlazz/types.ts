@@ -45,6 +45,15 @@ export class SzamlazzApiError extends Error {
   readonly agentErrors: SzamlazzAgentError[]
   /** Újrapróbálható-e (a job-retry e szerint dönt). */
   readonly retryable: boolean
+  /**
+   * Igazoltan hatás nélküli hiba: a kérést a Számlázz.hu számlázó rendszere
+   * nem dolgozta fel, bizonylat nem készülhetett. Csak két ág állítja
+   * (client.ts): a `szlahu_down: true` karbantartási fejléc és a kapcsolódás
+   * előtti hálózati hiba. A helyesbítő egyetlen ismételt beküldése erre épül
+   * (refund-guard.ts), ezért minden más hiba (timeout, 5xx, bontott kapcsolat,
+   * értelmezhetetlen válasz, agent-hibakód) alapból false.
+   */
+  readonly noEffect: boolean
 
   constructor(args: {
     message: string
@@ -52,6 +61,7 @@ export class SzamlazzApiError extends Error {
     httpStatus?: number
     agentErrors?: SzamlazzAgentError[]
     retryable: boolean
+    noEffect?: boolean
   }) {
     super(args.message)
     this.name = 'SzamlazzApiError'
@@ -59,6 +69,7 @@ export class SzamlazzApiError extends Error {
     this.httpStatus = args.httpStatus
     this.agentErrors = args.agentErrors ?? []
     this.retryable = args.retryable
+    this.noEffect = args.noEffect ?? false
   }
 }
 

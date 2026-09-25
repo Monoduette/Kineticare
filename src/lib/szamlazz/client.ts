@@ -513,11 +513,20 @@ export interface SzamlazzParsedSuccess {
  * bizonylatot kötne a rendeléshez.
  */
 export function parseAgentResponse(body: string, headers: Headers): SzamlazzParsedSuccess {
-  if (isTruthyHeader(headers.get('szlahu_down'))) {
+  const down = headers.get('szlahu_down')
+  if (isTruthyHeader(down)) {
     throw new SzamlazzApiError({
       message: 'A Számlázz.hu karbantartás miatt átmenetileg nem elérhető (szlahu_down).',
       kind: 'http',
       retryable: true,
+      // Hatás nélküli (noEffect), de csak a dokumentált `szlahu_down: true`
+      // értéknél. A hivatalos Hibakezelés oldal szerint ilyenkor a választ a
+      // Számlázz.hu CMS-e szolgálja ki, és „a rendszerből jelenleg nem lehet
+      // számlákat létrehozni, lekérdezni” (docs.szamlazz.hu/hu/agent/basics/
+      // error-handling, v202505151456, Wayback 2025-06-14; angolul: „it is not
+      // possible to create/query invoices from the system at the moment”). A
+      // kérés tehát nem jutott el a számlázóig.
+      noEffect: down.trim().toLowerCase() === 'true',
     })
   }
 
@@ -766,6 +775,48 @@ export function bodyReadError(
 }
 
 /**
+ * Kapcsolódás előtti hálózati hibák: névfeloldási hiba (`getaddrinfo`) és
+ * elutasított TCP-kapcsolat (`connect`). Ezek csak kapcsolódás előtt
+ * keletkezhetnek; egy már felépült kapcsolat hibája ECONNRESET, EPIPE,
+ * UND_ERR_SOCKET vagy timeout, és az egyik sem került ide.
+ *
+ * Miért nem ment ki egyetlen kérés-bájt sem (node_modules/undici 7.29):
+ * a lib/core/connect.js a socket `connect`/`secureConnect` eseménye ELŐTTI
+ * hibát a kapcsolódás visszahívásának adja, a lib/dispatcher/client.js
+ * `connect()` pedig ezt a `handleConnectError` → `onError` ágon csak akkor
+ * osztja ki a kérésekre, ha egyik sem fut (`kRunning === 0`). A kérést író
+ * HTTP-réteg (`connectH1` / `connectH2`) csak sikeres kapcsolódás után jön
+ * létre. A kapcsolódási időtúllépés (UND_ERR_CONNECT_TIMEOUT) szándékosan
+ * nincs itt: időtúllépés nem számít bizonyítéknak.
+ */
+const CONNECT_PHASE_ERROR_SYSCALLS: ReadonlyMap<string, string> = new Map([
+  ['ECONNREFUSED', 'connect'],
+  ['ENOTFOUND', 'getaddrinfo'],
+  ['EAI_AGAIN', 'getaddrinfo'],
+])
+
+/**
+ * A fetch („fetch failed”) oka igazoltan kapcsolódás előtti hiba-e. Több
+ * címre próbálkozó kapcsolódásnál (Happy Eyeballs, a www.szamlazz.hu-nak
+ * több A-rekordja van) a Node AggregateError-t ad: ez csak akkor számít, ha
+ * MINDEN próbálkozás ilyen hibával ért véget.
+ */
+function isConnectPhaseFailure(cause: unknown): boolean {
+  if (cause instanceof AggregateError) {
+    return cause.errors.length > 0 && cause.errors.every(isConnectPhaseFailure)
+  }
+  if (!(cause instanceof Error)) {
+    return false
+  }
+  const { code, syscall } = cause as Error & { code?: unknown; syscall?: unknown }
+  return (
+    typeof code === 'string' &&
+    typeof syscall === 'string' &&
+    CONNECT_PHASE_ERROR_SYSCALLS.get(code) === syscall
+  )
+}
+
+/**
  * Számla-Agent hívás: a kész számla-XML POST-olása az
  * 'action-xmlagentxmlfile' multipart-mezőben. Az agent-kulcs az XML-ben
  * (bodyban) utazik — sosem az URL-ben. Naplózás titokmentesen.
@@ -818,6 +869,7 @@ export async function postInvoiceXml(
       message: `A Számlázz.hu elérhetetlen: ${error instanceof Error ? error.message : String(error)}`,
       kind: 'network',
       retryable: true,
+      noEffect: isConnectPhaseFailure(error instanceof Error ? error.cause : undefined),
     })
   }
 

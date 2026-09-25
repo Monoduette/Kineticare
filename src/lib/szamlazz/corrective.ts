@@ -15,7 +15,12 @@ import { correctiveKulsoAzon, correctiveLookupKeys, legacyCorrectiveKulsoAzon } 
 import { createLockBudget, type LockBudget } from './lock-budget'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from './pdf'
 import { writeOrderInvoicingState, writeOrderInvoicingStateBestEffort } from './order-state'
-import { claimManagedRefundDocument, managedRefundDocument } from './refund-guard'
+import { REFUND_INVOICE_NO_EFFECT_ACTION, writeReceipt } from '../refund/recovery-receipts'
+import {
+  claimManagedRefundDocument,
+  managedRefundDocument,
+  RefundDocumentGuardError,
+} from './refund-guard'
 import {
   SzamlazzApiError,
   type IssueCorrectiveInvoiceResult,
@@ -94,6 +99,15 @@ import { budapestDateString, isIsoDateString } from './xml'
  * refund-sorszámhoz tartozik (F1).
  */
 export const MAX_CORRECTIVE_ATTEMPTS = 5
+
+/**
+ * A nem a Számlázz.hu-tól jött (helyi: adatbázis, kapcsolat, kód) hiba
+ * előtagja a rendelés correctiveInvoiceLastError mezőjében. A visszatérítési
+ * panel erről tudja, hogy a szöveg nem a Számlázz.hu hibaüzenete
+ * (refund-recovery.ts). A refund-őr elutasítása nem kap előtagot: azt a
+ * panel a saját szövegéről ismeri fel.
+ */
+export const CORRECTIVE_LOCAL_ERROR_PREFIX = 'Helyi feldolgozási hiba: '
 
 /** A helyesbítő-kiállítás sorosító advisory-zárának kulcsa (rendelés + refund-sorszám). */
 export function correctiveLockKey(orderId: number | string, refundSeq: number): string {
@@ -595,9 +609,9 @@ async function performCorrectiveInvoiceForOrder(
    *
    * Újrapróbálható (átmeneti) olvasási hibánál NINCS megtagadás: sem 'failed'
    * írás, sem „kézi rendezés kell" RIASZTÁS, csak figyelmeztetés, és a hiba
-   * továbbmegy. Igénylés és beküldés nem történt. Automatikus újrapróbálás
-   * nincs: a visszatérítési panel „Feldolgozás folytatása” gombja (vagy egy
-   * kézzel sorba állított corrective-invoice-issue job) próbálja újra. Egy
+   * továbbmegy. Igénylés és beküldés nem történt. A refund-helyreállítás a
+   * dobott hibára a corrective-invoice-issue jobot állítja sorba, és a
+   * visszatérítési panel „Feldolgozás folytatása” gombja is újrapróbálja. Egy
    * kézi kiállításra felszólító riasztás mellett ez az újrapróbálás dupla
    * helyesbítőt adna.
    */
@@ -890,9 +904,46 @@ async function performCorrectiveInvoiceForOrder(
       })
       return { outcome: 'failed', reason }
     }
+    // Az ELSŐ beküldés igazoltan hatás nélkül maradt (client.ts: `szlahu_down:
+    // true`, vagy kapcsolódás előtti hálózati hiba): a nyugta alapján a
+    // refund-őr egyszer engedi az ismételt beküldést (refund-guard.ts). Ha a
+    // nyugta nem írható, ismételt beküldés sincs (zárt irányba hibázunk).
+    if (
+      postStarted &&
+      managedClaimed &&
+      payload &&
+      managed &&
+      attempts === 1 &&
+      error instanceof SzamlazzApiError &&
+      error.noEffect
+    ) {
+      try {
+        await writeReceipt(payload, managed.intent, REFUND_INVOICE_NO_EFFECT_ACTION, {
+          version: 1,
+          kind: 'corrective',
+          sequence: deps.refundSeq,
+          attempt: 1,
+          errorKind: error.kind,
+        })
+      } catch (receiptError) {
+        log.warn(
+          'a hatás nélküli beküldés nyugtája nem írható, ezért a helyesbítő automatikusan nem küldhető be újra',
+          {
+            orderNumber,
+            refundSeq: deps.refundSeq,
+            error: receiptError instanceof Error ? receiptError.message : String(receiptError),
+          },
+        )
+      }
+    }
+    // A helyi (nem Számlázz.hu-tól jött) hiba előtagot kap, hogy a panel ne a
+    // Számlázz.hu üzeneteként mutassa; a refund-őr szövege változatlan marad.
     await saveStateBestEffort({
       correctiveInvoiceStatus: 'failed',
-      correctiveInvoiceLastError: message,
+      correctiveInvoiceLastError:
+        error instanceof SzamlazzApiError || error instanceof RefundDocumentGuardError
+          ? message
+          : `${CORRECTIVE_LOCAL_ERROR_PREFIX}${message}`,
     })
     if (error instanceof SzamlazzApiError) {
       const agentErrorCodes = error.agentErrors.map((entry) => entry.code)
@@ -919,6 +970,17 @@ async function performCorrectiveInvoiceForOrder(
         context,
       )
       return { outcome: 'failed', reason: error.message }
+    }
+    if (error instanceof RefundDocumentGuardError) {
+      // A refund-őr döntése, nem váratlan hiba: a hívó dönt a riasztásról (a
+      // helyesbítő-job hangosan, riasztáskóddal zárja le, lásd
+      // jobs/tasks/corrective-invoice-issue.ts).
+      log.warn('a refund-őr nem engedte a helyesbítő beküldését', {
+        orderNumber,
+        refundSeq: deps.refundSeq,
+        attempts,
+      })
+      throw error
     }
     log.error('RIASZTÁS: a helyesbítő számla kiállítása váratlan hibával állt le', {
       orderNumber,
