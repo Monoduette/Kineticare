@@ -167,7 +167,9 @@ dolgok lennének megoldva nem folyamatosan újakat akarnál fejleszteni. A szám
   a tulajdonosra.
 - Új fejlesztést csak kérésre kezdj. Amit közben találsz, a
   [`docs/feladatlista.md`](docs/feladatlista.md) nyitott tételei közé kerül, és
-  a jelentésben egy mondatban szólsz róla.
+  a jelentésben egy mondatban szólsz róla. Kivétel: a merge utáni piros CI, a
+  hibás deploy és az éles hiba nem kerül a listára, azt azonnal javítani kell
+  (PR-elvárások, 23. tanulság).
 - A nyitott teendők, a tulajdonosi döntések és az éles állapot helye a
   `docs/feladatlista.md`. Ami ott elavul, azt a változás PR-jében frissítsd.
 
@@ -373,11 +375,12 @@ naplója sosem íródik ki. (Mérve 2026-08-21.)
 ### Fizetés, jobok és átnézés (2026-09-25)
 
 25. **A Barion `401 AuthenticationFailed` a bolt élesítése előtt nem
-    kulcshiba.** A 2026-09-16-i és a 09-24-i éles fizetésindítás így bukott,
-    mert a Barion-bolt akkor még nem volt élesítve; a tulajdonos a próba után
-    élesítette. Mielőtt a `BARION_POSKEY_PROD`-ot gyanúsítod, nézd meg, hogy a
-    hiba idején élesítve volt-e a bolt. A W1 (#307) utáni első indítás a valódi
-    próba (runbook 11, pénzmozgás nélkül).
+    döntő.** A 2026-09-16-i és a 09-24-i éles fizetésindítás így bukott, de a
+    Barion-bolt akkor még nem volt élesítve; a tulajdonos a próba után
+    élesítette. Ez a két hiba tehát nem bizonyítja, hogy a kulcs rossz, de azt
+    sem, hogy jó: a hibás vagy csonka `BARION_POSKEY_PROD` ugyanezt a hibát adja
+    (`src/lib/barion/client.ts`). A döntő próba az élesítés utáni első indítás
+    (runbook 11, pénzmozgás nélkül). Ha az is 401, a kulcsot kell ellenőrizni.
 26. **A Payload job-queue sorrendje `createdAt` szerinti, és az újrapróbáló job
     megtartja a régi `createdAt`-jét.** Egy Számlázz.hu-kimaradás alatt ezért a
     számlajobok elfoglalták az order-maintenance queue minden helyét, és az
