@@ -498,7 +498,7 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   //
   // Ha a zár a küldés UTÁN hibázik, a küldés eredménye itt marad meg.
   const attempt: { result?: SendResult } = {}
-  let locked: DigestLockResult<boolean> = { acquired: false }
+  let locked: DigestLockResult<'mar-elkuldve' | 'kuldve' | 'keret-elfogyott'> = { acquired: false }
   try {
     locked = await withDigestTryLock(
       deps.payload,
@@ -507,7 +507,14 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
         // A függő nyom azt jelenti, hogy ez a folyamat ma már elküldte a levelet
         // (breaker, PR #305 rev4): egy átfedő futás nem küldheti újra.
         if (state.pendingClaim?.day === today || (await digestSentOn(claims, today))) {
-          return true
+          return 'mar-elkuldve'
+        }
+        // Az esedékesség a zár előtt dőlt el. Egy átfedő futás (kézi
+        // job-indítás az ütemezés mellett) közben elfogyaszthatta a napi
+        // küldési keretet, vagy lezárhatta a napot (Devin, PR #306): a zár
+        // alatt újra megnézzük, mielőtt a kísérlet számít.
+        if (state.done || state.sendAttempts >= MAX_DIGEST_ATTEMPTS_PER_DAY) {
+          return 'keret-elfogyott'
         }
         state.sendAttempts += 1
         const result = await sendDigest(deps, recipients, mail, today)
@@ -517,7 +524,7 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
           // hogy a szolgáltató beállítása és a deploy után még aznap kimenjen.
           // A hiányról naponta egyszer szólunk.
           if (state.providerWarned) {
-            return false
+            return 'kuldve'
           }
           state.providerWarned = true
           log.warn(
@@ -533,7 +540,7 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
             )
           }
         }
-        return false
+        return 'kuldve'
       },
       log,
     )
@@ -552,7 +559,10 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
     log.info('napi összesítő: egy párhuzamos futás épp küldi, ez a kör kimarad')
     return 'folyamatban'
   }
-  if (locked.acquired && locked.value) {
+  if (locked.acquired && locked.value === 'keret-elfogyott') {
+    return 'nem-esedekes'
+  }
+  if (locked.acquired && locked.value === 'mar-elkuldve') {
     state.done = true
     log.info('napi összesítő: ma már elküldte egy korábbi vagy párhuzamos futás')
     return 'mar-elkuldve'

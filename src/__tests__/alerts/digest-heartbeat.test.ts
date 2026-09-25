@@ -256,6 +256,30 @@ describe('napi összesítő — küldés', () => {
     expect(h.memory.createCalls).toHaveLength(0)
   })
 
+  // A kézi job-indítás az ütemezés mellett átfedő futást ad: mindkettő a zár
+  // előtt látja a napot esedékesnek, a zár alatt ezért újra kell nézni a keretet.
+  it('Devin (PR #306): két átfedő futás közül a második a zár alatt látja a betelt napi keretet, így a kísérletek száma nem lépi át a hármat', async () => {
+    const send = vi.fn(async (): Promise<SendResult> => ({
+      ok: false,
+      provider: 'resend',
+      retryable: true,
+      error: 'HTTP 503',
+    }))
+    const h = digestHarness({ orders: openOrders(MORNING), send })
+    for (let run = 0; run < MAX_DIGEST_ATTEMPTS_PER_DAY - 1; run += 1) {
+      await runDailyDigestIfDue(h.deps(MORNING + run * 5 * 60_000))
+    }
+    const at = MORNING + MAX_DIGEST_ATTEMPTS_PER_DAY * 5 * 60_000
+    const outcomes = await Promise.all([
+      runDailyDigestIfDue(h.deps(at)),
+      runDailyDigestIfDue(h.deps(at)),
+    ])
+    expect(send).toHaveBeenCalledTimes(MAX_DIGEST_ATTEMPTS_PER_DAY)
+    expect(h.state.sendAttempts).toBe(MAX_DIGEST_ATTEMPTS_PER_DAY)
+    expect([...outcomes].sort()).toEqual(['hiba', 'nem-esedekes'])
+    expect(h.memory.createCalls).toHaveLength(0)
+  })
+
   it('nem újrapróbálható hibánál (pl. Resend 409: ma már ment) aznapra feladja', async () => {
     const send = vi.fn(async (): Promise<SendResult> => ({
       ok: false,

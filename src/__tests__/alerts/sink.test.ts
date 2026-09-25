@@ -7,8 +7,10 @@ import {
   ALERT_POSTHOG_EVENT,
   parseAlertRecipients,
 } from '../../lib/alerts/mail'
+import { emitAlert } from '../../lib/alerts/emit'
 import {
   ALERT_MAIL_COOLDOWN_MS,
+  ALERT_SOURCE_THROTTLE_FIELD,
   createAlertSink,
   MAX_ALERT_MAILS_PER_HOUR,
   type AlertSinkDeps,
@@ -137,6 +139,31 @@ describe('riasztás-csatorna — levél', () => {
     await h.handle.flush()
     expect(h.mails).toHaveLength(2)
     expect(h.mails[1]?.text).toContain('Az előző levél óta még 2 alkalommal jelentkezett.')
+  })
+
+  // Az AAM két oka (hiányzó összeg, lapozási korlát) ugyanazt a kódot viseli,
+  // de külön forrásfojtása van (src/lib/alerts/aam.ts): a második ok levele nem
+  // veszhet el a kód óránkénti fojtásán, mert a forrásfojtása egy napig nem
+  // engedné újra.
+  it('Devin (PR #306): egy kód alatti két forrás-ok egy órán belül is külön levelet kap, külön idempotenciakulccsal; ugyanannak az oknak az ismétlése nem', async () => {
+    const h = harness()
+    const log = createLogger()
+    const code = 'aam-keret-nem-teljes'
+    const osszeg = { [ALERT_SOURCE_THROTTLE_FIELD]: `${code}:osszeg:2026` }
+    const lapozas = { [ALERT_SOURCE_THROTTLE_FIELD]: `${code}:lapozas:2026` }
+    emitAlert(log, code, 'RIASZTÁS: a keret nem számolható, hiányzó számlaösszeg', osszeg)
+    await h.handle.flush()
+    h.clock.now = NOW + 5 * 60_000
+    emitAlert(log, code, 'RIASZTÁS: a keret nem számolható, lapozási korlát', lapozas)
+    await h.handle.flush()
+    h.clock.now = NOW + 10 * 60_000
+    emitAlert(log, code, 'RIASZTÁS: a keret nem számolható, hiányzó számlaösszeg', osszeg)
+    await h.handle.flush()
+    expect(h.mails.map((mail) => mail.subject)).toEqual([
+      'Kineticare riasztás: a keret nem számolható, hiányzó számlaösszeg',
+      'Kineticare riasztás: a keret nem számolható, lapozási korlát',
+    ])
+    expect(new Set(h.mails.map((mail) => mail.idempotencyKey)).size).toBe(2)
   })
 
   it('más kód külön levelet kap ugyanabban az órában', async () => {

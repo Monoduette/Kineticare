@@ -51,7 +51,10 @@
  * csatorna ugyanezekben az esetekben azt is feloldja. Kézbesítés után, a
  * kódfojtás által elnyelt ismétlésnél, noop-szolgáltatónál és címzett
  * nélkül nem oldja fel: az elnyelt ismétlést a következő levél megszámolja,
- * az utóbbi kettőn pedig csak redeploy segít.
+ * az utóbbi kettőn pedig csak redeploy segít. A forrás saját kulcsa a
+ * levél-fojtás identitásának is része (Devin, PR #306): így egy kód alatti két
+ * külön ok (az AAM hiányzó összege és lapozási korlátja) egy órán belül is
+ * külön levelet kap, és egyik sem vár egy napot a pótlásra.
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -136,7 +139,7 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
   const now = deps.now ?? (() => Date.now())
   const log = deps.logger.child({ module: ALERT_SINK_MODULE })
   const pending = new Set<Promise<void>>()
-  const suppressedByCode = new Map<string, number>()
+  const suppressedByIdentity = new Map<string, number>()
   const mailTimestamps: number[] = []
   let recipientsWarned = false
   let postHogSkipWarned = false
@@ -213,14 +216,23 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
       }
       return
     }
-    const throttleKey = `riasztas-level:${summary.alertCode}`
+    // A levél-fojtás identitása a kód, és ha a forrás saját fojtási kulcsot ad,
+    // az is (Devin, PR #306). Az AAM két oka (hiányzó összeg, lapozási korlát)
+    // ugyanazt a kódot viseli, de külön forrásfojtása van: közös kódfojtásnál
+    // az egy órán belüli második ok levele elveszne, a forrásfojtása pedig egy
+    // napra lezárná a pótlást. Ugyanannak az oknak az ismétlése továbbra is
+    // óránként egy levél; az idempotenciakulcs is az identitásé, hogy a Resend
+    // a második ok levelét ne vegye az elsőnek.
+    const mailIdentity =
+      sourceThrottleKey === null ? summary.alertCode : `${summary.alertCode}|${sourceThrottleKey}`
+    const throttleKey = `riasztas-level:${mailIdentity}`
     if (!shouldEmitThrottledAlert(throttleKey, ALERT_MAIL_COOLDOWN_MS, nowMs)) {
-      suppressedByCode.set(summary.alertCode, (suppressedByCode.get(summary.alertCode) ?? 0) + 1)
+      suppressedByIdentity.set(mailIdentity, (suppressedByIdentity.get(mailIdentity) ?? 0) + 1)
       return
     }
     if (mailCapReached(nowMs)) {
       releaseForRetry(throttleKey, sourceThrottleKey)
-      suppressedByCode.set(summary.alertCode, (suppressedByCode.get(summary.alertCode) ?? 0) + 1)
+      suppressedByIdentity.set(mailIdentity, (suppressedByIdentity.get(mailIdentity) ?? 0) + 1)
       if (mailCapWarnedAt === null || nowMs - mailCapWarnedAt >= HOUR_MS) {
         mailCapWarnedAt = nowMs
         log.warn('riasztás: az óránkénti levélplafon betelt, a további riasztás-levél vár', {
@@ -230,8 +242,8 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
       return
     }
     mailTimestamps.push(nowMs)
-    const suppressed = suppressedByCode.get(summary.alertCode) ?? 0
-    suppressedByCode.delete(summary.alertCode)
+    const suppressed = suppressedByIdentity.get(mailIdentity) ?? 0
+    suppressedByIdentity.delete(mailIdentity)
     const mail = buildAlertMail(summary, suppressed)
     let result: SendResult
     try {
@@ -240,7 +252,7 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
         subject: mail.subject,
         html: mail.html,
         text: mail.text,
-        idempotencyKey: alertIdempotencyKey(summary.alertCode, nowMs),
+        idempotencyKey: alertIdempotencyKey(mailIdentity, nowMs),
       })
     } catch (error) {
       result = { ok: false, provider: 'noop', retryable: true, error: errorText(error) }
@@ -250,7 +262,7 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
       // (a szolgáltató csak redeploy-jal változhat, lásd a fájl elejét), az
       // elnyelt ismétlések száma megmarad, és a foglalt helyet a levélplafon
       // visszakapja (a plafon a valódi leveleké).
-      suppressedByCode.set(summary.alertCode, suppressed)
+      suppressedByIdentity.set(mailIdentity, suppressed)
       const slot = mailTimestamps.lastIndexOf(nowMs)
       if (slot >= 0) {
         mailTimestamps.splice(slot, 1)
@@ -272,7 +284,7 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
       // fojtása se napokra: a következő előfordulás újra próbálkozik (a
       // vihar-plafon továbbra is véd).
       releaseForRetry(throttleKey, sourceThrottleKey)
-      suppressedByCode.set(summary.alertCode, suppressed)
+      suppressedByIdentity.set(mailIdentity, suppressed)
       log.warn('riasztás: a riasztás-levél nem ment ki', {
         alertCode: summary.alertCode,
         retryable: result.retryable ?? null,
