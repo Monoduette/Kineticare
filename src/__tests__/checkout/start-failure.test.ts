@@ -55,6 +55,13 @@ describe('classifyStartFailure — elutasított (fizetés nem jött létre)', ()
     )
   })
 
+  it('ModelValidationError: a teendő megnevezi a 3DS-vészkapcsolót (W1A-1)', () => {
+    const failure = classifyStartFailure(barionError('http', 400, ['ModelValidationError']))
+    expect(failure.kind === 'rejected' ? failure.operatorHint : null).toContain(
+      'BARION_SEND_3DS=false',
+    )
+  })
+
   it('az ismert kód kis-nagybetűtől függetlenül egyezik, az ismeretlenhez nincs teendő', () => {
     const lower = classifyStartFailure(barionError('http', 401, ['authenticationfailed']))
     expect(lower.kind === 'rejected' ? lower.operatorHint : null).toBe(

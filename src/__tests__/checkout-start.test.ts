@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { NextRequest } from 'next/server'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,6 +12,7 @@ import {
   CHECKOUT_PAID_UNDER_REVIEW,
   CHECKOUT_REFUNDED_PRIVILEGED,
   CHECKOUT_PAYMENT_NOT_SAVED_RETRY,
+  CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE,
   CHECKOUT_REFUNDED_RETRY,
   CheckoutError,
   paymentWindowToMs,
@@ -27,6 +30,8 @@ import {
   CHECKOUT_PAYMENT_STATE_UNVERIFIED,
 } from '../lib/checkout/pending-payment'
 import { resetAlertThrottle } from '../lib/alert-throttle'
+import { resolveAlertCode } from '../lib/alerts/classify'
+import { ALERT_RUNBOOK_PATH, buildAlertMail, summarizeAlert } from '../lib/alerts/mail'
 import { formatPriceHuf } from '../lib/format-price'
 import type { Logger } from '../lib/logger'
 import type { PaidRejectRecoveryResult } from '../lib/order-status/recover-paid-reject'
@@ -252,6 +257,24 @@ function captureLogger(): { log: Logger; errors: CapturedLogEntry[]; warns: Capt
   }
   return { log, errors, warns }
 }
+
+/**
+ * A tulajdonosnak menő riasztás-levél szövege abból a naplósorból, amelyet a
+ * pénztár ténylegesen írt (a sink ugyanígy képzi: kód → összefoglaló → levél).
+ */
+function ownerAlertMail(entry: CapturedLogEntry): { alertCode: string | null; text: string } {
+  const alertCode = resolveAlertCode(entry.message, {}, entry.context)
+  const summary = summarizeAlert({
+    alertCode: alertCode ?? 'nincs-kod',
+    msg: entry.message,
+    ts: '2026-09-24T10:00:00.000Z',
+    bindings: {},
+    context: entry.context,
+  })
+  return { alertCode, text: buildAlertMail(summary, 0).text }
+}
+
+const RUNBOOK = readFileSync(new URL(`../../${ALERT_RUNBOOK_PATH}`, import.meta.url), 'utf8')
 
 const savedEnv: Record<string, string | undefined> = {}
 
@@ -616,7 +639,7 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
    * tárolja; ilyen áron a rendelés nem jöhet létre, és a tulajdonos RIASZTÁS-t
    * kap (termékenként fojtva).
    */
-  it('10 Ft alatti ár → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva)', async () => {
+  it('10 Ft alatti ár → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva, a levél megnevezi a terméket)', async () => {
     const product = { ...publishedProduct, priceInHUF: 5 } as unknown as Product
     const { payload, calls } = createMockPayload({ product })
     const { log, errors } = captureLogger()
@@ -637,6 +660,13 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
     const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS:'))
     expect(alerts).toHaveLength(1)
     expect(alerts[0]?.context).toMatchObject({ productId: 42, serverPriceHuf: 5, minimumHuf: 10 })
+
+    // W1A-2: a levél csak a SAFE_ALERT_FIELDS mezőit mutatja; a productId nincs
+    // köztük, a `source` igen. A riasztáskódhoz teendő tartozik a runbookban.
+    const mail = ownerAlertMail(alerts[0] ?? { message: '', context: {} })
+    expect(mail.text).toContain('source: product-42')
+    expect(mail.alertCode).toBe('a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem')
+    expect(RUNBOOK).toContain(`\`${String(mail.alertCode)}\``)
   })
 
   it('pontosan 10 Ft-os ár még vásárolható (a Barion minimuma „10 HUF or more")', async () => {
@@ -680,6 +710,90 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
     expect(error.message).toContain('Az ár közben megváltozott')
     expect(error.message).toContain(formatPriceHuf(4000))
     expect(row.status).toBe('cancelled')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * W1A-3: a hook a törölt vagy kikapcsolt árat 0 Ft-ként snapshotolja
+   * (order-integrity.ts, `coursePriceHuf(product) ?? 0`). Ilyen árat nem
+   * nevezhetünk „mostani árnak", és az újraindítás sem működne. Az 5 Ft új
+   * értékként már nem menthető (validatePriceInHUF), itt a szerződés határát
+   * rögzíti: csak a Barion-minimumot elérő ár nevezhető meg.
+   */
+  it.each([[0], [5]])(
+    'a rendelés végösszege közben %i Ft lett → 409 ár nélküli szöveggel, a rendelés cancelled, Barion NEM hívódik',
+    async (snapshotHuf) => {
+      const row: OrderRow = { id: 101, status: 'payment_pending', orderNumber: ORDER_NUMBER }
+      const { payload } = createMockPayload({
+        orderRows: [row],
+        orderDoc: {
+          ...createdOrderDoc,
+          totalHufSnapshot: snapshotHuf,
+          items: [
+            {
+              product: 42,
+              quantity: 1,
+              titleSnapshot: 'KURZUS-ALAP',
+              priceHufSnapshot: snapshotHuf,
+            },
+          ],
+        } as unknown as Order,
+      })
+
+      const error = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput }),
+      )
+
+      expect(error.status).toBe(409)
+      expect(error.message).not.toContain('a mostani ár')
+      expect(error.message).not.toContain(formatPriceHuf(snapshotHuf))
+      expect(error.message).toBe(CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE)
+      expect(row.status).toBe('cancelled')
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('a közben 10 Ft-ra (a Barion-minimumra) változott ár még megnevezhető', async () => {
+    const row: OrderRow = { id: 101, status: 'payment_pending', orderNumber: ORDER_NUMBER }
+    const { payload } = createMockPayload({
+      orderRows: [row],
+      orderDoc: {
+        ...createdOrderDoc,
+        totalHufSnapshot: 10,
+        items: [{ product: 42, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 10 }],
+      } as unknown as Order,
+    })
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).toContain(`a mostani ár ${formatPriceHuf(10)}`)
+    expect(row.status).toBe('cancelled')
+  })
+
+  it('a lezárás írása dob (0 Ft-os végösszegnél) → a hiba naplózva, a vevő mégis az ár nélküli 409-et kapja', async () => {
+    const { payload } = createMockPayload({
+      orderDoc: {
+        ...createdOrderDoc,
+        totalHufSnapshot: 0,
+        items: [{ product: 42, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 0 }],
+      } as unknown as Order,
+    })
+    vi.mocked(payload.update).mockRejectedValueOnce(new Error('db down'))
+    const { log, errors } = captureLogger()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).not.toContain('a mostani ár')
+    expect(error.message).toBe(CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE)
+    expect(errors.map((entry) => entry.message)).toContain(
+      'checkout-start: az árváltozás miatti lezárás sikertelen',
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

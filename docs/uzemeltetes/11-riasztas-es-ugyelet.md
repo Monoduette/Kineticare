@@ -87,16 +87,18 @@ A kód a levélben és a naplóban is szerepel. A saját kóddal küldött riasz
 A régebbi riasztások kódja az üzenet első mondatrészéből képződik (ékezet
 nélkül, kötőjellel). A leggyakoribbak:
 
-| Kód                                                  | Teendő                                                                 |
-| ---------------------------------------------------- | ---------------------------------------------------------------------- |
-| `barion-hitelesitesi-hiba`                           | A Barion elutasítja a kulcsot: azonnal fejlesztő, fizetés nem megy     |
-| `a-szamlazz-hu-konfiguracio-hibas`                   | Számlázási beállítás hibás: fejlesztő                                  |
-| `a-szamlakiallitas-bekuldesei-kimerultek`            | [05](05-szamla-storno-helyesbito-kezi.md) 2. pont                      |
-| `a-storno-kiallitas-ujraprobalasai-kimerultek`       | [05](05-szamla-storno-helyesbito-kezi.md) 3. pont                      |
-| `a-helyesbito-kiallitas-bekuldesei-kimerultek`       | [05](05-szamla-storno-helyesbito-kezi.md) 4. pont                      |
-| `hianyos-vevo-szamlazasi-adatok`                     | [05](05-szamla-storno-helyesbito-kezi.md), a vevőtől kérd el az adatot |
-| `a-vevo-termek-parhoz-mar-letezik-mas-paid-rendeles` | Dupla fizetés: [06](06-visszaterites.md) 5. pont                       |
-| `a-pending-repoll-ujraprobalasai-kimerultek`         | [02](02-fizetett-de-nincs-hozzaferes.md) 4. pont                       |
+| Kód                                                         | Teendő                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `barion-hitelesitesi-hiba`                                  | A Barion elutasítja a kulcsot: azonnal fejlesztő, fizetés nem megy                                                                                                                                                                                                                                  |
+| `a-szamlazz-hu-konfiguracio-hibas`                          | Számlázási beállítás hibás: fejlesztő                                                                                                                                                                                                                                                               |
+| `a-szamlakiallitas-bekuldesei-kimerultek`                   | [05](05-szamla-storno-helyesbito-kezi.md) 2. pont                                                                                                                                                                                                                                                   |
+| `a-storno-kiallitas-ujraprobalasai-kimerultek`              | [05](05-szamla-storno-helyesbito-kezi.md) 3. pont                                                                                                                                                                                                                                                   |
+| `a-helyesbito-kiallitas-bekuldesei-kimerultek`              | [05](05-szamla-storno-helyesbito-kezi.md) 4. pont                                                                                                                                                                                                                                                   |
+| `hianyos-vevo-szamlazasi-adatok`                            | [05](05-szamla-storno-helyesbito-kezi.md), a vevőtől kérd el az adatot                                                                                                                                                                                                                              |
+| `a-vevo-termek-parhoz-mar-letezik-mas-paid-rendeles`        | Dupla fizetés: [06](06-visszaterites.md) 5. pont                                                                                                                                                                                                                                                    |
+| `a-pending-repoll-ujraprobalasai-kimerultek`                | [02](02-fizetett-de-nincs-hozzaferes.md) 4. pont                                                                                                                                                                                                                                                    |
+| `a-barion-elutasitotta-a-fizetesinditast`                   | Fizetés nem megy: azonnal fejlesztő. Ha a levélben ModelValidationError áll, és közvetlenül egy deploy után jött: a Railway-en állítsd a `BARION_SEND_3DS` változót `false`-ra (a mentés újraindítja a szolgáltatást), utána szólj a fejlesztőnek. Részletek lent, „A 3DS-vészkapcsoló” szakaszban. |
+| `a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem` | Admin → Termékek → a levélben megnevezett termék (`product-<szám>`) ára: legalább 10 Ft legyen.                                                                                                                                                                                                     |
 
 Minden más kódnál: nézd meg a Railway naplóját a `@alertCode:<kód>` szűrővel,
 és ha a teendő nem egyértelmű, küldd el a fejlesztőnek a kódot és a
@@ -126,3 +128,37 @@ a fejlesztőnek a rendelésszámot. Ha a visszatérítés rendben van, nincs tee
 Egy Barion-kiesés alatti deploy után a `globalis-hiba` RIASZTÁS hamis is lehet
 (a már ellenőrzött visszatérítésről is jöhet); a kézi ellenőrzés ettől még
 biztonságos.
+
+## A 3DS-vészkapcsoló (BARION_SEND_3DS)
+
+A fizetésindításkor (Barion Payment/Start) a rendszer a kártyás fizetés
+biztonsági ellenőrzéséhez (3DS) négy adatblokkot is elküld: a számlázási
+címet, a vásárlás adatait, a vevői fiók adatait és a kihívás-beállítást. Ezek
+csökkentik annak esélyét, hogy a vevőnek a bankja külön megerősítést kérjen.
+Ha a Barion valamelyik adatot nem fogadja el, minden fizetésindítást
+elutasít, és addig egyetlen vásárlás sem megy át.
+
+A kapcsoló a Railway-en, a Kineticare szolgáltatás változói között állítható:
+
+- **Üres vagy nincs beállítva:** a 3DS-adatok mennek (ez az alapállapot).
+- **`false`:** a négy adatblokk kimarad, a fizetésindítás a korábbi, 3DS
+  nélküli formában megy. A vásárlás így is működik, a vevő legfeljebb
+  gyakrabban kap megerősítést a bankjától.
+- **Minden más érték (`0`, `off`, `no`, `ki`, `nem` is):** semmit nem kapcsol
+  ki. A napló ilyenkor egyszer figyelmeztet.
+
+A változó mentése után a Railway újraindítja a szolgáltatást, más teendő
+nincs. A visszakapcsoláshoz töröld a változót.
+
+**Élesítési próba** (a fejlesztő végzi, a tulajdonossal egyeztetett
+időpontban, a kapcsoló törlése után):
+
+1. Indíts egy fizetést egy legalább 10 Ft-os kurzusra, és a Barion fizetési
+   oldalán ne fizess, csak zárd be. Ez nem kerül pénzbe, és a 3DS-adatokat
+   teljesen ellenőrzi, mert egy elutasítás már a fizetésindításkor
+   visszajön.
+2. Ha a Barion fizetési oldala megnyílt, és nem jött
+   `a-barion-elutasitotta-a-fizetesinditast` riasztás, a próba sikeres.
+3. Ha a bank megerősítési lépését is látni szeretnétek: egy valódi, legalább
+   10 Ft-os kártyás vásárlás, majd annak visszatérítése a Kineticare
+   adminjából (a Barion felületén soha).

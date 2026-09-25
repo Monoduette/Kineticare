@@ -1,3 +1,4 @@
+import { createLogger } from '../logger'
 import { barionPost, getBarionConfig, type BarionClientConfig } from './client'
 import { canonicalBarionGuid, canonicalizeBarionGuid } from './guid'
 import {
@@ -58,8 +59,14 @@ import {
  * Amit nem tudunk bizonyítottan helyes értékkel kitölteni, az kimarad (pl.
  * Region, ReOrderIndicator, telefonszám). A BARION_SEND_3DS='false'
  * vészkapcsoló a négy 3DS-blokkot hagyja ki (az OrderNumbert nem), lásd
- * `barionSend3dsEnabled`. Az élesítés a tulajdonossal egyeztetett, nulla
- * összegű próbavásárlással együtt történik (sandbox-kártyánál a 3DS nem fut).
+ * `barionSend3dsEnabled`. Az élesítés a tulajdonossal egyeztetett idősávban
+ * történik, élő próbával (sandbox-kártyánál a 3DS nem fut): egy legalább
+ * 10 Ft-os (`BARION_MIN_TRANSACTION_HUF`) termékre indított, a Barion-oldalon
+ * fizetés nélkül otthagyott Payment/Start. Ez 0 Ft-ba kerül, és a 3DS-body-t
+ * teljesen ellenőrzi, mert a ModelValidationError magából a Startból jön
+ * vissza. A kihívás-ág (challenge) ellenőrzéséhez ezt követheti egy valódi,
+ * legalább 10 Ft-os kártyás vásárlás és annak visszatérítése a Kineticare
+ * adminjából.
  *
  * Recurring-előkészítés (jövőbeli tokenfizetés): az InitiateRecurrence és a
  * RecurrenceId csak akkor kerül a kérésbe, ha a BARION_RECURRING_ENABLED
@@ -192,6 +199,21 @@ export const BARION_BILLING_STREET_MAX = 50
 export const BARION_BILLING_STREET_LINES = 3
 export const BARION_ACCOUNT_ID_MAX = 64
 
+/** Folyamatonként egyszer: a Start minden hívása olvassa a kapcsolót. */
+let unrecognisedSend3dsWarned = false
+
+function warnUnrecognisedSend3dsOnce(): void {
+  if (unrecognisedSend3dsWarned) {
+    return
+  }
+  unrecognisedSend3dsWarned = true
+  // Az értéket nem naplózzuk: egy rossz helyre másolt titok is lehet.
+  createLogger({ module: 'barion' }).warn(
+    'A BARION_SEND_3DS értéke nem ismert, ezért a 3DS-adatok küldése bekapcsolva marad. Kikapcsolni kizárólag a „false” érték tudja.',
+    { envKey: 'BARION_SEND_3DS', effective3ds: true },
+  )
+}
+
 /**
  * A 3DS-blokkok vészkapcsolója (BARION_SEND_3DS). Alapból BE; kizárólag a szó
  * szerinti 'false' kapcsolja ki (kis-nagybetű és szóköz mindegy). A többi
@@ -200,10 +222,21 @@ export const BARION_ACCOUNT_ID_MAX = 64
  * minden Startnál újra, tehát egy élesben elutasított 3DS-kérés (a RIASZTÁS
  * ModelValidationError-t mutat) egyetlen változó átírásával visszaállítható
  * a korábbi, 3DS nélküli kérésre.
+ *
+ * A szigorú értelmezés szándékos (a BARION_RECURRING_ENABLED is pontos
+ * egyezést vár): a '0', 'off', 'no', 'ki', 'nem' NEM kapcsol ki. Hogy egy
+ * ilyen, félreértett érték ne maradjon néma, a nem üres, se 'true', se
+ * 'false' értékre a folyamat egyszer figyelmeztet a naplóban (a 3DS ilyenkor
+ * bekapcsolva marad). Az útmutató: .env.example és
+ * docs/uzemeltetes/11-riasztas-es-ugyelet.md.
  */
 export function barionSend3dsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.BARION_SEND_3DS
-  return !(typeof raw === 'string' && raw.trim().toLowerCase() === 'false')
+  const normalized = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  if (normalized !== '' && normalized !== 'true' && normalized !== 'false') {
+    warnUnrecognisedSend3dsOnce()
+  }
+  return normalized !== 'false'
 }
 
 /** Egysoros, összevont szóközű szöveg, legfeljebb `max` karakter (Unicode-karakterben mérve). */

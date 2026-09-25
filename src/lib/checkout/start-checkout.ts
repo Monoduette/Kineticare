@@ -140,6 +140,20 @@ export function checkoutPriceChangedMessage(currentPriceHuf: number): string {
 }
 
 /**
+ * Az ár közben olyanra változott, amelyen a kurzus nem fizethető ki (az ár
+ * törölve, a kurzus ingyenes lett, vagy a Barion 10 Ft-os minimuma alatt
+ * van). Ilyenkor nincs „mostani ár", amit megnevezhetnénk, és az újraindítást
+ * sem ígérhetjük meg: a frissített oldal mutatja, mi a helyzet a kurzussal.
+ * Mi történt, mi lett a pénzzel, mit tegyen (GOV.UK, Problem with the service
+ * pages: „information about what has happened to their answers",
+ * https://design-system.service.gov.uk/patterns/problem-with-the-service-pages/;
+ * NN/g, Error-Message Guidelines: „Concisely and precisely describe the issue",
+ * „Offer constructive advice", https://www.nngroup.com/articles/error-message-guidelines/).
+ */
+export const CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE =
+  'A kurzus ára közben megváltozott, ezért most nem vásárolható meg. Pénzt nem vontunk le. Frissítsd az oldalt.'
+
+/**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem
  * forrás. Duplavásárlás-blokk + rendelés-létrehozás egy zárban; a zárban
  * SEMMILYEN Barion-hívás nem fut (Start, PaymentState, visszatérítés): a zár
@@ -359,15 +373,19 @@ function assertPurchasable(
     })
     throw new CheckoutError(400, 'A termékhez nem tartozik érvényes ár, így nem vásárolható meg.')
   }
-  // A Barion kártyás minimuma alatti ár (a-cms-2: a „4.990" beírás 5 Ft-ként
-  // tárolódik) szerkesztői elgépelés: a vevő nem fizethetné ki, a tulajdonosnak
-  // viszont azonnal tudnia kell róla. A riasztás termékenként fojtott.
+  // A Barion kártyás minimuma alatti ár: a vevő nem fizethetné ki, a
+  // tulajdonosnak viszont azonnal tudnia kell róla. Friss beírás ide már nem
+  // juthat (a plugin `validatePriceInHUF`-ja a MIN_PRICE_HUF alatti új értéket
+  // elutasítja); az ág a validátor előtt mentett, azóta változatlan publikált
+  // árakért és a validációt kihagyó főrekord-írásokért van. A riasztás
+  // termékenként fojtott; a levél a `source` mezőből tudja megnevezni a terméket.
   if (serverPriceHuf < BARION_MIN_TRANSACTION_HUF) {
     const context = {
       productId: product.id,
       serverPriceHuf,
       minimumHuf: BARION_MIN_TRANSACTION_HUF,
       reason: 'price-below-barion-minimum',
+      source: `product-${product.id}`,
     }
     if (shouldEmitThrottledAlert(`checkout-price-below-minimum:${product.id}`, undefined, nowMs)) {
       log.error(
@@ -1367,7 +1385,14 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
         error: cancelError instanceof Error ? cancelError.message : String(cancelError),
       })
     }
-    throw new CheckoutError(409, checkoutPriceChangedMessage(totalHuf))
+    // Csak kifizethető árat nevezünk meg (W1A-3): a törölt ár a hookban 0 Ft
+    // lesz (`coursePriceHuf(product) ?? 0`), és a „mostani ár 0 Ft" hamis lenne.
+    throw new CheckoutError(
+      409,
+      totalHuf >= BARION_MIN_TRANSACTION_HUF * quantity
+        ? checkoutPriceChangedMessage(totalHuf)
+        : CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE,
+    )
   }
 
   const serverUrl = (options.serverUrl ?? process.env.NEXT_PUBLIC_SERVER_URL ?? '').replace(
@@ -1515,6 +1540,9 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
       orderId: order.id,
       orderNumber,
       httpStatus: failure.httpStatus,
+      // A riasztás-levél csak lapos, kódszerű mezőt enged át (SAFE_ALERT_FIELDS):
+      // ebből látja a tulajdonos a Barion hibakódját (pl. ModelValidationError).
+      barionErrorKind: failure.errorCodes[0] ?? `http-${failure.httpStatus ?? 'ismeretlen'}`,
       providerErrorCodes: failure.errorCodes,
       operatorHint: failure.operatorHint,
       error: errorMessage,

@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs'
+
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resetAlertThrottle } from '../lib/alert-throttle'
+import { resolveAlertCode } from '../lib/alerts/classify'
+import { ALERT_RUNBOOK_PATH, buildAlertMail, summarizeAlert } from '../lib/alerts/mail'
 import type { BarionClientConfig } from '../lib/barion/client'
 import {
   buildPaymentStartRequest,
@@ -269,6 +273,69 @@ describe('buildPaymentStartRequest — 3DS és OrderNumber (pontos body)', () =>
   )
 })
 
+/**
+ * W1A-1: a félreértett érték ('0', 'off') a szigorú értelmezés miatt NEM
+ * kapcsol ki, és ez ne maradjon néma: a folyamat egyszer figyelmeztet (a
+ * Start minden hívása olvassa a kapcsolót, a napló mégse teljen meg). A
+ * modul-szintű jelzőt friss modulpéldány nullázza (vi.resetModules), így
+ * nincs csak tesztnek szóló visszaállító export.
+ */
+describe('BARION_SEND_3DS — nem ismert érték: egyszeri figyelmeztetés a naplóban', () => {
+  async function freshBuild(): Promise<typeof buildPaymentStartRequest> {
+    vi.resetModules()
+    const fresh = await import('../lib/barion/start')
+    return fresh.buildPaymentStartRequest
+  }
+
+  function send3dsWarnings(calls: ReadonlyArray<ReadonlyArray<unknown>>): string[] {
+    return calls
+      .map((call) => JSON.parse(String(call[0])) as { level?: string; msg?: string })
+      .filter((line) => line.level === 'warn' && String(line.msg).includes('BARION_SEND_3DS'))
+      .map((line) => String(line.msg))
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it.each([['0'], ['off']])(
+    'BARION_SEND_3DS=%j: a 3DS bekapcsolva marad, két Startra is csak egy figyelmeztetés',
+    async (value) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      const build = await freshBuild()
+      process.env.BARION_SEND_3DS = value
+
+      const first = build({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+      const second = build({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+
+      expect(first.ChallengePreference).toBe('NoPreference')
+      expect(second.ChallengePreference).toBe('NoPreference')
+      const warnings = send3dsWarnings(logSpy.mock.calls)
+      expect(warnings).toHaveLength(1)
+      expect(warnings[0]).toContain('bekapcsolva marad')
+      expect(warnings[0]).toContain('„false”')
+    },
+  )
+
+  it.each([[undefined], [''], ['true'], ['false'], [' FALSE ']])(
+    'BARION_SEND_3DS=%j: ismert vagy üres érték, nincs figyelmeztetés',
+    async (value) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      const build = await freshBuild()
+      if (value !== undefined) {
+        process.env.BARION_SEND_3DS = value
+      }
+
+      const request = build({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+
+      expect(request.ChallengePreference).toBe(
+        value?.trim().toLowerCase() === 'false' ? undefined : 'NoPreference',
+      )
+      expect(send3dsWarnings(logSpy.mock.calls)).toEqual([])
+    },
+  )
+})
+
 // ---------------------------------------------------------------------------
 // A pénztár bekötése: a Barion felé ténylegesen kimenő body, és a Barion
 // validációs elutasításának osztályozása (vezetői kikötés a 3DS-hez).
@@ -379,6 +446,27 @@ afterEach(() => {
   resetAlertThrottle()
 })
 
+/**
+ * A tulajdonosnak menő riasztás-levél szövege abból a naplósorból, amelyet a
+ * pénztár ténylegesen írt (a sink ugyanígy képzi: kód → összefoglaló → levél).
+ */
+function ownerAlertMail(entry: { message: string; context: Record<string, unknown> }): {
+  alertCode: string | null
+  text: string
+} {
+  const alertCode = resolveAlertCode(entry.message, {}, entry.context)
+  const summary = summarizeAlert({
+    alertCode: alertCode ?? 'nincs-kod',
+    msg: entry.message,
+    ts: PURCHASE_DATE.toISOString(),
+    bindings: {},
+    context: entry.context,
+  })
+  return { alertCode, text: buildAlertMail(summary, 0).text }
+}
+
+const RUNBOOK = readFileSync(new URL(`../../${ALERT_RUNBOOK_PATH}`, import.meta.url), 'utf8')
+
 function startBody(): Record<string, unknown> {
   const call = fetchMock.mock.calls[0] as [string, RequestInit]
   return JSON.parse(String(call[1].body ?? '{}')) as Record<string, unknown>
@@ -429,7 +517,7 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
     })
   })
 
-  it('a Barion ModelValidationError-ja (400) → a vevő az elutasítás szövegét kapja, RIASZTÁS a hibakóddal, a rendelés payment_failed', async () => {
+  it('a Barion ModelValidationError-ja (400) → a vevő az elutasítás szövegét kapja, RIASZTÁS a hibakóddal (a levélben is, runbook-sorral), a rendelés payment_failed', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -465,5 +553,13 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
       providerErrorCodes: ['ModelValidationError'],
     })
     expect(String(alert?.context.operatorHint)).toContain('nem felel meg a Barion szabályainak')
+
+    // W1A-1: a tulajdonosi levél is megnevezi a Barion hibakódját (a
+    // providerErrorCodes és az operatorHint nem jut át a levél szűrőjén), és a
+    // riasztáskódhoz van teendő a runbookban.
+    const mail = ownerAlertMail(alert ?? { message: '', context: {} })
+    expect(mail.text).toContain('barionErrorKind: ModelValidationError')
+    expect(mail.alertCode).toBe('a-barion-elutasitotta-a-fizetesinditast')
+    expect(RUNBOOK).toContain(`\`${String(mail.alertCode)}\``)
   })
 })
