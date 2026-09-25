@@ -51,9 +51,16 @@ const OSSZEG_NELKUL = {
   updatedAt: '2025-11-20T10:00:00.000Z',
 }
 
-/** A tulajdonosnak megjelenő mondat, szó szerint (nem a formázóból). */
-const NEM_SZAMOLHATO_SOR =
-  'Alanyi adómentes keret, 2026: most nem számolható, mennyi fogyott el belőle. Az okát és a teendőt az erről szóló riasztás-levélben találod (riasztáskód: aam-keret-nem-teljes).'
+/**
+ * A tulajdonosnak megjelenő sor, szó szerint (nem a formázóból): a helyzet
+ * kiemelve, utána a teendő. A teendő a sorban áll, nem a riasztás-levélre
+ * mutat, mert az kieshet vagy meg sem születik (breaker BRK-1, devin5 rev1).
+ * A riasztáskód nem törhet el a kötőjeleinél (mérve, lásd a komponenst).
+ */
+const NEM_SZAMOLHATO_ALLAPOT =
+  'Alanyi adómentes keret, 2026: most nem számolható, mennyi fogyott el belőle.'
+const NEM_SZAMOLHATO_TEENDO =
+  'Kérd el a könyvelőtől a tárgyévi bevételt, és szólj a fejlesztőnek. Útmutató: tulajdonosi kézikönyv, 11. fejezet (riasztáskód: <span style="white-space:nowrap">aam-keret-nem-teljes</span>).'
 
 type AamLekerdezes = 'memoria' | 'teli-oldalak' | 'dob'
 
@@ -123,7 +130,7 @@ describe('FigyelmetIgenyel: a nem számolható AAM-keret nem viszi el a teendők
       expect(html).toContain('1 ügy vár rád.')
       expect(html).toContain('>1 fizetett rendelés számla nélkül</a>')
       expect(html).toContain(
-        `<p class="kc-admin-notice__szoveg" data-aam-szint="nem-szamolhato"><strong>${NEM_SZAMOLHATO_SOR}</strong></p>`,
+        `<p class="kc-admin-notice__szoveg" data-aam-szint="nem-szamolhato"><strong>${NEM_SZAMOLHATO_ALLAPOT}</strong> ${NEM_SZAMOLHATO_TEENDO}</p>`,
       )
       // A hiányzó érték sem 0, sem valamelyik keret-szint.
       expect(html).not.toContain(' Ft a ')
@@ -148,7 +155,31 @@ describe('FigyelmetIgenyel: a nem számolható AAM-keret nem viszi el a teendők
 
     expect(html).toContain('class="kc-admin-notice kc-admin-notice--figyelem kc-figyelmet"')
     expect(html).toContain(NINCS_TEENDO_SZOVEG)
-    expect(html).toContain(NEM_SZAMOLHATO_SOR)
+    expect(html).toContain(`<strong>${NEM_SZAMOLHATO_ALLAPOT}</strong> ${NEM_SZAMOLHATO_TEENDO}`)
+  })
+
+  /**
+   * Breaker BRK-4 (devin5 rev1): a sor a Budapest szerinti tárgyévet mondja,
+   * amelyre a keret nem számolható. 2026-12-31 23:30 UTC Budapesten már
+   * 2027-01-01 00:30: a 2027-es keret a kérdés, nem az UTC szerinti 2026-os.
+   */
+  it('év-fordulón a Budapest szerinti tárgyévet írja (UTC-ben még az előző év van)', async () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined)
+    const html = await htmlje(
+      FigyelmetIgenyel({
+        payload: payloadFor(
+          [{ ...OSSZEG_NELKUL, invoiceCompletionDate: '2027-01-01' }],
+          'memoria',
+        ) as never,
+        user: OWNER,
+        nowMs: Date.parse('2026-12-31T23:30:00Z'),
+        vatMode: 'AAM',
+      }),
+    )
+
+    expect(html).toContain(
+      '<strong>Alanyi adómentes keret, 2027: most nem számolható, mennyi fogyott el belőle.</strong>',
+    )
   })
 
   it('más hiba az AAM-lekérdezésben (adatbázis): változatlanul a teljes betöltési hiba, számok és keret-sor nélkül', async () => {

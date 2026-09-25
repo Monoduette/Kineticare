@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 
 import { hasOwnerRole, type RoleUser } from '../../access/roles'
 import {
+  AAM_INCOMPLETE_ALERT_CODE,
   aamNeedsAttention,
   formatAamLine,
   formatAamUnavailableLine,
@@ -56,8 +57,11 @@ import { logger } from '../../lib/logger'
  * tárgyévi számla vagy a lapozási korlát (`AamIncompleteError`) eddig az egész
  * blokkot a betöltési hibára cserélte, így a teendők sem látszottak. Most a
  * hiba csak az AAM-sor helyén áll, szám nélkül: a hiányzó érték sem 0, sem
- * „rendben”, és a sor megmondja, hol a teendő (az erről szóló riasztás-levél,
- * a riasztáskóddal). A doboz ilyenkor figyelem-változatot kap, mert az
+ * „rendben”. A sor maga mondja meg a teendőt és a kézikönyv fejezetét, a
+ * riasztáskóddal (devin5 rev1, breaker BRK-1): a riasztás-levél kieshet, és
+ * címzett vagy e-mail-szolgáltató nélkül meg sem születik, így egy rá mutató
+ * sor zsákutca volna. Csak a helyzet félkövér, a teendő nem, ahogy a számolt
+ * sorban is (`AamSor`). A doboz ilyenkor figyelem-változatot kap, mert az
  * ismeretlen szint 70% fölött is lehet (`aamNeedsAttention`). Minden más hiba
  * (adatbázis, jogosultság) továbbra is a teljes betöltési hibát adja.
  * Források (megnyitva 2026-09-25):
@@ -74,6 +78,14 @@ import { logger } from '../../lib/logger'
  *   Error state: „Include the error code in the message if possible.” Ezért
  *   áll a mondatban a riasztáskód: a riasztási runbook táblázata ezzel
  *   kulcsol. https://design-system.agriculture.gov.au/patterns/loading-error-empty-states
+ * - IBM Carbon, Notifications: „Provide users with the context and next steps
+ *   needed to understand and address the notification”, és „Do not leave
+ *   users without next steps.” Ezért áll a teendő magában a sorban.
+ *   https://carbondesignsystem.com/patterns/notification-pattern/
+ * - GOV.UK A to Z style guide, bold: „Use bold sparingly - using too much will
+ *   make it difficult for users to know which parts of your content they need
+ *   to pay the most attention to.”
+ *   https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/style-guides/a-to-z-style-guide/
  */
 
 export const FIGYELMET_IGENYEL_CIM = 'Figyelmet igényel'
@@ -130,14 +142,37 @@ function AamSor({ aam }: { aam: AamStatus }) {
 }
 
 /**
- * A keret most nem számolható: szám és szint helyett egy mondat, amely a
- * riasztásra mutat. Az `AAM_MEGJEGYZES` itt nem áll, mert „ez a szám”-ra
- * utal, szám pedig nincs.
+ * A teendő szövege úgy, hogy a riasztáskód ne törjön el a kötőjeleinél, és
+ * egyben látszódjon, ahogy a kézikönyv táblázatában áll. Mérve (devin5 rev1,
+ * Chromium, valódi admin-stílusok): enélkül 1440 px-en a kód a sor végén
+ * kettétört („aam-keret-nem-” és „teljes).”). A kód 20 karakter, 320 px-en
+ * egy sor 34–41 karakter, így egyben is elfér, vízszintes görgetés nélkül. A
+ * minta ugyanaz, mint az `OrderTotalCell`-ben.
+ */
+function TeendoToretlenKoddal({ teendo }: { teendo: string }) {
+  const reszek = teendo.split(AAM_INCOMPLETE_ALERT_CODE)
+  if (reszek.length !== 2) {
+    return <>{teendo}</>
+  }
+  return (
+    <>
+      {reszek[0]}
+      <span style={{ whiteSpace: 'nowrap' }}>{AAM_INCOMPLETE_ALERT_CODE}</span>
+      {reszek[1]}
+    </>
+  )
+}
+
+/**
+ * A keret most nem számolható: szám és szint helyett a helyzet (kiemelve) és
+ * a teendő, ugyanúgy felépítve, mint a számolt sor (`AamSor`). Az
+ * `AAM_MEGJEGYZES` itt nem áll, mert „ez a szám”-ra utal, szám pedig nincs.
  */
 function AamNemSzamolhatoSor({ year }: { year: number }) {
+  const sor = formatAamUnavailableLine(year)
   return (
     <p className="kc-admin-notice__szoveg" data-aam-szint="nem-szamolhato">
-      <strong>{formatAamUnavailableLine(year)}</strong>
+      <strong>{sor.allapot}</strong> <TeendoToretlenKoddal teendo={sor.teendo} />
     </p>
   )
 }

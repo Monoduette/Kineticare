@@ -19,9 +19,10 @@ import {
   resetHeartbeatWarnings,
 } from '../../lib/alerts/heartbeat'
 import { afterOrderPoll, alertStuckPendingPayments } from '../../lib/alerts/poll-watch'
+import { createAlertSink } from '../../lib/alerts/sink'
 import type { SendMailInput } from '../../lib/email'
 import type { SendResult } from '../../lib/email/types'
-import { logger, type LogContext, type Logger } from '../../lib/logger'
+import { logger, setAlertSink, type LogContext, type Logger } from '../../lib/logger'
 import { createMemoryPayload, orderIdsOpenedByHref } from './where-eval'
 
 /**
@@ -191,6 +192,8 @@ describe('napi összesítő — küldés', () => {
     expect(mail?.html).toContain('<a href="https://kineticare.hu/admin/collections/orders?where')
     // Személyes adat (vevő e-mail) nincs benne; rendelésszám sem kell a számokhoz.
     expect(mail?.text).not.toContain('@example.com')
+    // AAM nélkül (27% vagy kikapcsolt számlázás) a levél csak teendőnél jön.
+    expect(mail?.text).toContain('Ez a levél csak akkor jön, ha van teendő.')
   })
 
   it('a csak hiányzó helyesbítő miatt számolt rendelést a levél listalinkje meg is nyitja', async () => {
@@ -665,6 +668,10 @@ describe('napi összesítő — küldés', () => {
     expect(await runDailyDigestIfDue(aam.deps(MORNING))).toBe('elkuldve')
     expect(aam.mails[0]?.text).toContain('Alanyi adómentes keret, 2026:')
     expect(aam.mails[0]?.text).toContain('A keret 70%-a elfogyott.')
+    // Teendő nélkül jött: a lábléc nem mondhatja, hogy csak teendőnél jön (devin5 rev1).
+    expect(aam.mails[0]?.text).toContain(
+      'Ez a levél csak akkor jön, ha van teendő, vagy ha az alanyi adómentes keret figyelmet kér.',
+    )
 
     // Codex P2 (PR #305): a hiányzó kulcs (kikapcsolt számlázás) nem AAM.
     for (const vatMode of [undefined, '27']) {
@@ -684,14 +691,20 @@ describe('napi összesítő — küldés', () => {
  * napi összesítőt elvitte: a teendő-levél aznap (és az év hátralévő napjain)
  * nem ment ki, és minden várakozás utáni újrapróbálás napi-osszesito-hiba
  * RIASZTÁST adott. Most a levél a teendőkkel kimegy, a keret-sor helyén szám
- * nélküli „nem számolható” mondat áll, és az egyetlen riasztás az aam.ts
- * `aam-keret-nem-teljes` kódú, fojtott riasztása. Az éles úton mérünk:
+ * nélküli „nem számolható” sor áll a teendővel, és az egyetlen riasztás az
+ * aam.ts `aam-keret-nem-teljes` kódú, fojtott riasztása. Az éles úton mérünk:
  * order-poll → afterOrderPoll → runDailyDigestIfDue.
  */
 describe('napi összesítő — nem számolható alanyi adómentes keret', () => {
-  /** A tulajdonosnak megjelenő mondat, szó szerint (nem a formázóból). */
-  const NEM_SZAMOLHATO_SOR =
-    'Alanyi adómentes keret, 2026: most nem számolható, mennyi fogyott el belőle. Az okát és a teendőt az erről szóló riasztás-levélben találod (riasztáskód: aam-keret-nem-teljes).'
+  /**
+   * A tulajdonosnak megjelenő sor, szó szerint (nem a formázóból): a helyzet
+   * (kiemelve) és a teendő. A teendő a sorban áll, a riasztás-levél kieshet
+   * (breaker BRK-1, devin5 rev1).
+   */
+  const NEM_SZAMOLHATO_ALLAPOT =
+    'Alanyi adómentes keret, 2026: most nem számolható, mennyi fogyott el belőle.'
+  const NEM_SZAMOLHATO_TEENDO =
+    'Kérd el a könyvelőtől a tárgyévi bevételt, és szólj a fejlesztőnek. Útmutató: tulajdonosi kézikönyv, 11. fejezet (riasztáskód: aam-keret-nem-teljes).'
 
   /** Tárgyévi kiállított számla, amelynek az összege egyik forrásból sem ismert. */
   const OSSZEG_NELKUL = {
@@ -725,31 +738,33 @@ describe('napi összesítő — nem számolható alanyi adómentes keret', () =>
   ]
 
   afterEach(() => {
+    setAlertSink(undefined)
     vi.restoreAllMocks()
   })
+
+  type AamLekerdezes = 'memoria' | 'teli-oldalak' | 'dob'
 
   /**
    * Az order-poll utáni őrfeladatok memóriabeli Payloadon. Az AAM-lekérdezés
    * (az egyetlen, amely a teljesítési dátumot kéri) igény szerint teli
-   * oldalakat ad a lapozási korláton túl is, vagy adatbázis-hibával dob.
+   * oldalakat ad a lapozási korláton túl is, vagy adatbázis-hibával dob; ez
+   * futások között átállítható (`setAam`).
    */
-  function pollHarness(
-    orders: ReadonlyArray<Record<string, unknown>>,
-    aam: 'memoria' | 'teli-oldalak' | 'dob',
-  ) {
+  function pollHarness(orders: ReadonlyArray<Record<string, unknown>>, aam: AamLekerdezes) {
     const memory = createMemoryPayload({
       orders,
       'refund-intents': [],
       'webhook-events': [],
       'audit-logs': [],
     })
+    const mode = { current: aam }
     const find: typeof memory.payload.find = async (args) => {
       const select = (args as { select?: Readonly<Record<string, unknown>> }).select
       if (args.collection === 'orders' && select?.invoiceCompletionDate === true) {
-        if (aam === 'dob') {
+        if (mode.current === 'dob') {
           throw new Error('adatbázis nem érhető el')
         }
-        if (aam === 'teli-oldalak') {
+        if (mode.current === 'teli-oldalak') {
           return {
             docs: Array.from({ length: 500 }, () => ({
               invoiceStatus: 'issued',
@@ -789,7 +804,10 @@ describe('napi összesítő — nem számolható alanyi adómentes keret', () =>
         .map((entry) => entry.context?.alertCode),
       ...rootErrors.mock.calls.map(([, context]) => context?.alertCode),
     ]
-    return { poll, mails, entries, alertCodes }
+    const setAam = (next: AamLekerdezes) => {
+      mode.current = next
+    }
+    return { poll, mails, entries, alertCodes, setAam }
   }
 
   it.each<[string, 'memoria' | 'teli-oldalak', ReadonlyArray<Record<string, unknown>>]>([
@@ -806,8 +824,10 @@ describe('napi összesítő — nem számolható alanyi adómentes keret', () =>
       expect(mail?.subject).toBe('Kineticare napi összesítő, 2026-09-24: 2 teendő')
       expect(mail?.text).toContain('- 1 fizetett rendelés számla nélkül')
       expect(mail?.text).toContain('- 1 függő fizetés egy óránál régebben')
-      expect(mail?.text).toContain(NEM_SZAMOLHATO_SOR)
-      expect(mail?.html).toContain(`<p><strong>${NEM_SZAMOLHATO_SOR}</strong></p>`)
+      expect(mail?.text).toContain(`${NEM_SZAMOLHATO_ALLAPOT} ${NEM_SZAMOLHATO_TEENDO}`)
+      expect(mail?.html).toContain(
+        `<p><strong>${NEM_SZAMOLHATO_ALLAPOT}</strong> ${NEM_SZAMOLHATO_TEENDO}</p>`,
+      )
       // A hiányzó érték sem 0, sem „rendben”, a naplóban sem.
       expect(mail?.text).not.toContain('Ft a ')
       expect(mail?.text).not.toContain('A keret rendben van.')
@@ -832,10 +852,13 @@ describe('napi összesítő — nem számolható alanyi adómentes keret', () =>
       'Kineticare napi összesítő, 2026-09-24: az alanyi adómentes keret figyelmet kér',
     )
     expect(h.mails[0]?.text).toContain('Fizetési, számlázási és visszatérítési teendő nincs.')
-    expect(h.mails[0]?.text).toContain(NEM_SZAMOLHATO_SOR)
+    expect(h.mails[0]?.text).toContain(`${NEM_SZAMOLHATO_ALLAPOT} ${NEM_SZAMOLHATO_TEENDO}`)
+    expect(h.mails[0]?.text).toContain(
+      'Ez a levél csak akkor jön, ha van teendő, vagy ha az alanyi adómentes keret figyelmet kér.',
+    )
   })
 
-  it('más hiba az AAM-lekérdezésben (adatbázis): változatlanul napi-osszesito-hiba, levél nélkül, és a következő próba a várakozás után jön', async () => {
+  it('más hiba az AAM-lekérdezésben (adatbázis): változatlanul napi-osszesito-hiba és levél nélkül; 5 perc múlva még nincs új próba, a 10 perces várakozás után igen', async () => {
     const h = pollHarness(teendok(MORNING), 'dob')
 
     expect((await h.poll(MORNING)).digest).toBe('hiba')
@@ -844,6 +867,78 @@ describe('napi összesítő — nem számolható alanyi adómentes keret', () =>
     // A lekérdezési hiba után várakozás jön: 5 perc múlva még nincs új próba.
     expect((await h.poll(MORNING + 5 * 60_000)).digest).toBe('nem-esedekes')
     expect(h.alertCodes()).toEqual(['napi-osszesito-hiba'])
+    // 10 perc után a próba lefut; a helyreállt adatbázissal a levél kimegy.
+    h.setAam('memoria')
+    expect((await h.poll(MORNING + 10 * 60_000)).digest).toBe('elkuldve')
+    expect(h.mails).toHaveLength(1)
+    expect(h.alertCodes()).toEqual(['napi-osszesito-hiba'])
+  })
+
+  /**
+   * Breaker BRK-1b (devin5 rev1): a napi összesítő és a riasztás-levél
+   * ugyanazon a levélküldőn megy (valódi logger és riasztás-csatorna). Ha
+   * 07:10-kor a szolgáltató kiesik, egyik levél sem megy ki. Eddig a 24 órás
+   * fojtás miatt az aam-keret-nem-teljes riasztás-levél aznap nem pótlódott,
+   * miközben a 07:15-kor kézbesített összesítő rá mutatott. Most a 07:15-ös
+   * próba újraszámolása a riasztás-levelet is elküldi, és az összesítő a
+   * teendőt maga is leírja.
+   */
+  it('ha 07:10-kor a levélküldő kiesik, 07:15-kor az összesítő és a riasztás-levél is kimegy, az összesítőben a teendővel', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const clock = { now: MORNING }
+    const provider = { down: true }
+    const delivered: SendMailInput[] = []
+    const sendMail = vi.fn(async (input: SendMailInput): Promise<SendResult> => {
+      if (provider.down) {
+        return { ok: false, provider: 'resend', retryable: true, error: 'HTTP 503' }
+      }
+      delivered.push(input)
+      return { ok: true, provider: 'resend', id: `m${String(delivered.length)}` }
+    })
+    const handle = createAlertSink({
+      sendMail,
+      capture: async () => ({ allapot: 'rogzitve' as const }),
+      recipients: () => ['tulajdonos@example.com'],
+      logger: recordingLogger([]),
+      now: () => clock.now,
+      environment: 'production',
+    })
+    setAlertSink(handle.sink)
+    const memory = createMemoryPayload({
+      orders: [...teendok(MORNING), OSSZEG_NELKUL],
+      'refund-intents': [],
+      'webhook-events': [],
+      'audit-logs': [],
+    })
+    const digestState = createDigestState()
+    const poll = (nowMs: number) =>
+      afterOrderPoll({
+        payload: memory.payload as never,
+        logger: recordingLogger([]),
+        nowMs,
+        sendMail,
+        recipients: () => ['tulajdonos@example.com'],
+        serverUrl: 'https://kineticare.hu',
+        heartbeatUrl: undefined,
+        vatMode: 'AAM',
+        digestState,
+      })
+    const alertMails = () =>
+      delivered.filter((mail) => mail.text.includes('Riasztáskód: aam-keret-nem-teljes'))
+    const digests = () =>
+      delivered.filter((mail) => mail.subject.startsWith('Kineticare napi összesítő'))
+
+    expect((await poll(MORNING)).digest).toBe('hiba')
+    await handle.flush()
+    expect(delivered).toHaveLength(0)
+
+    provider.down = false
+    clock.now = MORNING + 5 * 60_000
+    expect((await poll(clock.now)).digest).toBe('elkuldve')
+    await handle.flush()
+    expect(alertMails()).toHaveLength(1)
+    expect(digests()).toHaveLength(1)
+    expect(digests()[0]?.text).toContain(`${NEM_SZAMOLHATO_ALLAPOT} ${NEM_SZAMOLHATO_TEENDO}`)
   })
 })
 

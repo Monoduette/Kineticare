@@ -33,6 +33,7 @@ import {
   correctiveRefunds,
 } from './corrective-evidence'
 import { emitAlert } from './emit'
+import { ALERT_SOURCE_THROTTLE_FIELD } from './sink'
 
 /** Ellenőrzött értékhatárok évenként (Áfa tv. 188. § (2), 378. § (1)). */
 export const AAM_LIMIT_BY_YEAR: Readonly<Record<number, number>> = {
@@ -325,6 +326,15 @@ export const AAM_INCOMPLETE_ALERT_CODE = 'aam-keret-nem-teljes'
  * tulajdonosnak közben a napi összesítő és a blokk „nem számolható” sora is
  * szól, ezért naponta egy riasztás elég; a napi összesítő újrapróbálásai sem
  * sokszorozzák (PR #305, devin5).
+ *
+ * A fojtás a kézbesítést nem nyelheti el (breaker BRK-1, devin5 rev1): ha a
+ * riasztás-levél nem ment ki (szolgáltatói hiba) vagy a vihar-plafon miatt
+ * vár, a riasztás-csatorna ezt a fojtást is feloldja
+ * (`ALERT_SOURCE_THROTTLE_FIELD`, src/lib/alerts/sink.ts), így a következő
+ * számolás újra riaszt. Címzett vagy e-mail-szolgáltató nélkül nincs
+ * feloldás: azt csak redeploy javítja, az pedig friss fojtással indul. A
+ * „nem számolható” sor ezért a levél nélkül is megmondja a teendőt
+ * (`formatAamUnavailableLine`).
  */
 const AAM_INCOMPLETE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
@@ -377,7 +387,8 @@ export class AamIncompleteError extends Error {
  * A nem teljes keret-számítás riasztása, okonként és tárgyévenként fojtva
  * (`AAM_INCOMPLETE_ALERT_COOLDOWN_MS`). Mindkét ok ugyanazt a kódot kapja;
  * ez az egyetlen riasztás róla, a napi összesítő és a Figyelmet igényel blokk
- * nem ír mellé sajátot.
+ * nem ír mellé sajátot. A fojtási kulcs a riasztással a csatornához is
+ * eljut, hogy egy ki nem ment levél után feloldhassa (BRK-1).
  */
 function alertAamIncomplete(error: AamIncompleteError, nowMs: number): void {
   const missingAmount = error.ordersWithoutAmount > 0
@@ -385,17 +396,17 @@ function alertAamIncomplete(error: AamIncompleteError, nowMs: number): void {
   if (!shouldEmitThrottledAlert(throttleKey, AAM_INCOMPLETE_ALERT_COOLDOWN_MS, nowMs)) {
     return
   }
+  const context = {
+    module: 'alerts/aam',
+    year: error.year,
+    [ALERT_SOURCE_THROTTLE_FIELD]: throttleKey,
+  }
   if (missingAmount) {
     emitAlert(
       logger,
       AAM_INCOMPLETE_ALERT_CODE,
       `RIASZTÁS: az alanyi adómentes keret felhasználása nem számolható, mert ${String(error.ordersWithoutAmount)} rendelésnél nem ismert a kiállított számla összege. A keret-szint ezért nem látszik. Egyeztesd a keretet a könyvelővel, és szólj a fejlesztőnek.`,
-      {
-        module: 'alerts/aam',
-        year: error.year,
-        ordersWithoutAmount: error.ordersWithoutAmount,
-        orderIds: error.orderIds,
-      },
+      { ...context, ordersWithoutAmount: error.ordersWithoutAmount, orderIds: error.orderIds },
     )
     return
   }
@@ -403,12 +414,7 @@ function alertAamIncomplete(error: AamIncompleteError, nowMs: number): void {
     logger,
     AAM_INCOMPLETE_ALERT_CODE,
     'RIASZTÁS: az alanyi adómentes keret felhasználása nem számolható, mert a tárgyév számlás rendelései nem férnek bele a lekérdezés korlátjába. A keret-szint ezért nem látszik. Egyeztesd a keretet a könyvelővel, és szólj a fejlesztőnek.',
-    {
-      module: 'alerts/aam',
-      year: error.year,
-      pagesRead: error.pagesRead,
-      ordersRead: error.ordersRead,
-    },
+    { ...context, pagesRead: error.pagesRead, ordersRead: error.ordersRead },
   )
 }
 
@@ -435,7 +441,8 @@ function alertAamIncomplete(error: AamIncompleteError, nowMs: number): void {
  * jelenhet meg az év összegeként, és szint sem számolható belőle. Ha egy
  * tárgyévi számla összege egyik forrásból sem ismert, a `computeAamStatus`
  * dob; ezt a függvény csak riasztja és továbbdobja. A riasztás okonként és
- * tárgyévenként naponta legfeljebb egyszer szól (`alertAamIncomplete`).
+ * tárgyévenként naponta legfeljebb egyszer szól (`alertAamIncomplete`); ha a
+ * levele nem ment ki, a következő számolás újra riaszt.
  *
  * A kijelzés hívói (napi összesítő, Figyelmet igényel) a `readAamForDisplay`-t
  * használják: ez a hibából „nem számolható” sort ad, és a teendők számai
@@ -641,11 +648,33 @@ export function aamNeedsAttention(aam: AamReading | null): boolean {
 }
 
 /**
+ * A riasztási fejezet a tulajdonosi kézikönyvben
+ * (docs/uzemeltetes/11-riasztas-es-ugyelet.md). Az Irányítópulton is
+ * látszik, ezért fejezetnévvel hivatkozunk rá, nem repó-útvonallal, ahogy a
+ * havi egyeztetésre is (`MONTHLY_RECONCILIATION_CHAPTER`,
+ * src/lib/alerts/attention.ts).
+ */
+const ALERT_RUNBOOK_CHAPTER = 'tulajdonosi kézikönyv, 11. fejezet'
+
+/** A „nem számolható” keret-sor két része. */
+export interface AamUnavailableLine {
+  /** Mi a helyzet: a keret most nem számolható. A levélben és a képernyőn ez a kiemelt rész. */
+  readonly allapot: string
+  /** Mit tegyen a tulajdonos, és hol olvashat róla (a riasztáskóddal). */
+  readonly teendo: string
+}
+
+/**
  * A „nem számolható” keret-sor, a levélben és a képernyőn ugyanazzal a
  * szöveggel. Szám nincs benne: a hiányzó értéket sem 0-nak, sem rendbennek
- * nem mutatjuk. A riasztáskód a riasztási runbook táblázatának kulcsa
- * (docs/uzemeltetes/11-riasztas-es-ugyelet.md).
+ * nem mutatjuk. A teendő a sorban áll, nem csak a riasztás-levélben (breaker
+ * BRK-1, devin5 rev1): a levél kieshet, és címzett vagy e-mail-szolgáltató
+ * nélkül meg sem születik. A lépések egyeznek a riasztási fejezet
+ * `aam-keret-nem-teljes` részével; a riasztáskód annak a táblázatnak a kulcsa.
  */
-export function formatAamUnavailableLine(year: number): string {
-  return `Alanyi adómentes keret, ${String(year)}: most nem számolható, mennyi fogyott el belőle. Az okát és a teendőt az erről szóló riasztás-levélben találod (riasztáskód: ${AAM_INCOMPLETE_ALERT_CODE}).`
+export function formatAamUnavailableLine(year: number): AamUnavailableLine {
+  return {
+    allapot: `Alanyi adómentes keret, ${String(year)}: most nem számolható, mennyi fogyott el belőle.`,
+    teendo: `Kérd el a könyvelőtől a tárgyévi bevételt, és szólj a fejlesztőnek. Útmutató: ${ALERT_RUNBOOK_CHAPTER} (riasztáskód: ${AAM_INCOMPLETE_ALERT_CODE}).`,
+  }
 }

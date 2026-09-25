@@ -12,7 +12,10 @@ import {
   type AamOrderInput,
   type AamSources,
 } from '../../lib/alerts/aam'
-import { logger } from '../../lib/logger'
+import { createAlertSink, MAX_ALERT_MAILS_PER_HOUR } from '../../lib/alerts/sink'
+import type { SendMailInput } from '../../lib/email'
+import type { SendResult } from '../../lib/email/types'
+import { createLogger, logger, setAlertSink, type Logger } from '../../lib/logger'
 import { createMemoryPayload } from './where-eval'
 
 /**
@@ -39,6 +42,17 @@ const TWO_PARTIALS = [
   { type: 'partial', amountHuf: 10_000, refundedAt: '2026-03-05T09:00:00.000Z' },
   { type: 'partial', amountHuf: 20_000, refundedAt: '2026-03-06T09:00:00.000Z' },
 ]
+
+/**
+ * Minden teszt után: a riasztás-fojtás (folyamaton belüli állapot) és a
+ * riasztás-csatorna alaphelyzetbe áll, így egy teszt riasztási kulcsa sem
+ * némíthat el egy későbbit.
+ */
+afterEach(() => {
+  setAlertSink(undefined)
+  resetAlertThrottle()
+  vi.restoreAllMocks()
+})
 
 /** Memóriabeli Payload a `select`-szerződéssel: csak a kért mezők jönnek vissza. */
 function selectHonoringPayload(collections: Parameters<typeof createMemoryPayload>[0]) {
@@ -348,11 +362,6 @@ describe('queryAamStatus: a snapshot nélküli régi számla összege nem vész 
       overrideAccess: true,
     })
 
-  afterEach(() => {
-    resetAlertThrottle()
-    vi.restoreAllMocks()
-  })
-
   it.each<[string, Record<string, unknown>, number]>([
     [
       'Devin-példa: snapshot nélkül a tételek ára számít',
@@ -443,6 +452,40 @@ describe('queryAamStatus: a snapshot nélküli régi számla összege nem vész 
   })
 })
 
+const HOUR_MS = 60 * 60 * 1000
+
+/** A lapozási korláton túl is teli oldalak: a tárgyév nem olvasható be teljesen. */
+const fullPageSources = (): AamSources => ({
+  orders: async () => ({
+    docs: Array.from({ length: 500 }, () => ({
+      invoiceStatus: 'issued',
+      invoiceCompletionDate: '2026-03-01',
+      totalHufSnapshot: 1,
+    })),
+    hasNextPage: true,
+  }),
+  committedIntents: async () => {
+    throw new Error('a lapozási korlátnál nem kell visszatérítési szándék')
+  },
+})
+
+/** Ismeretlen összegű, számlás rendelések a megadott teljesítési dátumokkal. */
+const missingAmountSources =
+  (...completionDates: string[]) =>
+  (): AamSources =>
+    payloadAamFind(
+      selectHonoringPayload({
+        orders: completionDates.map((invoiceCompletionDate, index) => ({
+          id: 5 + index,
+          invoiceStatus: 'issued',
+          invoiceCompletionDate,
+          totalHufSnapshot: null,
+        })),
+        'refund-intents': [],
+      }).payload as never,
+      { overrideAccess: true },
+    )
+
 /**
  * PR #305, devin5: az `aam-keret-nem-teljes` RIASZTÁS mindkét okra az egyetlen
  * riasztás. A Figyelmet igényel blokk minden megnyitáskor, a napi összesítő
@@ -454,45 +497,10 @@ describe('queryAamStatus: a snapshot nélküli régi számla összege nem vész 
  */
 describe('queryAamStatus: a nem teljes keret riasztása okonként naponta legfeljebb egyszer szól', () => {
   const NOW = Date.parse('2026-09-24T08:00:00Z')
-  const HOUR_MS = 60 * 60 * 1000
-
-  const fullPageSources = (): AamSources => ({
-    orders: async () => ({
-      docs: Array.from({ length: 500 }, () => ({
-        invoiceStatus: 'issued',
-        invoiceCompletionDate: '2026-03-01',
-        totalHufSnapshot: 1,
-      })),
-      hasNextPage: true,
-    }),
-    committedIntents: async () => {
-      throw new Error('a lapozási korlátnál nem kell visszatérítési szándék')
-    },
-  })
-  const missingAmountSources = (): AamSources =>
-    payloadAamFind(
-      selectHonoringPayload({
-        orders: [
-          {
-            id: 5,
-            invoiceStatus: 'issued',
-            invoiceCompletionDate: '2026-02-01',
-            totalHufSnapshot: null,
-          },
-        ],
-        'refund-intents': [],
-      }).payload as never,
-      { overrideAccess: true },
-    )
-
-  afterEach(() => {
-    resetAlertThrottle()
-    vi.restoreAllMocks()
-  })
 
   it.each<[string, () => AamSources]>([
     ['lapozási korlát', fullPageSources],
-    ['ismeretlen összegű számla', missingAmountSources],
+    ['ismeretlen összegű számla', missingAmountSources('2026-02-01')],
   ])(
     '%s: minden hívó hibát kap, a riasztás 23 óra múlva még fojtott, 24 óra múlva újra szól',
     async (_ok, sources) => {
@@ -513,6 +521,181 @@ describe('queryAamStatus: a nem teljes keret riasztása okonként naponta legfel
       expect(alerts()).toHaveLength(2)
     },
   )
+
+  /**
+   * Breaker BRK-2 (devin5 rev1): a fojtás kulcsa okonként és tárgyévenként
+   * külön. Az egyik ok vagy tárgyév riasztása egy napon belül sem némítja el
+   * a másikat: a közös kulcs a másodikat elnyelné.
+   */
+  it.each<[string, [() => AamSources, number, number], [() => AamSources, number, number]]>([
+    [
+      'másik ok: a lapozási korlát után egy órával az ismeretlen összeg is riaszt',
+      [fullPageSources, NOW, 2026],
+      [missingAmountSources('2026-02-01'), NOW + HOUR_MS, 2026],
+    ],
+    [
+      'új tárgyév: 2026-12-31 20:00 után 2027-01-01 07:10-kor (Budapest) az új év ismeretlen összege is riaszt',
+      [missingAmountSources('2026-12-20', '2027-01-01'), Date.parse('2026-12-31T19:00:00Z'), 2026],
+      [missingAmountSources('2026-12-20', '2027-01-01'), Date.parse('2027-01-01T06:10:00Z'), 2027],
+    ],
+  ])(
+    '%s',
+    async (_eset, [firstSources, firstAt, firstYear], [secondSources, secondAt, secondYear]) => {
+      const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined)
+      const alertYears = () =>
+        errorLog.mock.calls
+          .filter(([, context]) => context?.alertCode === AAM_INCOMPLETE_ALERT_CODE)
+          .map(([, context]) => context?.year)
+
+      await expect(queryAamStatus(firstSources(), firstAt)).rejects.toMatchObject({
+        year: firstYear,
+      })
+      await expect(queryAamStatus(secondSources(), secondAt)).rejects.toMatchObject({
+        year: secondYear,
+      })
+      expect(alertYears()).toEqual([firstYear, secondYear])
+    },
+  )
+})
+
+/**
+ * Breaker BRK-1 (devin5 rev1): a napi fojtás nem nyelheti el a kézbesítést.
+ * Ha az `aam-keret-nem-teljes` riasztás-levele nem ment ki (szolgáltatói
+ * hiba), vagy a vihar-plafon miatt vár, a riasztás-csatorna a forrás
+ * fojtását is feloldja, és a következő számolás (Irányítópult, napi
+ * összesítő) újra riaszt. Korábban a levél 24 óráig nem pótlódott, miközben a
+ * kijelzés a levélre mutatott. Ahol a levél kiment, vagy ki sem mehetne
+ * (noop-szolgáltató, nincs címzett), a fojtás marad. Valódi logger és
+ * riasztás-csatorna; csak a levélküldő kapcsolható, hálózati hívás nincs.
+ */
+describe('queryAamStatus: a ki nem ment riasztás-levelet a következő számolás pótolja (BRK-1)', () => {
+  const NOW = Date.parse('2026-09-24T05:10:00Z')
+
+  const silentLogger: Logger = {
+    debug: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+    child: () => silentLogger,
+  }
+
+  /** A valódi csatorna a gyökér-loggeren; a levélküldő kiesett, működik vagy noop. */
+  function realSink(clock: { now: number }) {
+    const provider: { state: 'kiesett' | 'mukodik' | 'noop' } = { state: 'kiesett' }
+    const recipients: { list: readonly string[] } = { list: ['tulajdonos@example.com'] }
+    const delivered: SendMailInput[] = []
+    const sendMail = vi.fn(async (input: SendMailInput): Promise<SendResult> => {
+      if (provider.state === 'kiesett') {
+        return { ok: false, provider: 'resend', retryable: true, error: 'HTTP 503' }
+      }
+      if (provider.state === 'noop') {
+        return { ok: true, provider: 'noop' }
+      }
+      delivered.push(input)
+      return { ok: true, provider: 'resend', id: `m${String(delivered.length)}` }
+    })
+    const handle = createAlertSink({
+      sendMail,
+      capture: async () => ({ allapot: 'rogzitve' as const }),
+      recipients: () => recipients.list,
+      logger: silentLogger,
+      now: () => clock.now,
+      environment: 'production',
+    })
+    setAlertSink(handle.sink)
+    const aamMails = () =>
+      delivered.filter((mail) => mail.text.includes(`Riasztáskód: ${AAM_INCOMPLETE_ALERT_CODE}`))
+    return { provider, recipients, sendMail, handle, aamMails }
+  }
+
+  it.each<[string, () => AamSources]>([
+    ['lapozási korlát', fullPageSources],
+    ['ismeretlen összegű számla', missingAmountSources('2026-02-01')],
+  ])(
+    '%s: ha a levél a szolgáltató hibája miatt nem ment ki, egy óra múlva a következő számolás elküldi',
+    async (_ok, sources) => {
+      vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      const clock = { now: NOW }
+      const sink = realSink(clock)
+
+      await expect(queryAamStatus(sources(), clock.now)).rejects.toBeInstanceOf(AamIncompleteError)
+      await sink.handle.flush()
+      expect(sink.sendMail).toHaveBeenCalledTimes(1)
+      expect(sink.aamMails()).toHaveLength(0)
+
+      sink.provider.state = 'mukodik'
+      clock.now = NOW + HOUR_MS
+      await expect(queryAamStatus(sources(), clock.now)).rejects.toBeInstanceOf(AamIncompleteError)
+      await sink.handle.flush()
+      expect(sink.aamMails()).toHaveLength(1)
+    },
+  )
+
+  it('a vihar-plafon miatt visszatartott levelet egy óra múlva a következő számolás elküldi', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const clock = { now: NOW }
+    const sink = realSink(clock)
+    sink.provider.state = 'mukodik'
+    const storm = createLogger()
+    for (let index = 0; index < MAX_ALERT_MAILS_PER_HOUR; index += 1) {
+      storm.error(`RIASZTÁS: vihar ${String.fromCharCode(97 + index)}`)
+    }
+    await sink.handle.flush()
+    expect(sink.sendMail).toHaveBeenCalledTimes(MAX_ALERT_MAILS_PER_HOUR)
+
+    const sources = missingAmountSources('2026-02-01')
+    await expect(queryAamStatus(sources(), clock.now)).rejects.toBeInstanceOf(AamIncompleteError)
+    await sink.handle.flush()
+    // A plafon miatt küldési kísérlet sem volt.
+    expect(sink.sendMail).toHaveBeenCalledTimes(MAX_ALERT_MAILS_PER_HOUR)
+
+    clock.now = NOW + HOUR_MS
+    await expect(queryAamStatus(sources(), clock.now)).rejects.toBeInstanceOf(AamIncompleteError)
+    await sink.handle.flush()
+    expect(sink.aamMails()).toHaveLength(1)
+  })
+
+  it.each<[string, (sink: ReturnType<typeof realSink>) => void]>([
+    [
+      'a levél kiment',
+      (sink) => {
+        sink.provider.state = 'mukodik'
+      },
+    ],
+    [
+      'nincs e-mail-szolgáltató (noop)',
+      (sink) => {
+        sink.provider.state = 'noop'
+      },
+    ],
+    [
+      'nincs címzett (üres OWNER_ALERT_EMAILS)',
+      (sink) => {
+        sink.recipients.list = []
+      },
+    ],
+  ])(
+    '%s: a fojtás marad, egy óra múlva a következő számolás nem riaszt újra',
+    async (_eset, setup) => {
+      vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      const errorLog = vi.spyOn(logger, 'error')
+      const alerts = () =>
+        errorLog.mock.calls.filter(
+          ([, context]) => context?.alertCode === AAM_INCOMPLETE_ALERT_CODE,
+        )
+      const clock = { now: NOW }
+      const sink = realSink(clock)
+      setup(sink)
+      const sources = missingAmountSources('2026-02-01')
+
+      for (const at of [NOW, NOW + HOUR_MS]) {
+        clock.now = at
+        await expect(queryAamStatus(sources(), at)).rejects.toBeInstanceOf(AamIncompleteError)
+        await sink.handle.flush()
+      }
+      expect(alerts()).toHaveLength(1)
+    },
+  )
 })
 
 describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lapozási korlát)', () => {
@@ -528,10 +711,6 @@ describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lap
   const noIntentLookup: AamIntentFindFn = async () => {
     throw new Error('ehhez a rendeléshez nem kell visszatérítési szándék')
   }
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
 
   it('a korlát után is van még adat → RIASZTÁS és hiba, nem keret-szint', async () => {
     const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined)

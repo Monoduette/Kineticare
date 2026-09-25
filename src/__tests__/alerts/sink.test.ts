@@ -186,6 +186,9 @@ describe('riasztás-csatorna — levél', () => {
       log.error('RIASZTÁS: hiba')
       await h.handle.flush()
       expect(sendMail).toHaveBeenCalledTimes(2)
+      // A valódi kézbesítés pontosan egy „levél elküldve” sort ír: ez a
+      // horgonya a noop-teszt negatív állításának (breaker BRK-5, devin5 rev1).
+      expect(h.sinkLog.filter((entry) => entry.msg === 'riasztás: levél elküldve')).toHaveLength(1)
     },
   )
 

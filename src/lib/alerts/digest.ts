@@ -10,8 +10,9 @@
  * vagy az alanyi adómentes keret elérte a 70%-ot, illetve most nem számolható
  * (`aamNeedsAttention`). A nem számolható keret (`AamIncompleteError`) nem
  * buktatja az összesítőt: a levél a teendők számaival kimegy, a keret-sor
- * helyén egy „nem számolható” mondat áll, amely az erről szóló riasztás-levélre
- * mutat (PR #305, devin5). Minden más lekérdezési hiba továbbra is a hívóé.
+ * helyén egy „nem számolható” sor áll a teendővel és a kézikönyv fejezetével
+ * (PR #305, devin5; a riasztás-levélre nem hagyatkozik, mert az kieshet).
+ * Minden más lekérdezési hiba továbbra is a hívóé.
  * Resend-idempotenciakulcs:
  * `digest-ÉÉÉÉ-HH-NN`. A kulcs 24 óráig él, ugyanazzal a kulccsal a második
  * kérés nem küld második levelet, eltérő tartalomnál 409-et ad
@@ -312,10 +313,11 @@ export function buildDigestMail(input: {
   }
 
   if (aam?.kind === 'nem-szamolhato') {
-    // Szám helyett egy mondat: a hiányzó érték sem 0, sem „rendben” (devin5).
+    // Szám helyett a helyzet és a teendő: a hiányzó érték sem 0, sem „rendben”
+    // (devin5), és a teendő a riasztás-levél nélkül is itt áll (rev1, BRK-1).
     const line = formatAamUnavailableLine(aam.year)
-    textLines.push(line, '')
-    htmlParts.push(`<p><strong>${escapeHtml(line)}</strong></p>`)
+    textLines.push(`${line.allapot} ${line.teendo}`, '')
+    htmlParts.push(`<p><strong>${escapeHtml(line.allapot)}</strong> ${escapeHtml(line.teendo)}</p>`)
   } else if (aam?.kind === 'szamolt') {
     const status = aam.status
     const line = `Alanyi adómentes keret, ${formatAamLine(status)}.`
@@ -333,9 +335,14 @@ export function buildDigestMail(input: {
     htmlParts.push(`<br>${escapeHtml(note)}</p>`)
   }
 
+  // AAM mellett a levél teendő nélkül is jön, ha a keret figyelmet kér
+  // (`aamNeedsAttention`): a lábléc ezt is kimondja, különben ellentmondana a
+  // levél „teendő nincs” sorának (devin5 rev1).
   const footer = [
     `A napi ellenőrzés lépései: ${DAILY_RUNBOOK_PATH}`,
-    'Ugyanezek a számok az admin Irányítópultján, a Figyelmet igényel blokkban is látszanak. Ez a levél csak akkor jön, ha van teendő.',
+    aam === null
+      ? 'Ugyanezek a számok az admin Irányítópultján, a Figyelmet igényel blokkban is látszanak. Ez a levél csak akkor jön, ha van teendő.'
+      : 'Ugyanezek a számok az admin Irányítópultján, a Figyelmet igényel blokkban is látszanak. Ez a levél csak akkor jön, ha van teendő, vagy ha az alanyi adómentes keret figyelmet kér.',
   ]
   textLines.push(...footer)
   htmlParts.push(`<p>${footer.map(escapeHtml).join('<br>')}</p>`)

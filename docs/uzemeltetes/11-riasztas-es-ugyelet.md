@@ -78,7 +78,8 @@ A kód a levélben és a naplóban is szerepel. A saját kóddal küldött riasz
 | `napi-osszesito-hiba`                  | A napi összesítő nem állt össze                       | Fejlesztő; addig nézd az Irányítópultot          |
 | `aam-keret-nem-teljes`                 | Nem számolható, mennyi fogyott el az AAM-keretből     | Könyvelő és fejlesztő, lásd lent                 |
 
-**Ha `aam-keret-nem-teljes` jön.** A webshop nem tudja kiszámolni, mennyi
+**Ha `aam-keret-nem-teljes` jön, vagy a napi összesítő és az Irányítópult
+szerint a keret most nem számolható.** A webshop nem tudja kiszámolni, mennyi
 fogyott el az alanyi adómentes keretből. Két oka lehet: egy tárgyévi számla
 összege hiányzik a rendelésről (a számla a Számlázz.hu-ban megvan, csak a mi
 nyilvántartásunkból hiányzik az összeg), vagy a tárgyév számlás rendelései
@@ -93,8 +94,16 @@ ilyenkor is kimegy a teendőkkel.
    szűrővel talált sor megmutatja az okot, hiányzó összegnél az érintett
    rendeléseket is.
 
-Okonként naponta legfeljebb egy ilyen riasztás jön; egy új deploy után az
-első számolás újra jelez.
+A teendő riasztás-levél nélkül is ez. Ha a levél nem jött meg (például mert az
+`OWNER_ALERT_EMAILS` nincs beállítva), a riasztást a fenti Railway-szűrő akkor
+is megmutatja, és a PostHog `kc_alert` eseménye is, ha a PostHog a 2. pont
+szerint be van állítva.
+
+Okonként naponta legfeljebb egy ilyen riasztás-levél jön. Ha a levél nem ment
+ki (például mert a levélküldő szolgáltatás épp hibázott), a rendszer a keret
+következő számolásakor újra küldi: az Irányítópult megnyitásakor vagy a napi
+összesítő következő próbájánál. Egy új deploy után az első számolás újra
+jelez.
 
 A régebbi riasztások kódja az üzenet első mondatrészéből képződik (ékezet
 nélkül, kötőjellel). A leggyakoribbak:
