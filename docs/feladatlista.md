@@ -76,9 +76,15 @@ A teljes, mért menetrend: [`docs/kineticare-hu-atallas.md`](kineticare-hu-atall
 „Mért állapot és menetrend (2026-09-23)”. Csak a `www` CNAME változik; az apex,
 a levelezés és a többi rekord marad.
 
+**Mérve 2026-09-25:** a `www.kineticare.hu` már a Railway-en fut. Egyedi domain a
+`Kineticare` szolgáltatáson, a válaszfejlécben `server: railway-hikari`, nincs
+`X-Robots-Tag`, a robots-meta `index, follow`, a canonical
+`https://www.kineticare.hu`, és a `/admin` 200-at ad. A D1, a D3 és a D4 tehát
+lényegében teljesült; a többi sort a tulajdonos ellenőrizze.
+
 | #   | Teendő                                                                                                                                             | Ki         | Megjegyzés                                                                                                                                                |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | T−1: `www` TTL 300; Railway custom domain `www.kineticare.hu` a `Kineticare` szolgáltatáson, a TXT-ellenőrző rekord a Tárhely.Eu-n                 | tulajdonos | A `Kineticare` szolgáltatásnak ma nincs egyedi domainje, csak a `kineticare-production.up.railway.app`.                                                   |
+| D1  | T−1: `www` TTL 300; Railway custom domain `www.kineticare.hu` a `Kineticare` szolgáltatáson, a TXT-ellenőrző rekord a Tárhely.Eu-n                 | tulajdonos | Mérve 2026-09-25: a `www.kineticare.hu` egyedi domainként be van állítva, és a Railway szolgálja ki.                                                      |
 | D2  | T−1: `EXTRA_ALLOWED_ORIGINS=https://kineticare.hu,https://www.kineticare.hu` a Railway-en                                                          | tulajdonos | Enélkül a `www`-ről jövő sütis kérések 403-at kapnak, amíg a `NEXT_PUBLIC_SERVER_URL` a Railway-URL.                                                      |
 | D3  | T: `www` CNAME a Railway-célra, TLS megvárása, `GET https://www.kineticare.hu/admin` 200                                                           | tulajdonos |                                                                                                                                                           |
 | D4  | T: `NEXT_PUBLIC_SERVER_URL=https://www.kineticare.hu` és `NEXT_PUBLIC_ALLOW_INDEXING=true`, **valódi újrabuild** (a build-log nem lehet `skipped`) | tulajdonos | Ellenőrzés: canonical, sitemap, nincs `X-Robots-Tag: noindex`, örökölt átirányítások, belépés, jelszó-visszaállító link, tesztvásárlás.                   |
