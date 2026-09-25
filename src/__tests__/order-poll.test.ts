@@ -15,6 +15,7 @@ import {
   pollPendingOrders,
   REFUND_RECHECK_BATCH_SIZE,
   REFUND_RECHECK_MAX_ATTEMPTS,
+  REFUND_RECHECK_RETRY_GAP_MS,
   RUN_LEVEL_ALERT_COOLDOWN_MS,
   STUCK_ORDER_WARN_MS,
   UNKNOWN_PAYMENT_CANCEL_AFTER_MS,
@@ -5206,7 +5207,7 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
     })
     const { log, errors } = contextLog()
 
-    for (const offset of [0, POLL_INTERVAL_MS]) {
+    for (const offset of [0, REFUND_RECHECK_RETRY_GAP_MS]) {
       await pollPendingOrders({
         ...f,
         payload,
@@ -5257,29 +5258,43 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
     expect(errors).toEqual([])
   })
 
-  const RECHECK_GAVE_UP_ALERT = 'RIASZTÁS: a visszatérítés heti újraellenőrzése ennél a rendelésnél'
+  const RECHECK_GAVE_UP_ALERT =
+    'RIASZTÁS: a visszatérítés egy héttel későbbi ellenőrzése ennél a rendelésnél'
   const gaveUpAlerts = (errors: Array<{ message: string; context: Record<string, unknown> }>) =>
     errors.filter((entry) => entry.message.startsWith(RECHECK_GAVE_UP_ALERT))
+  const GAP = REFUND_RECHECK_RETRY_GAP_MS
+  const bare404 = (): BarionApiError =>
+    new BarionApiError({
+      message: 'Barion API hiba (HTTP 404).',
+      kind: 'http',
+      endpoint: 'GET state',
+      httpStatus: 404,
+    })
+  const http503 = (): BarionApiError =>
+    new BarionApiError({ message: '503', kind: 'http', endpoint: 'GET state', httpStatus: 503 })
+  /** Sávbeli visszatérítések saját rendelés- és fizetés-azonosítóval (a modulszintű állapot miatt). */
+  const bandOrders = (ids: number[], firstDaysAgo: number, stepDays = 0.1): Order[] =>
+    ids.map((id, index) => {
+      const order = refundedOrder(firstDaysAgo + index * stepDays)
+      order.id = id
+      order.barionPaymentId = guidFor('d', id)
+      return order
+    })
+  const withLedgerFor = (f: ReturnType<typeof setup>, orders: Order[]): Payload =>
+    ({
+      ...(f.payload as unknown as Record<string, unknown>),
+      db: { drizzle: emptyRefundLedger(orders.map((order) => order.id)) },
+    }) as unknown as Payload
 
   // Breaker (rev3, major): a végleges hiba a következő futásban is ugyanaz
   // volna. Rev2 minden hiba után elengedte a kulcsot, így a sor 5 percenként
-  // újra GetState-et kapott a sáv 24 órájában.
+  // újra GetState-et kapott a sáv 24 órájában. Minden sor saját rendelés-
+  // azonosítót kap: a hibaszámláló modulszintű, sorrendfüggés nélkül.
   it.each([
-    ['NotExistingPaymentId (HTTP 400)', () => notExistingPaymentId(400), 'order'],
-    ['hitelesítési hiba (HTTP 401)', () => unauthorized(), 'auth'],
-    [
-      'puszta HTTP 404',
-      () =>
-        new BarionApiError({
-          message: 'Barion API hiba (HTTP 404).',
-          kind: 'http',
-          endpoint: 'GET state',
-          httpStatus: 404,
-        }),
-      'unverified-404',
-    ],
+    ['NotExistingPaymentId (HTTP 400)', 2421, () => notExistingPaymentId(400), 'order'],
     [
       'egyéb 4xx elutasítás (HTTP 400, ModelValidationError)',
+      2424,
       () =>
         new BarionApiError({
           message: 'Barion API hiba (HTTP 400): ModelValidationError',
@@ -5294,16 +5309,15 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
     ],
   ] as const)(
     'végleges hiba (%s): a sávban nincs újabb GetState, egyetlen RIASZTÁS kéri a kézi ellenőrzést',
-    async (_label, makeError, failureClass) => {
-      const order = refundedOrder(7.5)
-      order.id = 2421
+    async (_label, orderId, makeError, failureClass) => {
+      const [order] = bandOrders([orderId], 7.05)
       const f = setup({ pending: [], paidResweep: [order] })
       const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
         throw makeError()
       })
       const { log, errors } = contextLog()
 
-      for (const offset of [0, POLL_INTERVAL_MS, 2 * POLL_INTERVAL_MS, 3 * POLL_INTERVAL_MS]) {
+      for (const offset of [0, POLL_INTERVAL_MS, GAP, 2 * GAP]) {
         await pollPendingOrders({
           ...f,
           payload: withLedger(f, order.id),
@@ -5329,28 +5343,34 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
   )
 
   // Breaker (rev3): az átmeneti hiba után a sáv újrapróbál, de legfeljebb
-  // REFUND_RECHECK_MAX_ATTEMPTS-szor; utána egyetlen RIASZTÁS, és a sávban csend.
+  // REFUND_RECHECK_MAX_ATTEMPTS-szor, és a kísérletek között legalább
+  // REFUND_RECHECK_RETRY_GAP_MS telik el (rev3 átnézés: egy negyedórás kiesés
+  // ne égesse el mindhárom kísérletet); utána egyetlen RIASZTÁS, és a sávban csend.
   it.each([
-    [
-      'HTTP 503',
-      () =>
-        new BarionApiError({
-          message: '503',
-          kind: 'http',
-          endpoint: 'GET state',
-          httpStatus: 503,
-        }),
-      'transport',
-    ],
-    ['időtúllépés', () => transientTimeout(), 'transport'],
+    ['HTTP 503', 2422, () => http503(), 'transport'],
+    ['időtúllépés', 2425, () => transientTimeout(), 'transport'],
     [
       'hálózati hiba',
+      2426,
       () => new BarionApiError({ message: 'DUMMY reset', kind: 'network', endpoint: 'GET state' }),
       'transport',
     ],
-    ['HTTP 429 a kapu újrapróbálása után is', () => rateLimited(), 'rate-limited'],
+    ['HTTP 429 a kapu újrapróbálása után is', 2427, () => rateLimited(), 'rate-limited'],
+    [
+      'HTTP 408 (proxy-időtúllépés)',
+      2428,
+      () =>
+        new BarionApiError({
+          message: 'Barion API hiba (HTTP 408).',
+          kind: 'http',
+          endpoint: 'GET state',
+          httpStatus: 408,
+        }),
+      'unknown',
+    ],
     [
       'értelmezhetetlen válasz',
+      2429,
       () =>
         new BarionApiError({
           message: 'DUMMY nem JSON',
@@ -5360,34 +5380,37 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
         }),
       'unknown',
     ],
-    ['nem Barion-eredetű kivétel', () => new Error('DUMMY váratlan hiba'), 'unknown'],
+    ['nem Barion-eredetű kivétel', 2419, () => new Error('DUMMY váratlan hiba'), 'unknown'],
   ] as const)(
-    'átmeneti hiba (%s): legfeljebb REFUND_RECHECK_MAX_ATTEMPTS kísérlet, utána egyetlen RIASZTÁS',
-    async (_label, makeError, failureClass) => {
-      const order = refundedOrder(7.5)
-      order.id = 2422
+    'átmeneti hiba (%s): legfeljebb REFUND_RECHECK_MAX_ATTEMPTS kísérlet, köztük legalább REFUND_RECHECK_RETRY_GAP_MS, utána egyetlen RIASZTÁS',
+    async (_label, orderId, makeError, failureClass) => {
+      const [order] = bandOrders([orderId], 7.05)
       const f = setup({ pending: [], paidResweep: [order] })
       const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
         throw makeError()
       })
       const { log, errors } = contextLog()
+      const callsPerRun: number[] = []
       const alertCountsPerRun: number[] = []
 
-      for (let run = 0; run < REFUND_RECHECK_MAX_ATTEMPTS + 2; run += 1) {
+      for (const offset of [0, POLL_INTERVAL_MS, GAP, 2 * GAP, 3 * GAP]) {
         await pollPendingOrders({
           ...f,
           payload: withLedger(f, order.id),
           fetchState,
-          now: NOW + run * POLL_INTERVAL_MS,
+          now: NOW + offset,
           logger: log as never,
           invoicingEnabled: () => false,
         })
+        callsPerRun.push(fetchState.mock.calls.length)
         alertCountsPerRun.push(gaveUpAlerts(errors).length)
       }
 
-      expect(fetchState).toHaveBeenCalledTimes(REFUND_RECHECK_MAX_ATTEMPTS)
-      // A RIASZTÁS csak az utolsó kísérlet után megy ki, és csak egyszer.
-      expect(alertCountsPerRun).toEqual([0, 0, 1, 1, 1])
+      // Az 5 perccel későbbi futás még nem próbál újra; a harmadik kísérlet után
+      // a RIASZTÁS egyszer megy ki, a sávban több hívás nincs.
+      expect(REFUND_RECHECK_MAX_ATTEMPTS).toBe(3)
+      expect(callsPerRun).toEqual([1, 1, 2, 3, 3])
+      expect(alertCountsPerRun).toEqual([0, 0, 0, 1, 1])
       expect(gaveUpAlerts(errors)[0].context).toMatchObject({
         reason: 'kiserletek-elfogytak',
         attempts: REFUND_RECHECK_MAX_ATTEMPTS,
@@ -5396,9 +5419,35 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
     },
   )
 
+  // A kísérletek közti várakozás nem viheti ki a sort a sávból feladás nélkül:
+  // ha a sávból a várakozásnál kevesebb van hátra, a sor várakozás nélkül
+  // megkapja a maradék kísérleteit és a RIASZTÁS-t.
+  it('a sáv végén hibázó visszatérítés várakozás nélkül megkapja a maradék kísérleteit és a RIASZTÁS-t', async () => {
+    const [order] = bandOrders([2418], 8 - (GAP - HOUR_MS) / (24 * HOUR_MS))
+    const f = setup({ pending: [], paidResweep: [order] })
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw http503()
+    })
+    const { log, errors } = contextLog()
+
+    for (const offset of [0, POLL_INTERVAL_MS, 2 * POLL_INTERVAL_MS]) {
+      await pollPendingOrders({
+        ...f,
+        payload: withLedger(f, order.id),
+        fetchState,
+        now: NOW + offset,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    }
+
+    expect(fetchState).toHaveBeenCalledTimes(REFUND_RECHECK_MAX_ATTEMPTS)
+    expect(gaveUpAlerts(errors)).toHaveLength(1)
+    expect(gaveUpAlerts(errors)[0].context).toMatchObject({ reason: 'kiserletek-elfogytak' })
+  })
+
   it('átmeneti adatbázis-hiba (a friss rendelés-olvasás a GetState után bukik): ugyanaz a kísérlet-plafon', async () => {
-    const order = refundedOrder(7.5)
-    order.id = 2423
+    const [order] = bandOrders([2423], 7.05)
     const f = setup({ pending: [], paidResweep: [order] })
     const baseFind = (f.payload as unknown as { find: (args: unknown) => Promise<unknown> }).find
     const freshReads = vi.fn()
@@ -5415,12 +5464,12 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
     const fetchState = vi.fn(async () => reversedState())
     const { log, errors } = contextLog()
 
-    for (let run = 0; run < REFUND_RECHECK_MAX_ATTEMPTS + 2; run += 1) {
+    for (const offset of [0, GAP, 2 * GAP, 2 * GAP + POLL_INTERVAL_MS, 3 * GAP]) {
       await pollPendingOrders({
         ...f,
         payload,
         fetchState,
-        now: NOW + run * POLL_INTERVAL_MS,
+        now: NOW + offset,
         logger: log as never,
         invoicingEnabled: () => false,
       })
@@ -5438,32 +5487,20 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
 
   // Breaker (rev3): a sáv elején álló, hibázó sorok nem foglalhatják el
   // futásról futásra az 5-ös GetState-keretet a sáv 6. visszatérítése elől.
+  // A 429 fizetésenkénti fojtás (a futást nem állítja meg), ezért ez az átmeneti
+  // eset; a szállítási hiba a futást amúgy is megállítja (lásd lent).
   it.each([
-    ['végleges (NotExistingPaymentId)', () => notExistingPaymentId(400)],
-    [
-      'átmeneti (HTTP 503)',
-      () =>
-        new BarionApiError({
-          message: '503',
-          kind: 'http',
-          endpoint: 'GET state',
-          httpStatus: 503,
-        }),
-    ],
+    ['végleges (NotExistingPaymentId)', 2430, () => notExistingPaymentId(400)],
+    ['átmeneti (HTTP 429)', 2450, () => rateLimited()],
   ] as const)(
     '5 hibázó sor (%s) nem éheztetheti ki a sáv 6. visszatérítését: a második futás sorra veszi',
-    async (_label, makeError) => {
-      const orders = [2430, 2431, 2432, 2433, 2434, 2435].map((id, index) => {
-        const order = refundedOrder(7.05 + index * 0.1)
-        order.id = id
-        order.barionPaymentId = `bbbbbbbb-0000-4000-8000-00000000${id}`
-        return order
-      })
+    async (_label, firstId, makeError) => {
+      const orders = bandOrders(
+        Array.from({ length: 6 }, (_unused, index) => firstId + index),
+        7.05,
+      )
       const f = setup({ pending: [], paidResweep: orders })
-      const payload = {
-        ...(f.payload as unknown as Record<string, unknown>),
-        db: { drizzle: emptyRefundLedger(orders.map((order) => order.id)) },
-      } as unknown as Payload
+      const payload = withLedgerFor(f, orders)
       const reversedPaymentId = orders[5].barionPaymentId
       const fetchState = vi.fn(async (paymentId: string) => {
         if (paymentId !== reversedPaymentId) throw makeError()
@@ -5492,30 +5529,220 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
     },
   )
 
-  it('hitelesítési hiba: a futás többi sávbeli sora nem kap GetState-et ugyanezzel a hibával', async () => {
-    const orders = [2440, 2441].map((id, index) => {
-      const order = refundedOrder(7.2 + index * 0.1)
-      order.id = id
-      order.barionPaymentId = `cccccccc-0000-4000-8000-00000000${id}`
-      return order
-    })
+  // Rev3 átnézés: a szállítási hiba a Barion egészét érinti, a futás nem égeti
+  // el vele a sáv többi sorát; a következő futás a még nem próbált sort veszi.
+  it('szállítási hiba (503): a futás újraellenőrzése megáll, a következő futás a még nem próbált sort veszi', async () => {
+    const orders = bandOrders([2444, 2445], 7.2)
     const f = setup({ pending: [], paidResweep: orders })
-    const payload = {
-      ...(f.payload as unknown as Record<string, unknown>),
-      db: { drizzle: emptyRefundLedger(orders.map((order) => order.id)) },
-    } as unknown as Payload
-    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
-      throw unauthorized()
-    })
+    const fetchState = vi.fn<(paymentId: string) => Promise<BarionPaymentStateResponse>>(
+      async () => {
+        throw http503()
+      },
+    )
+    const calledPerRun: string[][] = []
 
+    for (const offset of [0, POLL_INTERVAL_MS]) {
+      fetchState.mockClear()
+      await pollPendingOrders({
+        ...f,
+        payload: withLedgerFor(f, orders),
+        fetchState,
+        now: NOW + offset,
+        invoicingEnabled: () => false,
+      })
+      calledPerRun.push(fetchState.mock.calls.map(([paymentId]) => paymentId))
+    }
+
+    expect(calledPerRun).toEqual([[orders[0].barionPaymentId], [orders[1].barionPaymentId]])
+  })
+
+  // Breaker B2 (rev3-rev1): egy átmeneti POSKey-kiesés (pl. kulcsforgatás a
+  // Barion adminban a Railway frissítése előtt) futásonként egy sávbeli
+  // visszatérítést véglegesen feladott. A hitelesítési hiba globális: a sort
+  // nem adjuk fel, kísérletet sem számolunk, a futás megáll, egy fojtott
+  // futásszintű RIASZTÁS megy ki; a javítás után a sáv minden sora sorra kerül.
+  it('átmeneti hitelesítési kiesés: futásonként egy hívás, egy fojtott RIASZTÁS, feladás nélkül; utána a sáv minden visszatérítése újra ellenőrzött', async () => {
+    const orders = bandOrders([2470, 2471, 2472], 7.2)
+    const f = setup({ pending: [], paidResweep: orders })
+    const payload = withLedgerFor(f, orders)
+    let keyBroken = true
+    const fetchState = vi.fn<(paymentId: string) => Promise<BarionPaymentStateResponse>>(
+      async () => {
+        if (keyBroken) throw unauthorized()
+        return reversedState()
+      },
+    )
+    const { log, errors } = contextLog()
+    const callsPerRun: number[] = []
+
+    for (const run of [0, 1, 2]) {
+      fetchState.mockClear()
+      await pollPendingOrders({
+        ...f,
+        payload,
+        fetchState,
+        now: NOW + run * POLL_INTERVAL_MS,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+      callsPerRun.push(fetchState.mock.calls.length)
+    }
+    keyBroken = false
+    fetchState.mockClear()
     await pollPendingOrders({
       ...f,
       payload,
       fetchState,
-      now: NOW,
+      now: NOW + 3 * POLL_INTERVAL_MS,
+      logger: log as never,
       invoicingEnabled: () => false,
     })
 
-    expect(fetchState).toHaveBeenCalledTimes(1)
+    expect(callsPerRun).toEqual([1, 1, 1])
+    expect(fetchState.mock.calls.map(([id]) => id).sort()).toEqual(
+      orders.map((order) => order.barionPaymentId).sort(),
+    )
+    expect(gaveUpAlerts(errors)).toEqual([])
+    const authAlerts = errors.filter((entry) =>
+      entry.message.startsWith('RIASZTÁS: Barion hitelesítési hiba'),
+    )
+    expect(authAlerts).toHaveLength(1)
+    expect(authAlerts[0].context).toMatchObject({ source: 'refund-recheck', httpStatus: 401 })
   })
+
+  // Breaker B1 (rev3-rev1): egy globális, puszta 404-es útvonalhiba (2026-09-24-én
+  // mérve: „No HTTP resource was found”, Errors tömb nélkül) csendes boltban a
+  // sáv minden visszatérítését véglegesen feladta. A puszta 404 csak akkor
+  // végleges, ha az útvonal-próba bizonyítja, hogy az útvonal működik.
+  it('átmeneti globális 404 (útvonalhiba, a próba is elbukik): nincs feladás, a javítás után a sáv visszatérítései újra ellenőrzésre kerülnek', async () => {
+    const orders = bandOrders([2460, 2461, 2462], 7.2)
+    const f = setup({ pending: [], paidResweep: orders })
+    const payload = withLedgerFor(f, orders)
+    let routeBroken = true
+    const fetchState = vi.fn<(paymentId: string) => Promise<BarionPaymentStateResponse>>(
+      async () => {
+        if (routeBroken) throw bare404()
+        return reversedState()
+      },
+    )
+    const { log, errors } = contextLog()
+
+    for (const run of [0, 1]) {
+      await pollPendingOrders({
+        ...f,
+        payload,
+        fetchState,
+        now: NOW + run * POLL_INTERVAL_MS,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    }
+    routeBroken = false
+    fetchState.mockClear()
+    await pollPendingOrders({
+      ...f,
+      payload,
+      fetchState,
+      now: NOW + 2 * POLL_INTERVAL_MS,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState.mock.calls.map(([id]) => id).sort()).toEqual(
+      orders.map((order) => order.barionPaymentId).sort(),
+    )
+    expect(gaveUpAlerts(errors)).toEqual([])
+    const routeAlerts = errors.filter((entry) =>
+      entry.message.startsWith(
+        'RIASZTÁS: a Barion PaymentState HTTP 404-et adott a visszatérítések',
+      ),
+    )
+    expect(routeAlerts).toHaveLength(1)
+    expect(routeAlerts[0].context).toMatchObject({ source: 'refund-recheck', routeProbe: 'failed' })
+  })
+
+  it('puszta 404, de az útvonal-próba sikeres: a sor végleges hibával egyszer feladva, a sávban nincs újabb GetState', async () => {
+    const [order] = bandOrders([2490], 7.05)
+    const probeOrder = createPendingOrder({
+      id: 2491,
+      status: 'paid',
+      invoiceStatus: 'issued',
+      barionPaymentId: guidFor('e', 2491),
+      updatedAt: new Date(NOW + HOUR_MS).toISOString(),
+    } as Partial<Order>)
+    const f = setup({ pending: [], paidResweep: [order, probeOrder] })
+    const fetchState = vi.fn(async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      if (paymentId === probeOrder.barionPaymentId) return getStateResponse('Succeeded')
+      throw bare404()
+    })
+    const { log, errors } = contextLog()
+
+    for (const offset of [0, GAP, 2 * GAP]) {
+      await pollPendingOrders({
+        ...f,
+        payload: withLedger(f, order.id),
+        fetchState,
+        now: NOW + offset,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    }
+
+    expect(fetchState.mock.calls.filter(([id]) => id === order.barionPaymentId)).toHaveLength(1)
+    const alerts = gaveUpAlerts(errors)
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].context).toMatchObject({
+      orderId: order.id,
+      reason: 'vegleges-hiba',
+      failureClass: 'unverified-404',
+      httpStatus: 404,
+    })
+  })
+
+  // A futás egy másik sikeres GetState-je ugyanúgy bizonyítja az útvonalat, mint
+  // az útvonal-próba. Itt a próba jelöltje (a legutóbb frissült sor) maga is
+  // 404-et adna: ha a bizonyíték elveszne, a sort sosem adnánk fel.
+  it.each([
+    ['egy függő rendelés sikeres GetState-je', 'pending'],
+    ['a sáv egy korábbi visszatérítésének sikeres GetState-je', 'band'],
+  ] as const)(
+    'puszta 404, az útvonalat a futásban %s bizonyítja: a sor próba nélkül, végleges hibával feladva',
+    async (_label, evidence) => {
+      const [okRow, notFoundRow] = bandOrders(
+        evidence === 'pending' ? [2494, 2495] : [2492, 2493],
+        7.05,
+      )
+      // A 404-es sor frissült utoljára: az útvonal-próba jelöltje is ez lenne.
+      notFoundRow.updatedAt = new Date(NOW).toISOString()
+      const band = evidence === 'pending' ? [notFoundRow] : [okRow, notFoundRow]
+      const pendingOrder = createPendingOrder({ id: 2496 })
+      const f = setup({ pending: evidence === 'pending' ? [pendingOrder] : [], paidResweep: band })
+      const fetchState = vi.fn(async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+        if (paymentId === PAYMENT_ID) return getStateResponse('Prepared')
+        if (paymentId === okRow.barionPaymentId) return reversedState()
+        throw bare404()
+      })
+      const { log, errors } = contextLog()
+
+      await pollPendingOrders({
+        ...f,
+        payload: withLedgerFor(f, band),
+        fetchState,
+        now: NOW,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+
+      expect(
+        fetchState.mock.calls.filter(([id]) => id === notFoundRow.barionPaymentId),
+      ).toHaveLength(1)
+      const alerts = gaveUpAlerts(errors)
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0].context).toMatchObject({
+        orderId: notFoundRow.id,
+        reason: 'vegleges-hiba',
+        failureClass: 'unverified-404',
+      })
+    },
+  )
 })
