@@ -497,10 +497,12 @@ describe('napi összesítő — küldés', () => {
     )
     // A napló ne mondja, hogy kiment a levél, ha semmi nem ment ki.
     expect(h.entries.some((entry) => entry.msg.includes('levél elküldve'))).toBe(false)
-    // Ugyanez a folyamat tovább pollol: nyomot később sem ír (a noop nem hagy
-    // függő nyomot, amelyet egy későbbi futás pótolna).
-    expect(await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))).toBe('nem-esedekes')
-    expect(await runDailyDigestIfDue(h.deps(MORNING + 10 * 60_000))).toBe('nem-esedekes')
+    // Ugyanez a folyamat tovább pollol (a napi keretig újrapróbál): nyomot
+    // később sem ír, mert a noop nem hagy függő nyomot, amelyet egy későbbi
+    // futás pótolna.
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))).toBe('nincs-szolgaltato')
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 10 * 60_000))).toBe('nincs-szolgaltato')
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 15 * 60_000))).toBe('nem-esedekes')
     expect(h.memory.createCalls).toHaveLength(0)
 
     // 08:00: az üzemeltető beállítja az SMTP-t, a deploy új folyamatot indít.
@@ -508,7 +510,8 @@ describe('napi összesítő — küldés', () => {
     expect(await runDailyDigestIfDue(h.deps(MORNING + 50 * 60_000, createDigestState()))).toBe(
       'elkuldve',
     )
-    expect(h.sendMail).toHaveBeenCalledTimes(2)
+    // Három noop-próba a régi folyamatban, egy valódi küldés az újban.
+    expect(h.sendMail).toHaveBeenCalledTimes(4)
     expect(h.memory.createCalls).toEqual([
       expect.objectContaining({
         data: expect.objectContaining({ action: 'daily-digest-sent', entityId: '2026-09-24' }),
