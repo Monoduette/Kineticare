@@ -101,9 +101,10 @@ export function formatManualInvoiceReport(result: RecordManualInvoiceResult): st
           )
           .join(', ')
   const check = [
-    `végösszeg a megrendeléskor: ${facts.totalHuf === null ? 'nem ismert' : manualInvoiceHuf(facts.totalHuf)}`,
+    `végösszeg a megrendeléskor: ${facts.totalHuf === null ? 'nem ismert' : manualInvoiceHuf(facts.totalHuf)} (a számla bruttó végösszegének ugyanennyinek kell lennie)`,
     `a fizetés napja (a számla teljesítési dátuma): ${facts.paidDate ?? 'nem ismert'}`,
     `visszatérítések: ${refunds}`,
+    'a vevő neve: a tulajdonos veti össze a Számlázz.hu-ban a rendelés „Vásárlói adatok a megrendeléskor” mezőjével; ha a számla más vevőé, ne rögzítsd',
   ]
   const change = [
     `rendelés: ${result.orderNumber}`,
@@ -112,7 +113,7 @@ export function formatManualInvoiceReport(result: RecordManualInvoiceResult): st
     `teljesítés: ${result.before.invoiceCompletionDate ?? 'nincs'} → ${result.completionDate}`,
     `a korábbi hiba szövege megmarad: ${result.before.invoiceLastError ?? 'nincs'}`,
   ]
-  lines.push('Vesd össze a kézi számlával:')
+  lines.push('Vesd össze a számlával:')
   for (const item of check) lines.push(`  - ${item}`)
   if (result.status === 'dry-run') {
     lines.push(

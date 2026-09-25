@@ -41,7 +41,9 @@ import type { JSX } from 'react'
  *   nyilatkozat) és withdrawal-receipt-email (az átvételi elismervény
  *   elküldése); rendelés nélküli nyilatkozatnál az entitástípus „withdrawal”;
  * - src/lib/szamlazz/manual-invoice-record.ts: invoice-manual-record (a
- *   kézzel kiállított számla számának rögzítése).
+ *   Számlázz.hu-ban megtalált vagy kézzel kiállított számla sorszámának kézi
+ *   rögzítése; a felirat mindkét esetre igaz, és a rendelés „Számla
+ *   sorszáma” mezőjének nevét használja, WCAG 2.2 SC 3.2.4).
  * Az entitástípus a collection slugja; a feliratok a collectionök magyar
  * egyes számú címkéi.
  */
@@ -70,14 +72,14 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'refund-provider-rejected': 'Visszatérítés: a Barion elutasította',
   'refund-provider-unknown': 'Visszatérítés: bizonytalan Barion-válasz',
   'refund-provider-accepted': 'Visszatérítés: a Barion elfogadta',
-  'refund-notice-email': 'Vevői visszatérítési értesítő',
+  'refund-notice-email': 'Vevői visszatérítési értesítő elküldése',
   'refund-invoice-retry-queued': 'Helyesbítő számla újrapróbálása sorba állítva',
   'withdrawal-request': 'Elállási nyilatkozat',
   'withdrawal-receipt-email': 'Elállási elismervény elküldése',
   'order-confirmation-email-uncertain': 'Visszaigazoló e-mail: bizonytalan kézbesítés',
   'refund-invoice-no-effect': 'Helyesbítő beküldése igazoltan hatás nélkül maradt',
   'refund-invoice-resubmit-started': 'Helyesbítő ismételt beküldése elindult',
-  'invoice-manual-record': 'Kézzel kiállított számla száma rögzítve',
+  'invoice-manual-record': 'Számla sorszámának kézi rögzítése',
 }
 
 export const AUDIT_ENTITY_LABELS: Readonly<Record<string, string>> = {

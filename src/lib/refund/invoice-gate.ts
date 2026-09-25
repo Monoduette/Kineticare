@@ -24,9 +24,10 @@ export type RefundInvoiceGate = { reason: 'pending' | 'failed'; message: string 
 
 /**
  * A tulajdonosnak szóló szövegek: mi történt, mi a teendő (GOV.UK Error
- * message: „say what has happened and how to fix it”,
+ * message: „Describe what has happened and tell them how to fix it.”,
  * https://design-system.service.gov.uk/components/error-message/; NN/g,
- * Error-Message Guidelines: „offer … remedies”,
+ * Error-Message Guidelines: „Merely stating the problem is also not enough;
+ * offer some potential remedies.”,
  * https://www.nngroup.com/articles/error-message-guidelines/). A panel ezt a
  * beviteli mező helyén mutatja, a szerver a 409-es válaszban (ott a „Pénzmozgás
  * nem történt.” mondattal). A szöveg nem ígéri, hogy a számla elkészül, mert
@@ -39,29 +40,44 @@ export type RefundInvoiceGate = { reason: 'pending' | 'failed'; message: string 
  * után az invoice.ts maga is azt írja, hogy kézi kiállítás előtt meg kell
  * keresni; a korábbi 05-ös útmutató szerint kézzel kiállított számla mellett
  * is 'failed' maradt a rendelés). Ezért az első lépés a keresés a
- * Számlázz.hu-ban, és csak ha nincs meg, jön a kézi kiállítás (05-ös útmutató,
- * 1. és 2. pont), végül az üzemeltető rögzíti a számot
+ * Számlázz.hu-ban, és csak ha semmi nincs meg, jön a kézi kiállítás (05-ös
+ * útmutató, 1. és 2. pont), végül az üzemeltető rögzíti a számot
  * (`npm run record:manual-invoice`, src/lib/szamlazz/manual-invoice-record.ts),
- * amitől a kapu kinyílik. GOV.UK Error message: „tell them what to do”; NN/g
- * Error-Message Guidelines: „Offer constructive advice”, ne csak a hibát
- * mondja. A felirat legyen igaz (termektervezes skill): feltétel nélküli
- * „állítsd ki” utasítás a már létező számla mellé második számlát íratna. A
- * 14 napos mondat a 45/2014. (II. 26.) Korm. rendelet 23. § (1) bekezdésének
- * visszafizetési határidejére figyelmeztet.
+ * amitől a kapu kinyílik.
+ *
+ * A talált számla csak akkor ennek a rendelésnek a számlája, ha a vevő neve és
+ * a végösszeg is egyezik. A rendelésszám ugyanis nem egyedi kulcs: az év
+ * legnagyobb meglévő sorszámából képződik (src/lib/order-number.ts), így egy
+ * törölt utolsó rendelés vagy egy adatbázis-visszaállítás után ugyanaz a szám
+ * egy korábbi, MÁSIK vevő rendelésén is állhat, és a keresés az ő számláját
+ * hozza (a 71/152-es duplikátumjelzés is ettől jöhet). Ha azt rögzítenénk, az
+ * eladás számla nélkül maradna, a későbbi stornó vagy helyesbítő pedig egy
+ * idegen vevő érvényes számláját érvénytelenítené vagy módosítaná. Ezért a
+ * szöveg a „ne állíts ki újat” ágat az egyezéshez köti, a más vevőre szóló
+ * számlát pedig kizárja, és az üzemeltetőhöz küld.
+ *
+ * GOV.UK Error message: „get to the point”; NN/g: „Provide descriptions of
+ * the exact problems”. A felirat legyen igaz (termektervezes skill): feltétel nélküli
+ * „állítsd ki” utasítás a már létező számla mellé második számlát íratna, a
+ * feltétel nélküli „ne állíts ki újat” pedig egy idegen számlát fogadtatna el.
+ * A 14 napos mondat a 45/2014. (II. 26.) Korm. rendelet 23. § (1)
+ * bekezdésének visszafizetési határidejére figyelmeztet.
  */
 export const INVOICE_PENDING_MESSAGE =
   'A számla még nem készült el, ezért a visszatérítés még nem indítható. Néhány perc múlva frissítsd az oldalt, és próbáld újra. Ha egy óra múlva is ezt látod, jelezd az üzemeltetőnek a rendelésszámmal együtt.'
 export const INVOICE_FAILED_MESSAGE =
-  'A számla automatikus kiállítása nem sikerült, ezért a visszatérítés most nem indítható. Előbb keress rá a rendelésszámra a Számlázz.hu-ban: ha a számla ott megvan, ne állíts ki újat. Ha nincs meg, állítsd ki kézzel a 05-ös útmutató szerint. Ezután kérd meg az üzemeltetőt, hogy rögzítse a számla számát a rendelésen, és a visszatérítés innen indítható. Ha a vevő elállt a vásárlástól, még aznap szólj az üzemeltetőnek, mert a visszafizetésre 14 nap van.'
+  'A számla automatikus kiállítása nem sikerült, ezért a visszatérítés most nem indítható. Előbb keress rá a rendelésszámra a Számlázz.hu-ban. Ha ennek a rendelésnek a számláját találod (a vevő neve és a végösszeg is ugyanaz, mint a rendelésen), ne állíts ki újat. Ha más vevő számláját találod ugyanezzel a rendelésszámmal, azt ne használd, és szólj az üzemeltetőnek. Ha semmit nem találsz, állítsd ki a számlát kézzel a 05-ös útmutató szerint. Kérd meg az üzemeltetőt, hogy a megtalált vagy a kézzel kiállított számla számát rögzítse a rendelésen; utána a visszatérítés innen indítható. Ha a vevő elállt a vásárlástól, még aznap szólj az üzemeltetőnek, mert a visszafizetésre 14 nap van.'
 
 /**
  * Null, ha a visszatérítés a számla felől indítható: a számlázás ki van
  * kapcsolva, vagy a rendelésen kiállított számla áll (invoiceStatus 'issued'
- * és nem üres invoiceNumber). A 'failed' kézi rendezést kér: a Számlázz.hu-ban
- * megtalált, vagy ha nincs meg, kézzel kiállított számla számát az
+ * és nem üres invoiceNumber). A 'failed' kézi rendezést kér: ennek a
+ * rendelésnek a Számlázz.hu-ban megtalált számláját (a vevő neve és a
+ * végösszeg is egyezik), vagy ha semmi nincs meg, a kézzel kiállítottat az
  * üzemeltető rögzíti (manual-invoice-record.ts), az 'issued' lesz, és a kapu
  * magától kinyílik, így a visszatérítés a valódi számlához készít stornót
- * vagy helyesbítőt.
+ * vagy helyesbítőt. Más vevő ugyanilyen rendelésszámú számláját nem szabad
+ * rögzíteni (lásd fent).
  * A 'failed' visszaállítása 'pending'-re szándékosan nincs: a leállt vagy
  * kézzel pótolt számla mellé egy újabb automatikus beküldés dupla NAV-számla
  * lenne (invoice.ts, INVOICE_AUTOMATION_STOPPED). Minden más (none, pending,

@@ -91,13 +91,15 @@ describe('rögzítés a failed számlájú, fizetett rendelésen', () => {
 
   it('éles futás: issued + szám + teljesítés, a hiba szövege marad, egy műveletnapló-sor a zár alatt, a futtatóval', async () => {
     const f = failedOrder()
-    const heldAtWrite: string[][] = []
-    const update = f.payload.update as unknown as ReturnType<typeof vi.fn>
-    const original = update.getMockImplementation() as (args: unknown) => Promise<unknown>
-    update.mockImplementation(async (args: unknown) => {
-      heldAtWrite.push([...locks.held])
-      return original(args)
-    })
+    const heldAtWrite: Array<{ collection: string; held: string[] }> = []
+    for (const method of ['update', 'create'] as const) {
+      const mock = f.payload[method] as unknown as ReturnType<typeof vi.fn>
+      const original = mock.getMockImplementation() as (args: unknown) => Promise<unknown>
+      mock.mockImplementation(async (args: { collection: string }) => {
+        heldAtWrite.push({ collection: args.collection, held: [...locks.held] })
+        return original(args)
+      })
+    }
     const result = await record(f, { operator: 'teszt-uzemelteto' })
     expect(result).toMatchObject({ status: 'recorded', auditRecorded: true })
     expect(f.order).toMatchObject({
@@ -106,7 +108,12 @@ describe('rögzítés a failed számlájú, fizetett rendelésen', () => {
       invoiceCompletionDate: '2026-09-05',
       invoiceLastError: STOPPED,
     })
-    expect(heldAtWrite).toEqual([[`invoice:${f.order.id}`]])
+    // A rendelés írása és a műveletnapló-sor is a számlakiállító zárja alatt.
+    const lock = `invoice:${f.order.id}`
+    expect(heldAtWrite).toEqual([
+      { collection: 'orders', held: [lock] },
+      { collection: 'audit-logs', held: [lock] },
+    ])
     expect(auditRows(f)).toEqual([
       expect.objectContaining({
         entityType: 'orders',
@@ -121,6 +128,16 @@ describe('rögzítés a failed számlájú, fizetett rendelésen', () => {
         }),
       }),
     ])
+  })
+
+  it('a másolt szóközt és sortörést a két szélén levágja: a rendelést megtalálja, és a tiszta számot rögzíti', async () => {
+    const f = failedOrder()
+    const result = await record(f, {
+      orderNumber: ' KH-2026-000011 ',
+      invoiceNumber: '\tE-KIN-2026-42\n',
+    })
+    expect(result).toMatchObject({ status: 'recorded', invoiceNumber: 'E-KIN-2026-42' })
+    expect(f.order.invoiceNumber).toBe('E-KIN-2026-42')
   })
 
   it('a második éles futás elutasít: nincs második írás és második műveletnapló-sor', async () => {
@@ -200,13 +217,34 @@ describe('elutasítás: semmi nem íródik, és az ok a valódi akadályt nevezi
   it.each([
     ['üres szám', { invoiceNumber: '   ' }, /üres/u],
     ['szóköz a számban', { invoiceNumber: 'E KIN 2026 42' }, /szóköz/u],
-    ['vezérlőkarakter a számban', { invoiceNumber: 'E-KIN-2026-42\u0007' }, /nem nyomtatható/u],
-    ['túl hosszú szám', { invoiceNumber: `E-${'9'.repeat(63)}` }, /túl hosszú/u],
+    ['vezérlőkarakter a számban', { invoiceNumber: 'E-KIN-2026-42\u0007' }, /nem fordul elő/u],
+    // Az alakra jó, csak túl hosszú szám: egyedül a hossz az ok.
+    ['túl hosszú szám', { invoiceNumber: `E-KIN-2026-${'9'.repeat(54)}` }, /túl hosszú/u],
     // W1B-3 törő B3: PDF-ből másolt, kötőjelnek látszó jelek és egy cirill betű.
-    ['U+2010 kötőjel', { invoiceNumber: 'E‐KIN‐2026‐42' }, /nem szabványos/u],
-    ['U+2011 nem törő kötőjel', { invoiceNumber: 'E‑KIN‑2026‑42' }, /nem szabványos/u],
-    ['U+2013 nagykötőjel', { invoiceNumber: 'E–KIN–2026–42' }, /nem szabványos/u],
-    ['cirill К', { invoiceNumber: 'E-КIN-2026-42' }, /nem szabványos/u],
+    ['U+2010 kötőjel', { invoiceNumber: 'E‐KIN‐2026‐42' }, /nem fordul elő/u],
+    ['U+2011 nem törő kötőjel', { invoiceNumber: 'E‑KIN‑2026‑42' }, /nem fordul elő/u],
+    ['U+2013 nagykötőjel', { invoiceNumber: 'E–KIN–2026–42' }, /nem fordul elő/u],
+    ['cirill К', { invoiceNumber: 'E-КIN-2026-42' }, /nem fordul elő/u],
+    // Rev2 (vezető): csevegőüzenetből másolt szám, a végén írásjellel, és kisbetű.
+    ['a végén pont', { invoiceNumber: 'E-KIN-2026-42.' }, /nem fordul elő/u],
+    ['a végén vessző', { invoiceNumber: 'E-KIN-2026-42,' }, /nem fordul elő/u],
+    ['a végén zárójel', { invoiceNumber: 'E-KIN-2026-42)' }, /nem fordul elő/u],
+    ['a végén idézőjel', { invoiceNumber: 'E-KIN-2026-42"' }, /nem fordul elő/u],
+    ['kisbetűs szám', { invoiceNumber: 'e-kin-2026-42' }, /nem fordul elő/u],
+    // A jelek jók, az alak nem a Számlázz.hu sorszámáé.
+    [
+      'kötőjel az előtagban',
+      { invoiceNumber: 'E-KIN-B-2026-42' },
+      /nem a Számlázz\.hu sorszámának alakja/u,
+    ],
+    [
+      'hatjegyű előtag',
+      { invoiceNumber: 'E-KINETI-2026-42' },
+      /nem a Számlázz\.hu sorszámának alakja/u,
+    ],
+    ['kétjegyű év', { invoiceNumber: 'E-KIN-26-42' }, /nem a Számlázz\.hu sorszámának alakja/u],
+    ['hiányzó sorszám', { invoiceNumber: 'E-KIN-2026-' }, /nem a Számlázz\.hu sorszámának alakja/u],
+    ['csak a sorszám', { invoiceNumber: '42' }, /nem a Számlázz\.hu sorszámának alakja/u],
     // W1B-3 törő B2: a teljesítés dátuma kötelező.
     [
       'kihagyott teljesítési dátum',
@@ -218,8 +256,13 @@ describe('elutasítás: semmi nem íródik, és az ok a valódi akadályt nevezi
     ['nem ISO dátum', { completionDate: '2026.09.05.' }, /ÉÉÉÉ-HH-NN/u],
     ['lehetetlen dátum', { completionDate: '2026-02-30' }, /ÉÉÉÉ-HH-NN/u],
     ['jövőbeli dátum', { completionDate: '2999-01-01' }, /jövőben/u],
-    // B2c: évszám-elütés, a rendelés 2026-09-05-i.
-    ['a rendelés előtti dátum', { completionDate: '2025-09-05' }, /korábbi, mint a rendelés/u],
+    // B2c: évszám-elütés, vagy egy korábbi, ugyanezt a rendelésszámot viselő
+    // rendelés számlája (rev2, vezető); a rendelés 2026-09-05-i.
+    [
+      'a rendelés előtti dátum',
+      { completionDate: '2025-09-05' },
+      /korábbi, mint a rendelés[\s\S]*évszámot[\s\S]*nem ehhez a rendeléshez tartozik[\s\S]*ne rögzítsd/u,
+    ],
   ] as const)('%s', async (_label, input, reason) => {
     const f = failedOrder()
     const result = await record(f, input)
@@ -272,6 +315,23 @@ describe('elutasítás: semmi nem íródik, és az ok a valódi akadályt nevezi
     },
   )
 
+  // A 05-ös útmutató szerint a próbafutás minden okot kiír, amiért nem írna:
+  // az ütközés sem derülhet ki csak az éles futáskor.
+  it('a próbafutás is kimutatja, ha a szám egy másik rendelésen áll', async () => {
+    const f = failedOrder()
+    const find = f.payload.find as unknown as ReturnType<typeof vi.fn>
+    const original = find.getMockImplementation() as (args: unknown) => Promise<unknown>
+    find.mockImplementation(
+      async (args: { collection: string; where?: Record<string, unknown> }) =>
+        args.collection === 'orders' && args.where && 'and' in args.where
+          ? { docs: [{ id: 90, orderNumber: 'KH-2026-000090' }], totalDocs: 1, hasNextPage: false }
+          : original(args),
+    )
+    const result = await record(f, { dryRun: true })
+    expect(result.status).toBe('refused')
+    expect(reasonsOf(result)).toContain('KH-2026-000090')
+  })
+
   it('nincs ilyen rendelésszám: elutasít zár és írás nélkül', async () => {
     const f = failedOrder()
     const find = f.payload.find as unknown as ReturnType<typeof vi.fn>
@@ -307,26 +367,63 @@ describe('dátum, előtag és a számlával összevetendő adatok', () => {
     })
   })
 
+  // A Számlázz.hu sorszáma ELŐTAG-ÉV-SORSZÁM, e-számlán E- kezdettel; az
+  // előtag legfeljebb 5 nagybetű vagy számjegy. Az előtagot a szám alakjából
+  // olvassuk ki, és pontosan vetjük össze a beállítottal.
   it.each([
-    ['saját e-számla', 'KIN', 'E-KIN-2026-42'],
-    ['saját papírszámla', 'KIN', 'KIN-2026-42'],
-    ['kötőjeles előtag', 'KIN-B', 'E-KIN-B-2026-42'],
-  ])('%s: nem figyelmeztet az előtagra', async (_label, invoicePrefix, invoiceNumber) => {
+    ['saját e-számla', 'E-KIN-2026-42', false],
+    ['saját papírszámla', 'KIN-2026-42', false],
+    ['más sorozat (ötjegyű előtag számjeggyel)', 'SZLA2-2026-7', true],
+    ['az előtag csak tartalmazza a beállítottat', 'E-AKIN-2026-42', true],
+    ['az előtag a beállítottal kezdődik', 'KINB-2026-42', true],
+  ] as const)('%s: rögzíthető, előtag-figyelmeztetés: %s', async (_label, invoiceNumber, warns) => {
     const f = failedOrder()
-    const result = await record(f, { invoicePrefix, invoiceNumber, dryRun: true })
+    const result = await record(f, { invoicePrefix: 'KIN', invoiceNumber, dryRun: true })
     expect(result.status).toBe('dry-run')
-    expect(result.warnings.filter((warning) => warning.includes('előtag'))).toEqual([])
+    const prefixWarnings = result.warnings.filter((warning) => warning.includes('„KIN” előtaggal'))
+    expect(prefixWarnings).toHaveLength(warns ? 1 : 0)
   })
 
-  it('más sorozatú számot rögzít, de figyelmeztet', async () => {
+  // A számlakiállító a nem egyeztethető (idegen vagy sztornózott) talált
+  // bizonylat számát a hibaszövegbe írja. Ha éppen azt rögzítenénk, hangos
+  // figyelmeztetés kell (a lekérdezés hiányos válasza miatt mégis lehet a
+  // rendelésé, ezért nem tiltás). Egy hosszabb szám részeként nem találat.
+  it.each([
+    ['éppen ezt a számot', 'E-KIN-2026-42', true],
+    ['egy hosszabb számot, amelynek ez az eleje', 'E-KIN-2026-421', false],
+  ] as const)(
+    'a korábbi hibaszöveg %s említi: figyelmeztetés: %s',
+    async (_label, rejectedNumber, warns) => {
+      const f = failedOrder({
+        invoiceLastError: `A számla automatikus kiállítása leállt: a(z) KH-2026-000011-11-1757066100 külső azonosítón talált ${rejectedNumber} számú bizonylat nem egyeztethető ezzel a rendeléssel (a bizonylat bruttó végösszege 30000 Ft, a rendelésé 20000 Ft).`,
+      })
+      // Más előtag is be van állítva, így egy második figyelmeztetés is van:
+      // a hibaszövegre utaló az első, azt olvassa elsőként az üzemeltető.
+      const result = await record(f, { dryRun: true, invoicePrefix: 'SZLA' })
+      expect(result.status).toBe('dry-run')
+      const identity = result.warnings.filter((warning) =>
+        warning.includes('„Számlázás utolsó hibája” mezője éppen ezt a számot'),
+      )
+      expect(identity).toHaveLength(warns ? 1 : 0)
+      expect(result.warnings).toHaveLength(warns ? 2 : 1)
+      if (warns) {
+        expect(identity[0]).toMatch(/a vevő neve és a végösszeg is ugyanaz/u)
+        expect(result.warnings[0]).toBe(identity[0])
+      }
+    },
+  )
+
+  it('ha a fizetés napja nem olvasható, a próbafutás figyelmeztet, és nem állít dátum-egyezést', async () => {
     const f = failedOrder()
-    const foreign = await record(f, {
-      invoicePrefix: 'KIN',
-      invoiceNumber: 'SZLA-2026-7',
-      dryRun: true,
+    const findByID = f.payload.findByID as unknown as ReturnType<typeof vi.fn>
+    const original = findByID.getMockImplementation() as (args: unknown) => Promise<unknown>
+    findByID.mockImplementation(async (args: { collection: string }) => {
+      if (args.collection === 'users') throw new Error('SYNTHETIC olvasási hiba')
+      return original(args)
     })
-    expect(foreign.status).toBe('dry-run')
-    expect(foreign.warnings.join('\n')).toContain('„KIN” előtaggal')
+    const result = await record(f, { dryRun: true })
+    expect(result).toMatchObject({ status: 'dry-run', facts: { paidDate: null } })
+    expect(result.warnings.join('\n')).toContain('A fizetés napja most nem olvasható')
   })
 
   it('a fizetés napját és a korábbi visszatérítést kiírja, és figyelmeztet az eltérő teljesítési dátumra', async () => {
@@ -411,16 +508,21 @@ describe('a CLI határa: kapcsolók, megerősítő kapu, kilépési kód', () =>
   it.each([
     ['nincs beállítva', {}],
     ['más érték', { [MANUAL_INVOICE_CONFIRM_ENV]: 'yes' }],
-  ])('megerősítés nélkül (%s) próbafutás: 0-s kód, írás nélkül', async (_label, env) => {
-    const f = failedOrder()
-    const { log, lines } = cliLog()
-    await expect(runRecordManualInvoice({ payload: f.payload, args, env, log })).resolves.toBe(0)
-    expect(f.payload.update).not.toHaveBeenCalled()
-    const output = lines.join('\n')
-    expect(output).toContain('PRÓBAFUTÁS')
-    expect(output).toContain('végösszeg a megrendeléskor: 20')
-    expect(lines).not.toContain('MANUAL_INVOICE_RECORD_OK')
-  })
+  ])(
+    'megerősítés nélkül (%s) próbafutás: 0-s kód, írás nélkül, a számlával összevetendő adatokkal',
+    async (_label, env) => {
+      const f = failedOrder()
+      const { log, lines } = cliLog()
+      await expect(runRecordManualInvoice({ payload: f.payload, args, env, log })).resolves.toBe(0)
+      expect(f.payload.update).not.toHaveBeenCalled()
+      const output = lines.join('\n')
+      expect(output).toContain('PRÓBAFUTÁS')
+      expect(output).toContain('végösszeg a megrendeléskor: 20')
+      // A rendelésszám nem egyedi: a próbafutás a vevőnév összevetésére is emlékeztet.
+      expect(output).toMatch(/a vevő neve: .*ha a számla más vevőé, ne rögzítsd/u)
+      expect(lines).not.toContain('MANUAL_INVOICE_RECORD_OK')
+    },
+  )
 
   it('OWNER_MANUAL_INVOICE_CONFIRM=igen: ír a teljesítési dátummal, a futtatót naplózza, és OK-val zár', async () => {
     const f = failedOrder()
@@ -454,6 +556,23 @@ describe('a CLI határa: kapcsolók, megerősítő kapu, kilépési kód', () =>
     expect(f.order).toMatchObject({ invoiceStatus: 'issued', invoiceNumber: 'E-KIN-2026-42' })
     expect(lines.join('\n')).toContain('a műveletnapló-sor nem jött létre')
     expect(lines).not.toContain('MANUAL_INVOICE_RECORD_OK')
+  })
+
+  // A Payload a hozzáférés miatt eldobott mezőt hiba nélkül hagyja ki a
+  // mentésből: ha a rendelés nem lett 'issued', nem mondhatjuk, hogy
+  // rögzítettük, és a műveletnaplóba sem kerülhet 'issued' sor (törő, rev2).
+  it('ha a mentés csendben elhagyja a mezőket: hiba, OK nélkül, műveletnapló-sor nélkül', async () => {
+    const f = failedOrder()
+    const update = f.payload.update as unknown as ReturnType<typeof vi.fn>
+    update.mockImplementation(async () => structuredClone(f.order))
+    const { log, lines } = cliLog()
+    const env = { [MANUAL_INVOICE_CONFIRM_ENV]: 'igen' }
+    await expect(runRecordManualInvoice({ payload: f.payload, args, env, log })).rejects.toThrow(
+      /nem a várt/u,
+    )
+    expect(lines).not.toContain('MANUAL_INVOICE_RECORD_OK')
+    expect(auditRows(f)).toEqual([])
+    expect(f.order).toMatchObject({ invoiceStatus: 'failed', invoiceNumber: null })
   })
 
   it('elutasításnál 1-es kód, és kiírja az okot', async () => {

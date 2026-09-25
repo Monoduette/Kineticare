@@ -30,21 +30,28 @@ import type { OrderRefundEntry } from './refund-order'
  *   kulcs 24 órán belül nem indít második levelet. A committed átmenet
  *   egyetlen SQL CAS (intent-store.ts), ezért a küldést minden kísérletre
  *   pontosan egy hívó indítja.
- * - Újrapróbálás (W1B-5): az átmeneti hibát (429, 5xx, hálózati hiba,
- *   időtúllépés, egyidejű kérés miatti 409, azaz `retryable === true`) a
- *   függvény ugyanazzal a kulccsal legfeljebb kétszer újrapróbálja, rövid
- *   szünettel, és csak amíg a következő kísérlet is belefér az időkeretbe
- *   (REFUND_NOTICE_RETRY_DELAYS_MS, REFUND_NOTICE_TIME_BUDGET_MS). Ha az első
+ * - Újrapróbálás (W1B-5): a GYORS átmeneti hibát (429, gyors 5xx, hálózati
+ *   hiba, egyidejű kérés miatti 409, azaz `retryable === true`, és a válasz
+ *   legfeljebb 1 másodperc alatt megjött) a függvény ugyanazzal a kulccsal
+ *   egyszer újrapróbálja, 1 másodperc szünet után. Többre nincs idő: a küldés
+ *   ma a hívók zárja alatt fut (lásd REFUND_NOTICE_TIME_BUDGET_MS). Ha az első
  *   kérést a Resend már befogadta, a kulcs miatt a második nem küld új
- *   levelet. A végleges elutasítás (`retryable === false`) és a bizonytalan
- *   kézbesítés (`deliveryUncertain`) nem ismétlődik.
+ *   levelet. Nem ismétlődik a végleges elutasítás (`retryable === false`), a
+ *   bizonytalan kézbesítés (`deliveryUncertain`) és az időtúllépés sem: az
+ *   utóbbi után a második kísérlet a keretbe már nem férne, a levél pedig
+ *   kimehetett, ezért a bizonytalan riasztás megy ki.
  * - A záró riasztás megkülönbözteti a biztosan el nem ment levelet (végleges
  *   elutasítás: kézzel kell pótolni) a bizonytalantól (időtúllépés, átmeneti
  *   hiba vagy bizonytalan kézbesítés után a levél kimehetett: előbb a Resend
  *   felületén kell megkeresni a vevő címére küldött levelet a tárgya alapján,
  *   különben a vevő két levelet kap).
- * - Sorrend: a küldés a pénzügyi lezárás UTÁN, a rendelés-záron KÍVÜL fut
- *   (HTTP a zár alatt tilos, refund-order.ts fejléce). Ha a folyamat a
+ * - Sorrend: a küldés a pénzügyi lezárás UTÁN, a rendelés-záron
+ *   (`order:mutate:<id>`) KÍVÜL fut (HTTP a zár alatt tilos, refund-order.ts
+ *   fejléce), de ma még a hívók egy tágabb zárján belül: a
+ *   visszatérítés-helyreállítás koordinátor-zárja (`refund-recovery:order:<id>`,
+ *   refund-recovery.ts), illetve a pénztár duplavásárlás-ágán a
+ *   `checkout:<vevő>:<termék>` zár (start-checkout.ts) alatt. Ezért korlátos
+ *   az időkerete (REFUND_NOTICE_TIME_BUDGET_MS). Ha a folyamat a
  *   lezárás és a küldés között áll le, a levél elmarad: ez elfogadott, mert
  *   a dupla értesítés rosszabb, mint az elmaradt udvariassági levél. A
  *   sikertelen vagy bizonytalan küldés error-szintű RIASZTÁS-t ad, saját
@@ -57,39 +64,60 @@ import type { OrderRefundEntry } from './refund-order'
 export const REFUND_NOTICE_AUDIT_ACTION = 'refund-notice-email'
 
 /**
- * A szünetek az újrapróbálások előtt (ms): legfeljebb három kérés, összesen
- * 4 másodperc várakozással.
+ * A szünet az újrapróbálás előtt (ms): legfeljebb két kérés. Egy másodperc,
+ * mert a Resend a korlátot másodpercenként méri (alapból 10 kérés
+ * másodpercenként csapatonként, a 429-es válasz `retry-after` fejléce
+ * másodpercben adja a várakozást, https://resend.com/docs/api-reference/rate-limit).
+ * Második szünetnek nincs értelme: a harmadik kísérlet a keretbe
+ * (REFUND_NOTICE_TIME_BUDGET_MS) sosem férne bele.
  *
  * A ciklus helyi: a közös `sendWithRetry` segéd (src/lib/email/retry.ts) még
  * csak a team/w1-fogyasztoi-rev1 ágon él. A két ág összefésülése után ez a
  * ciklus arra cserélhető, ha az időkeret (REFUND_NOTICE_TIME_BUDGET_MS) és a
  * bizonytalan kézbesítés kezelése (deliveryUncertain) megmarad.
  */
-export const REFUND_NOTICE_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000]
+export const REFUND_NOTICE_RETRY_DELAYS_MS: readonly number[] = [1_000]
 
 /**
  * Egy küldési kísérlet leghosszabb ideje (ms): az éles szolgáltató
  * Resend-kérésének időkorlátja (email/resend.ts RESEND_TIMEOUT_MS,
  * AbortSignal.timeout). Ha az ottani korlát nő, ezt is emelni kell, különben az
- * időkeret nem tartható.
+ * időkeret nem tartható. (Az SMTP-tartalék lépésenként 15 s-ot vár, egy
+ * kísérlete ennél tovább is tarthat; az éles szolgáltató a Resend.)
  */
 export const REFUND_NOTICE_ATTEMPT_MAX_MS = 10_000
 
 /**
  * Az értesítő TELJES időkerete (ms), minden kísérlettel és szünettel együtt.
- * A küldés a tulajdonos visszatérítési kérésén belül fut (a panel 30
- * másodpercet vár, RefundPanel.tsx REQUEST_TIMEOUT_MS), a
- * visszatérítés-helyreállítás koordinátor-zárja alatt, amelynek tranzakciója
- * közben tétlen (idle_in_transaction_session_timeout 60 s, payload.config.ts).
- * Újabb kísérlet csak akkor indul, ha az eddig eltelt idő, a következő szünet
- * és a következő kísérlet leghosszabb ideje (REFUND_NOTICE_ATTEMPT_MAX_MS)
- * együtt is belefér, így az értesítő az első kérés indulásától legfeljebb 21
- * másodpercig tart. A legrosszabb eset két időtúllépés (10 + 1 + 10
- * másodperc), utána harmadik kísérlet nem indul. A gyors (azonnal
- * visszautasított) átmeneti hibákat mind a három kísérlet lefedi (a 0., az 1.
- * és a 4. másodpercben indulnak, és legkésőbb a 14. másodpercben véget érnek).
+ * Újabb kísérlet csak akkor indul, ha az eddig eltelt idő, a szünet és a
+ * következő kísérlet leghosszabb ideje (REFUND_NOTICE_ATTEMPT_MAX_MS) együtt
+ * is belefér. 12 s mellett ez azt jelenti: újrapróbálás csak akkor van, ha az
+ * első kísérlet legfeljebb 1 másodperc alatt bukott el (429, gyors 5xx,
+ * hálózati hiba), és az értesítő legfeljebb 12 másodpercig tart. Egy
+ * időtúllépés (10 s) után nincs második kísérlet.
+ *
+ * Miért ilyen szűk (W1B-5 törő, major): a küldés ma a hívók zárja alatt fut,
+ * és a zár tranzakciója közben tétlen; a Postgres 60 s tétlenség után leöli
+ * (idle_in_transaction_session_timeout, payload.config.ts). A leölt
+ * zár-tranzakció után a lezárt, kész visszatérítés is „elakadt” RIASZTÁS-t és
+ * 503-at adna, a kapcsolat hibája pedig kezeletlen kivételként érné el a
+ * folyamatot (CLAUDE.md 7. tanulság).
+ * - A koordinátor-zár (`refund-recovery:order:<id>`) alatt előtte a helyesbítő
+ *   akár 45 s-ig hívja a Számlázz.hu-t (lekérdezés, beküldés, 71/152 utáni
+ *   lekérdezés, hívásonként 15 s). 45 + 12 = 57 s: a régi, egyetlen
+ *   kísérletes értesítő 55 s-ához képest a keret 2 s-mal nő, és 60 s alatt
+ *   marad. A korábbi 21 s-os keret itt 66 s-ot engedett.
+ * - A pénztár zárja alatt (duplavásárlás-ág) a GetState (15 s) és a Barion
+ *   Refund (35 s) után a régi értesítővel is 60 s volt a legrosszabb eset; a
+ *   12 s-os keret ezt csak a legritkább esetben (gyors hiba, majd lógó
+ *   második kérés) növeli 2 s-mal.
+ * A tartós megoldás a küldés a zárakon kívül (a hívókban, refund-recovery.ts
+ * és start-checkout.ts); utána a keret 22 s-ra, a szünetek [1 s, 3 s]-ra
+ * emelhetők, és egy valódi időtúllépés is kap egy ugyanazzal a kulccsal futó
+ * második kísérletet (22 s: 10 s-nál kicsit hosszabb időtúllépés + 1 s szünet +
+ * 10 s még belefér).
  */
-export const REFUND_NOTICE_TIME_BUDGET_MS = 21_000
+export const REFUND_NOTICE_TIME_BUDGET_MS = 12_000
 
 export function refundNoticeIdempotencyKey(intentId: number | string): string {
   return `refund:${intentId}`

@@ -95,6 +95,10 @@ describe('K12: bekapcsolt számlázásnál tulajdonosi visszatérítés csak ki�
   // (invoice.ts) állítja elő; a tulajdonosnak adott 409-es szöveg nem biztat
   // várakozásra, az első teendője a keresés, és megtiltja az új számlát, ha a
   // régi megvan (különben ugyanarra az eladásra két NAV-számla jutna).
+  // A rendelésszám nem egyedi (törölt utolsó rendelés, adatbázis-visszaállítás):
+  // a 71/152 és az üres lekérdezés egy korábbi, más vevő számlájától is jöhet.
+  // Ezért a talált számla csak egyező vevőnévvel és végösszeggel fogadható el,
+  // a más vevőét a szöveg kizárja (rev2, vezetői major).
   const INVOICE_CONFIG: SzamlazzClientConfig = {
     enabled: true,
     apiUrl: 'https://www.szamlazz.hu/szamla/',
@@ -141,7 +145,7 @@ describe('K12: bekapcsolt számlázásnál tulajdonosi visszatérítés csak ki�
       /létrehozhatta a számlát/u,
     ],
   ])(
-    'failed (%s): 409, és a szöveg előbb keresést kér, csak utána kézi kiállítást',
+    'failed (%s): 409; a szöveg sorrendje keresés, a vevőnév és a végösszeg egyezése, más vevő számlájának kizárása, csak utána kézi kiállítás és rögzítés',
     async (_label, invoiceAttempts, deps, lastError) => {
       vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')
       const f = fixture()
@@ -181,11 +185,25 @@ describe('K12: bekapcsolt számlázásnál tulajdonosi visszatérítés csak ki�
       expect(provider.refund).not.toHaveBeenCalled()
       const message = (error as Error).message
       expect(message).not.toMatch(/amíg a számla el nem készül/u)
-      const search = message.search(/keress rá|keresd meg/u)
-      expect(search).toBeGreaterThanOrEqual(0)
-      expect(message.search(/állítsd ki kézzel/iu)).toBeGreaterThan(search)
-      expect(message).toMatch(/megvan, ne állíts ki újat/u)
-      expect(message).toContain('rögzítse a számla számát a rendelésen')
+      // Minden lépés megvan, és ebben a sorrendben: a saját számla feltétele
+      // a vevő neve ÉS a végösszeg (egy azonos árú kurzusnál a végösszeg
+      // egymagában idegen számlán is egyezik).
+      const steps = {
+        keresés: /keress rá a rendelésszámra/u,
+        'saját számla csak egyezéssel':
+          /ennek a rendelésnek a számláját[^.]*vevő neve és a végösszeg[^.]*ne állíts ki újat/u,
+        'más vevő számlája kizárva': /más vevő számláját[^.]*ne használd/u,
+        'kézi kiállítás csak ha semmi nincs': /semmit nem találsz, állítsd ki a számlát kézzel/u,
+        rögzítés: /üzemeltetőt[^.]*rögzítse a rendelésen/u,
+      }
+      const positions = Object.entries(steps).map(([step, pattern]) => ({
+        step,
+        at: message.search(pattern),
+      }))
+      expect(positions.filter(({ at }) => at < 0).map(({ step }) => step)).toEqual([])
+      expect([...positions].sort((a, b) => a.at - b.at).map(({ step }) => step)).toEqual(
+        Object.keys(steps),
+      )
     },
   )
 

@@ -73,12 +73,22 @@ indítható.” Ilyenkor várni hiába: a rendszer ezt a számlát magától má
 vagy korábban már kézzel kiállítottad.
 
 1. Előbb keress rá a rendelésszámra a Számlázz.hu-ban
-   ([05](05-szamla-storno-helyesbito-kezi.md) 1. pont). Ha a számla megvan,
-   **ne állíts ki újat**: ugyanarra az eladásra két számla kerülne a NAV-hoz.
-2. Csak ha nincs meg, állítsd ki kézzel (05, 2. pont).
+   ([05](05-szamla-storno-helyesbito-kezi.md) 1. pont), és nézd meg, hogy a
+   talált számla ehhez a rendeléshez tartozik-e: a vevő neve és a végösszeg
+   is ugyanaz legyen, mint a rendelésen.
+   - Ha igen, **ne állíts ki újat**: ugyanarra az eladásra két számla kerülne
+     a NAV-hoz.
+   - Ha más vevő számlája áll ott ugyanezzel a rendelésszámmal, azt ne
+     használd: a rendelésszámot egy korábbi, azóta törölt vagy elveszett
+     rendelés is viselhette. Ne kérd a rögzítését, hanem szólj a fejlesztőnek
+     a rendelésszámmal és a talált számla számával; ő mondja meg, hogyan
+     készüljön el ennek a rendelésnek a számlája.
+2. Csak ha semmit nem találsz, állítsd ki kézzel (05, 2. pont).
 3. Küldd el az üzemeltetőnek a rendelésszámot, a megtalált vagy kézzel
-   kiállított számla sorszámát és a teljesítés dátumát. Ő rögzíti a
-   rendelésen: `npm run record:manual-invoice` (előbb próbafutás, utána
+   kiállított számla sorszámát, a teljesítés dátumát és a számla bruttó
+   végösszegét. Ő a próbafutásban összeveti a végösszeget a rendelésével
+   („végösszeg a megrendeléskor”), és rögzíti a rendelésen:
+   `npm run record:manual-invoice` (előbb próbafutás, utána
    `OWNER_MANUAL_INVOICE_CONFIRM=igen`).
 4. Ezután frissítsd a rendelést: a panel engedi a visszatérítést, és a stornó
    vagy a helyesbítő a rögzített számlához készül el.

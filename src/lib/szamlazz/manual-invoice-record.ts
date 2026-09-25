@@ -9,8 +9,9 @@ import { logger as rootLogger, type Logger } from '../logger'
 import { resolveOrderPaidMoment } from './paid-date'
 
 /**
- * Kézzel kiállított számla számának rögzítése egy 'failed' számlájú
- * rendelésen (W1B-3, W1B-7; a tulajdonosi admin-művelet később a w2 H2).
+ * A Számlázz.hu-ban megtalált vagy kézzel kiállított számla számának kézi
+ * rögzítése egy 'failed' számlájú rendelésen (W1B-3, W1B-7; a tulajdonosi
+ * admin-művelet később a w2 H2).
  *
  * Miért kell: a K12 kapu (src/lib/refund/invoice-gate.ts) a tulajdonosi
  * visszatérítést csak kiállított számla után engedi. Ha a számla automatikus
@@ -23,6 +24,20 @@ import { resolveOrderPaidMoment } from './paid-date'
  * (`npm run record:manual-invoice`). Az 'issued' állapot után a kapu magától
  * kinyílik, és a szokásos visszatérítés a valódi számlához készít stornót vagy
  * helyesbítőt.
+ *
+ * A talált számla csak akkor ennek a rendelésnek a számlája, ha a vevő neve és
+ * a végösszeg is egyezik (a tulajdonos a Számlázz.hu-ban ellenőrzi; 05-ös
+ * útmutató, 1. pont). A rendelésszám nem egyedi (src/lib/order-number.ts: az
+ * év legnagyobb sorszámából képződik), egy törölt utolsó rendelés vagy
+ * adatbázis-visszaállítás után egy korábbi, más vevő számlája is ugyanazt
+ * viselheti. A rossz szám végleges kárt okoz: a valódi eladás számla nélkül
+ * marad, a visszatérítés stornója vagy helyesbítője pedig egy idegen számlát
+ * érvénytelenít vagy módosít. Amit a modul ebből ellenőrizni tud: a szám
+ * egyedisége a még meglévő rendelések között, a teljesítés dátuma nem
+ * korábbi a rendelés napjánál, és hangosan figyelmeztet, ha a számlakiállító
+ * éppen ezt a számot utasította el mint nem egyeztethetőt (a hibaszöveg
+ * említi). A vevő nevét és a végösszeget a próbafutás kimenete mellett az
+ * ember veti össze.
  *
  * Amit szándékosan NEM tesz:
  * - a 'failed' állapotot nem állítja vissza 'pending'-re: a leállt vagy kézzel
@@ -130,16 +145,23 @@ function orderState(order: Order): ManualInvoiceOrderState {
 const WHITESPACE = /\s/u
 
 /**
- * A Számlázz.hu sorszáma ELŐTAG-ÉV-SORSZÁM alakú (e-számlán „E-” kezdettel),
- * az előtag legfeljebb 5 ékezet nélküli nagybetű vagy számjegy
+ * A Számlázz.hu sorszáma ELŐTAG-ÉV-SORSZÁM alakú, például „ABC-2012-1”; az
+ * e-számla száma „E-” kezdetű („E-ABC-2012-1”). Az előtag legfeljebb 5
+ * karakter, ékezet nélküli nagybetű vagy számjegy, kötőjel nélkül
  * (https://tudastar.szamlazz.hu/gyik/szamlaszam-formatumok-mikor-kell-megadni,
  * https://tudastar.szamlazz.hu/gyik/elotagok-beallitasa-uj-szamlatomb-hasznalatahoz).
- * Ezért csak nyomtatható ASCII-karaktert fogadunk el: a PDF-ből másolt
- * kötőjel-hasonmás (U+2010, U+2011, U+2013) vagy egy cirill betű ránézésre
- * ugyanaz, de a Számlázz.hu nem ismeri, és a hiba csak a visszatérítés UTÁN,
- * a stornó vagy a helyesbítő beküldésekor derülne ki.
+ *
+ * Két lépésben ellenőrzünk, hogy az ok pontos legyen (GOV.UK Error message:
+ * „Be specific”). Előbb a jelkészlet: a sorszámban csak nagybetű, számjegy
+ * és kötőjel állhat. Ez fogja meg a PDF-ből másolt kötőjel-hasonmást (U+2010,
+ * U+2011, U+2013), a cirill betűt, a kisbetűt és a csevegőüzenetből a szám
+ * végére került pontot, vesszőt, zárójelet vagy idézőjelet. Utána az alak. A
+ * hiba különben csak a visszatérítés UTÁN, a stornó vagy a helyesbítő
+ * beküldésekor derülne ki: addigra a pénz visszament, a rossz szám pedig
+ * végleg a rendelésen maradna (a mezők kézzel nem írhatók).
  */
-const PRINTABLE_ASCII = /^[\x21-\x7E]+$/u
+const SERIAL_CHARACTERS = /^[A-Z0-9-]+$/u
+const SERIAL_SHAPE = /^(?:E-)?([A-Z0-9]{1,5})-[0-9]{4}-[0-9]+$/u
 
 /** A bemenet ellenőrzése adatbázis nélkül: a hibák listája (üres, ha rendben). */
 export function validateManualInvoiceInput(input: {
@@ -160,9 +182,13 @@ export function validateManualInvoiceInput(input: {
       reasons.push(
         'A számla számában szóköz vagy sortörés van. Másold ki pontosan a Számlázz.hu-ból a sorszámot.',
       )
-    } else if (!PRINTABLE_ASCII.test(number)) {
+    } else if (!SERIAL_CHARACTERS.test(number)) {
       reasons.push(
-        'A számla számában nem nyomtatható vagy nem szabványos karakter van (például PDF-ből másolt, kötőjelnek látszó jel vagy cirill betű). A Számlázz.hu sorszámában csak ékezet nélküli betű, számjegy és kötőjel áll: írd be kézzel, vagy másold ki a Számlázz.hu felületéről.',
+        'A számla számában olyan jel van, amely a Számlázz.hu sorszámában nem fordul elő (például a végére került pont vagy vessző, kisbetű, PDF-ből másolt, kötőjelnek látszó jel vagy cirill betű). A sorszámban csak ékezet nélküli nagybetű, számjegy és kötőjel áll: írd be kézzel, vagy másold ki a Számlázz.hu felületéről.',
+      )
+    } else if (!SERIAL_SHAPE.test(number)) {
+      reasons.push(
+        `A számla száma (${number}) nem a Számlázz.hu sorszámának alakja: előtag (legfeljebb 5 nagybetű vagy számjegy), négyjegyű év és sorszám, kötőjellel elválasztva, e-számlán E- kezdettel, például E-KIN-2026-42. Ellenőrizd, hogy a teljes sorszámot másoltad-e ki.`,
       )
     }
   }
@@ -184,13 +210,28 @@ export function validateManualInvoiceInput(input: {
 }
 
 /**
- * Eltér-e a szám a beállított előtagtól. A Számlázz.hu sorszáma
- * „<előtag>-<év>-<sorszám>”, e-számlán „E-<előtag>-…” (pl. „E-KIN-2026-12”).
+ * Eltér-e a szám előtagja a beállítottól. A Számlázz.hu sorszáma
+ * „<előtag>-<év>-<sorszám>”, e-számlán „E-<előtag>-…” (pl. „E-KIN-2026-12”):
+ * az előtagot a sorszám alakjából olvassuk ki, és pontosan vetjük össze, így
+ * a „KINB-…” vagy az „E-AKIN-…” sem megy át „KIN”-ként. Hibás alakú számnál
+ * nem figyelmeztet: azt a bemenet-ellenőrzés elutasítja.
  */
 function lacksPrefix(invoiceNumber: string, prefix: string | undefined): boolean {
   const wanted = prefix?.trim() ?? ''
   if (wanted === '') return false
-  return !(invoiceNumber.startsWith(`${wanted}-`) || invoiceNumber.startsWith(`E-${wanted}-`))
+  const actual = SERIAL_SHAPE.exec(invoiceNumber)?.[1]
+  return actual !== undefined && actual !== wanted
+}
+
+/**
+ * Említi-e a szöveg a számot önálló szóként (a „KIN-2026-4” nem találat a
+ * „KIN-2026-42”-ben). A Számlázz.hu sorszámának jelei a nagybetű, a számjegy
+ * és a kötőjel, ezért a határ minden más jel vagy a szöveg széle.
+ */
+function mentionsInvoiceNumber(text: string | null | undefined, invoiceNumber: string): boolean {
+  if (!text || invoiceNumber === '') return false
+  const escaped = invoiceNumber.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  return new RegExp(`(?:^|[^A-Za-z0-9-])${escaped}(?:$|[^A-Za-z0-9-])`, 'u').test(text)
 }
 
 /** Egy ISO időpont budapesti naptári napja; null, ha az érték nem olvasható. */
@@ -250,7 +291,7 @@ function orderReasons(order: Order, completionDate: string): string[] {
       )
     } else if (completionDate < created) {
       reasons.push(
-        `A teljesítés dátuma (${completionDate}) korábbi, mint a rendelés létrehozásának napja (${created}). Ellenőrizd a kézi számlán a dátumot, különösen az évszámot.`,
+        `A teljesítés dátuma (${completionDate}) korábbi, mint a rendelés létrehozásának napja (${created}). Ellenőrizd a kézi számlán a dátumot, különösen az évszámot. Ha a dátum jó, a számla nem ehhez a rendeléshez tartozik: a rendelésszámot egy korábbi, azóta törölt vagy adatbázis-visszaállításkor elveszett rendelés is viselhette, és a talált számla annak az eladásnak a számlája. Ezt a számot ne rögzítsd, szólj a fejlesztőnek.`,
       )
     }
   }
@@ -426,6 +467,17 @@ export async function recordManualInvoiceNumber(
           warnings,
         }
       }
+      // A számlakiállító a nem egyeztethető (idegen vagy sztornózott) talált
+      // bizonylat számát a hibaszövegbe írja, és nem veszi át. Ha az
+      // üzemeltető éppen ezt rögzítené, az csak akkor helyes, ha a tulajdonos
+      // meggyőződött róla, hogy mégis ennek a rendelésnek a számlája (a
+      // lekérdezés például nem hozott végösszeget); ezért hangos figyelmeztetés,
+      // nem tiltás.
+      if (mentionsInvoiceNumber(order.invoiceLastError, invoiceNumber)) {
+        warnings.unshift(
+          `A rendelés „Számlázás utolsó hibája” mezője éppen ezt a számot (${invoiceNumber}) említi: a rendszer ezt a bizonylatot nem tudta ehhez a rendeléshez kötni, ezért nem vette át. Csak akkor rögzítsd, ha a tulajdonos a Számlázz.hu-ban ellenőrizte, hogy ennek a rendelésnek a számlája: a vevő neve és a végösszeg is ugyanaz, mint a rendelésen. Ha más vevőé, ne rögzítsd, és szólj a fejlesztőnek.`,
+        )
+      }
       const reasons = [...inputReasons, ...orderReasons(order, completionDate)]
       if (invoiceNumber.length > 0) {
         const others = await numberUsedElsewhere(input.payload, order.id, invoiceNumber)
@@ -477,7 +529,7 @@ export async function recordManualInvoiceNumber(
           `A rendelés mentése után a számla állapota nem a várt (${String(updated.invoiceStatus)}); a rögzítés nem biztos, nézd meg a rendelést.`,
         )
       }
-      log.info('kézzel kiállított számla száma rögzítve a rendelésen', {
+      log.info('a számla sorszáma kézzel rögzítve a rendelésen', {
         orderId: order.id,
         completionDate,
       })

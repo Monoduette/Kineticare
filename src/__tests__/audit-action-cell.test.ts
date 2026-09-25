@@ -40,6 +40,9 @@ describe('auditActionLabel', () => {
     expect(auditActionLabel('automatic-refund-blocked')).toBe(
       'Automatikus visszatérítés tartósan leállt',
     )
+    // A rögzített szám sokszor a rendszer saját, a Számlázz.hu-ban megtalált
+    // számlája: a felirat nem állíthatja, hogy kézzel állították ki.
+    expect(auditActionLabel('invoice-manual-record')).toBe('Számla sorszámának kézi rögzítése')
   })
 
   it('a vesszővel összefűzött kódot tagonként fordítja, a második tagtól kisbetűvel', () => {

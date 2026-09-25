@@ -23,14 +23,27 @@ vissza. Ezért először:
 1. A Számlázz.hu felületén keress rá a rendelésszámra (KH-ÉÉÉÉ-NNNNNN). A
    számla rendelésszáma és külső azonosítója is ez; a helyesbítőé
    `KH-…-HELYESBITO-<sorszám>`.
-2. Ha a bizonylat **megvan**: ne állíts ki újat. Szólj az üzemeltetőnek a
-   rendelésszámmal, a bizonylat számával és a teljesítés dátumával, hogy a
-   rendelésen is rögzítse. Számlánál, ha a „Számla állapota” „Sikertelen”, ezt
-   az üzemeltető a `npm run record:manual-invoice` paranccsal teszi meg (lásd
-   a 2. pont végét); utána a visszatérítés az adminból indítható. Ha a
-   számla állapota még „Függőben”, a rendszer maga veszi át a megtalált
-   számlát. Stornóhoz és
-   helyesbítőhöz ilyen eszköz még nincs: ezeket a fejlesztő rögzíti.
+2. Ha találsz bizonylatot, előbb nézd meg, hogy **ehhez a rendeléshez**
+   tartozik-e. A rendelésszám nem mindig egyedi: egy törölt vagy egy
+   adatbázis-visszaállításkor elveszett korábbi rendelés is viselhette, és
+   akkor a talált bizonylat egy másik vevőé. Ehhez a rendeléshez akkor
+   tartozik, ha a vevő neve ugyanaz, mint a rendelés „Vásárlói adatok a
+   megrendeléskor” mezőjében, a végösszege ugyanaz, mint a „Végösszeg a
+   megrendeléskor”, és a teljesítés dátuma nem korábbi a rendelés napjánál.
+   - Ha **ehhez a rendeléshez tartozik**: ne állíts ki újat. Küldd el az
+     üzemeltetőnek a rendelésszámot, a bizonylat számát, a teljesítés dátumát
+     és a bizonylat bruttó végösszegét, hogy a rendelésen is rögzítse.
+     Számlánál, ha a „Számla állapota” „Sikertelen”, ezt az üzemeltető a
+     `npm run record:manual-invoice` paranccsal teszi meg (lásd a 2. pont
+     végét); utána a visszatérítés az adminból indítható. Ha a számla
+     állapota még „Függőben”, a rendszer maga veszi át a megtalált számlát.
+     Stornóhoz és helyesbítőhöz ilyen eszköz még nincs: ezeket a fejlesztő
+     rögzíti.
+   - Ha **más vevőé**, vagy a végösszeg vagy a dátum nem stimmel: a bizonylat
+     egy korábbi eladásé. Ne kérd a rögzítését, és ne sztornózd. Új számlát se
+     állíts ki, amíg a fejlesztő meg nem nézte: küldd el neki a rendelésszámot
+     és a talált bizonylat számát, és ő mondja meg, hogyan készüljön el ennek
+     a rendelésnek a számlája.
 3. Ha **nincs meg**: nézd meg a rendelésen az „… utolsó hibája” mezőt. Ha
    3-as hibakód vagy kulcshiba áll benne, a Számla Agent kulcs a hibás
    ([12](12-szamla-agent-kulcs-csere.md)); ilyenkor minden számla elbukik,
@@ -47,14 +60,19 @@ vissza. Ezért először:
 3. A rendelésszám mezőbe és a megjegyzésbe írd be a rendelésszámot.
 4. Vezesd fel az eltéréslistára ([08](08-havi-egyeztetes.md)): rendelésszám,
    kézi számla száma, miért kellett.
-5. Küldd el az üzemeltetőnek a rendelésszámot, a kézi számla sorszámát és a
-   teljesítés dátumát (mindhárom kötelező). Az üzemeltető így rögzíti a
-   rendelésen:
+5. Küldd el az üzemeltetőnek a rendelésszámot, a kézi számla sorszámát, a
+   teljesítés dátumát és a számla bruttó végösszegét (mind a négy kötelező).
+   Az üzemeltető így rögzíti a rendelésen:
    - próbafutás, ami semmit nem ír, csak megmutatja, mit változtatna, és ha
      valami nem stimmel, miért nem írna:
      `npm run record:manual-invoice -- --order KH-ÉÉÉÉ-NNNNNN --invoice <sorszám> --teljesites ÉÉÉÉ-HH-NN`.
-     Kiírja a rendelés végösszegét, a fizetés napját és a korábbi
-     visszatérítéseket is: ezeket vesse össze a kézi számlával;
+     Kiírja a rendelés végösszegét („végösszeg a megrendeléskor”), a fizetés
+     napját és a korábbi visszatérítéseket is. A végösszeget vesse össze a
+     tőled kapott bruttó végösszeggel, a fizetés napját a teljesítés
+     dátumával. Ha a végösszeg eltér, vagy a próbafutás azt írja, hogy a
+     rendelés korábbi hibaszövege éppen ezt a számot említi, ne írjon:
+     előbb az 1. pont 2. lépése szerint derüljön ki, hogy a számla ehhez a
+     rendeléshez tartozik-e;
    - ha a próbafutás rendben van, ugyanez `OWNER_MANUAL_INVOICE_CONFIRM=igen`
      beállítással. A rögzítés a Műveletnaplóba is bekerül.
 

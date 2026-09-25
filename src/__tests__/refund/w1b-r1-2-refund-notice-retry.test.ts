@@ -25,16 +25,19 @@ interface LoggedError {
 
 function spyLogger() {
   const errors: LoggedError[] = []
+  const warns: LoggedError[] = []
   const log: Logger = {
     debug: () => {},
     info: () => {},
-    warn: () => {},
+    warn: (message, context) => {
+      warns.push({ message, context: (context ?? {}) as Record<string, unknown> })
+    },
     error: (message, context) => {
       errors.push({ message, context: (context ?? {}) as Record<string, unknown> })
     },
     child: () => log,
   }
-  return { log, errors }
+  return { log, errors, warns }
 }
 
 function ok(id: string): Response {
@@ -69,7 +72,7 @@ async function send(
   })
   vi.stubGlobal('fetch', fetchMock)
   const { sendRefundNotice } = await import('../../lib/refund/refund-notice')
-  const { log, errors } = spyLogger()
+  const { log, errors, warns } = spyLogger()
   const audits: Array<{ action: string; after: Record<string, unknown> }> = []
   const payload = {
     find: async () => ({ docs: [], totalDocs: 0 }),
@@ -107,7 +110,7 @@ async function send(
   const keys = fetchMock.mock.calls.map(
     ([, init]) => (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
   )
-  return { calls: fetchMock.mock.calls.length, keys, errors, audits, sleeps }
+  return { calls: fetchMock.mock.calls.length, keys, errors, warns, audits, sleeps }
 }
 
 describe('a vevői értesítő átmeneti Resend-hiba után ugyanazzal a kulccsal újra megy', () => {
@@ -141,11 +144,21 @@ describe('a vevői értesítő átmeneti Resend-hiba után ugyanazzal a kulccsal
 })
 
 describe('a záró riasztás megkülönbözteti a biztos és a bizonytalan elmaradást', () => {
-  it('tartós időtúllépés: három kérés, bizonytalan riasztás a levél tárgyával, „NEM ment ki” nélkül', async () => {
-    const result = await send([timeout, timeout, timeout])
-    expect(result.calls).toBe(3)
-    expect(result.keys).toEqual([KEY, KEY, KEY])
-    expect(result.sleeps).toEqual([1000, 3000])
+  // A Resend-kérés időkorlátja 10 s (AbortSignal.timeout); a valódi
+  // időtúllépés ennél mindig később jön. Második kísérlet a 12 s-os keretbe
+  // már nem férne (a küldés ma a hívók zárja alatt fut), a levél pedig
+  // kimehetett: a riasztás a keresést kéri, nem a kézi küldést.
+  it('valódi időtúllépés (10 s után): egy kérés, újrapróbálás nélkül, bizonytalan riasztás a levél tárgyával, „NEM ment ki” nélkül', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const result = await send([
+      () => {
+        vi.setSystemTime(Date.now() + 10_001)
+        return timeout()
+      },
+    ])
+    expect(result.calls).toBe(1)
+    expect(result.keys).toEqual([KEY])
+    expect(result.sleeps).toEqual([])
     expect(result.errors).toHaveLength(1)
     const [alert] = result.errors
     expect(alert?.message).toMatch(
@@ -157,8 +170,31 @@ describe('a záró riasztás megkülönbözteti a biztos és a bizonytalan elmar
     expect(alert?.context).toMatchObject({
       alertCode: 'visszateritesi-ertesito-bizonytalan',
       idempotencyKey: KEY,
+      attempts: 1,
     })
     expect(result.audits).toEqual([])
+  })
+
+  // A szolgáltatói hibaszöveg a címzett címét is visszaadhatja (a Resend a
+  // válasz törzsét, az SMTP az RCPT-választ): a napló csak maszkolt címet kap.
+  it('a hibaszövegben álló vevői cím sem az újrapróbálás figyelmeztetésébe, sem a riasztásba nem kerül nyersen', async () => {
+    const upstream = () =>
+      new Response(
+        JSON.stringify({
+          name: 'application_error',
+          message: 'delivery to vevo@example.com failed',
+        }),
+        { status: 503 },
+      )
+    const result = await send([upstream, upstream])
+    expect(result.calls).toBe(2)
+    const retryWarns = result.warns.filter(({ message }) => message.includes('újrapróbálom'))
+    expect(retryWarns).toHaveLength(1)
+    expect(result.errors).toHaveLength(1)
+    for (const entry of [...retryWarns, ...result.errors]) {
+      expect(entry.context.error).toMatch(/HTTP 503.*v\*\*\*@example\.com/u)
+      expect(JSON.stringify(entry.context)).not.toContain('vevo@example.com')
+    }
   })
 
   it('végleges elutasítás (422): egy kérés, „NEM ment ki” riasztás a saját kódjával', async () => {
@@ -226,7 +262,9 @@ describe('a záró riasztás megkülönbözteti a biztos és a bizonytalan elmar
 
 describe('az időkeret az értesítő teljes idejét korlátozza', () => {
   // A szolgáltatói válasz és az injektált szünet is a (hamisított) órát
-  // viszi előre, így a mért idő az értesítő kezdetétől a végéig tart.
+  // viszi előre, így a mért idő az értesítő kezdetétől a végéig tart. A keret
+  // (12 s) a hívók zárja miatt szűk: újrapróbálás csak az 1 s-on belüli hiba
+  // után van, és a második kísérlet is legfeljebb 10 s (Resend-időkorlát).
   const after =
     (ms: number, answer: () => Response): (() => Response) =>
     () => {
@@ -234,22 +272,24 @@ describe('az időkeret az értesítő teljes idejét korlátozza', () => {
       return answer()
     }
   const upstream = () => new Response('upstream', { status: 503 })
-  const slowTimeout = () => {
+  const hangingTimeout = () => {
     vi.setSystemTime(Date.now() + 10_000)
     return timeout()
   }
   it.each([
-    // Törő B4: lassú 5xx-ek után a harmadik, 10 másodperces kísérlet már nem fér bele.
+    // A legrosszabb eset: az utolsó még újrapróbált pillanatban jött hiba után
+    // a második kérés a teljes 10 s-os korlátig lóg.
     [
-      'kétszer 5,5 s-os 503, majd egy időtúllépés',
-      [after(5_500, upstream), after(5_500, upstream), slowTimeout],
+      'gyors hiba 1 s-nál, majd a második kérés 10 s-ig lóg',
+      [after(1_000, upstream), hangingTimeout],
       2,
       12_000,
     ],
-    ['két 10 s-os időtúllépés', [slowTimeout, slowTimeout, slowTimeout], 2, 21_000],
-    ['gyors átmeneti hibák', [upstream, upstream, upstream], 3, 4_000],
+    ['a hiba 1 ms-mal később jön: nincs újrapróbálás', [after(1_001, upstream)], 1, 1_001],
+    ['lassú, 5,5 s-os 503', [after(5_500, upstream)], 1, 5_500],
+    ['két azonnali 503', [upstream, upstream], 2, 1_000],
   ] as const)(
-    '%s: a kísérletek száma és az értesítő ideje a 21 másodperces kereten belül',
+    '%s: a kísérletek száma és az értesítő ideje a 12 másodperces kereten belül',
     async (_label, answers, calls, elapsedMs) => {
       vi.useFakeTimers({ toFake: ['Date'] })
       const start = Date.now()
@@ -261,7 +301,8 @@ describe('az időkeret az értesítő teljes idejét korlátozza', () => {
       const elapsed = Date.now() - start
       expect(result.calls).toBe(calls)
       expect(elapsed).toBe(elapsedMs)
-      expect(elapsed).toBeLessThanOrEqual(21_000)
+      expect(elapsed).toBeLessThanOrEqual(12_000)
+      expect(result.sleeps).toEqual(calls === 2 ? [1_000] : [])
       expect(result.errors.map((entry) => entry.context.alertCode)).toEqual([
         'visszateritesi-ertesito-bizonytalan',
       ])
