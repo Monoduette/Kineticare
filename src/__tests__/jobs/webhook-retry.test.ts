@@ -2,6 +2,7 @@ import type { Payload, Where } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resetAlertThrottle } from '../../lib/alert-throttle'
+import { PAYMENT_STATE_MIN_INTERVAL_MS } from '../../lib/barion/state'
 import { createBarionCallbackProcessor } from '../../lib/barion-callback/process-callback'
 import {
   MAX_WEBHOOK_ATTEMPTS,
@@ -451,6 +452,20 @@ describe('webhook-retry handler — K8 per-esemény hibaizoláció', () => {
 })
 
 describe('webhook-retry handler — M6 terminális rejected ág (valódi Barion-processzor)', () => {
+  // A valódi fetchPaymentState PaymentId-nkénti kapuja (a-callback-8) modulszintű:
+  // ugyanarra a PAYMENT_ID-re a következő lekérdezés csak
+  // PAYMENT_STATE_MIN_INTERVAL_MS után megy ki. Csak a Date hamis, és a kapu
+  // idejét minden teszt előtt átugorjuk — a setTimeout valódi marad.
+  let clock = Date.now()
+  beforeEach(() => {
+    clock += 60_000
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(clock)
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('404 + PaymentNotFound az újrapróbáláson → rejected VÉGLEGES lezárás, 0 további újrapróba és Barion-hívás', async () => {
     const event = createEvent({ externalId: PAYMENT_ID, attempts: 1 })
     const { store, docs } = createWebhookStore([event])
@@ -559,6 +574,7 @@ describe('webhook-retry handler — M6 terminális rejected ág (valódi Barion-
       throw new Error('teszthiba: hiányzó esemény')
     }
     stored.updatedAt = hoursAgoIso(2)
+    vi.setSystemTime(Date.now() + PAYMENT_STATE_MIN_INTERVAL_MS)
     const second = await runHandler(store)
     expect(second.output).toMatchObject({ retried: 1, failed: 1 })
     expect(fetchMock).toHaveBeenCalledTimes(2)
