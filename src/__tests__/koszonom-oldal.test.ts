@@ -15,7 +15,11 @@ import {
 } from '../app/(frontend)/fizetes/koszonom/payment-state-check'
 import { webhookRetryTask } from '../jobs/tasks/webhook-retry'
 import { resetAlertThrottle } from '../lib/alert-throttle'
-import { createBarionCallbackProcessor } from '../lib/barion-callback/process-callback'
+import { PAYMENT_STATE_MIN_INTERVAL_MS } from '../lib/barion/state'
+import {
+  callbackLockKey,
+  createBarionCallbackProcessor,
+} from '../lib/barion-callback/process-callback'
 import {
   MAX_WEBHOOK_ATTEMPTS,
   registerWebhookProcessor,
@@ -55,6 +59,32 @@ const afterSpy = vi.hoisted(() => ({ after: vi.fn<(task: () => Promise<void>) =>
 vi.mock('next/server', async (importOriginal) => {
   const actual = await importOriginal<typeof import('next/server')>()
   return { ...actual, after: afterSpy.after }
+})
+
+/**
+ * Az `onOrderPaid` (e-mail + számla-job) kém: a paid-ágon azt méri, hogy a
+ * mellékhatás a callback-zár elengedése UTÁN fut. Alapból a valódi
+ * implementáció fut (a többi teszt nem ér paid-ágat).
+ */
+const orderPaidSpy = vi.hoisted(() => ({
+  onOrderPaid: vi.fn<(deps: unknown) => Promise<void>>(),
+}))
+vi.mock('../lib/order-paid', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/order-paid')>()
+  orderPaidSpy.onOrderPaid.mockImplementation(
+    actual.onOrderPaid as unknown as (deps: unknown) => Promise<void>,
+  )
+  return { ...actual, onOrderPaid: orderPaidSpy.onOrderPaid }
+})
+
+/**
+ * A paid-ág a saját (admin) visszatérítési szándékot is megnézi; a fixtúra
+ * Payload-példányán nincs SQL-kapcsolat, ezért itt nincs aktív szándék. A
+ * szándék-kezelés gazdája a barion-callback.test.ts.
+ */
+vi.mock('../lib/refund/intent-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/refund/intent-store')>()
+  return { ...actual, loadActiveRefundIntent: async () => null }
 })
 
 /** A visszaadott elemfából kiszedi a ThankYouView elemet. */
@@ -830,35 +860,28 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
   }
 
   /**
-   * Sorosító advisory-zár (a pg_advisory_xact_lock viselkedése): a hívások
-   * egymás után futnak.
-   */
-  function serialLock() {
-    let tail: Promise<unknown> = Promise.resolve()
-    return {
-      transaction: <T>(fn: (tx: { execute: () => Promise<void> }) => Promise<T>): Promise<T> => {
-        const run = tail.then(() => fn({ execute: async () => undefined }))
-        tail = run.catch(() => undefined)
-        return run
-      },
-    }
-  }
-
-  /**
-   * Zár, amelynek megszerzése ELŐTT (a várakozás alatt) egyszer lefut egy
+   * A session-szintű callback-zár kapcsolata (`payload.db.pool`, a
+   * `withSessionAdvisoryLock` felülete). Minden zár-lépést a közös
+   * eseménynaplóba ír, így a GetState / zár / mellékhatás SORRENDJE mérhető;
+   * az `onAcquire` a zár megszerzése ELŐTT (a várakozás alatt) egyszer lefutó
    * idegen futás hatása (callback, retry-job, másik replika).
    */
-  function lockAfterForeignRun(foreignRun: () => void) {
-    let ran = false
-    return {
-      transaction: <T>(fn: (tx: { execute: () => Promise<void> }) => Promise<T>): Promise<T> => {
-        if (!ran) {
-          ran = true
-          foreignRun()
+  function sessionLockPool(events: string[], onAcquire?: () => void) {
+    const client = {
+      query: vi.fn(async (text: string, values?: unknown[]) => {
+        if (text.includes('pg_try_advisory_lock')) {
+          onAcquire?.()
+          events.push(`lock:${String(values?.[0])}`)
+          return { rows: [{ locked: true }] }
         }
-        return fn({ execute: async () => undefined })
-      },
+        events.push(`unlock:${String(values?.[0])}`)
+        return { rows: [{ unlocked: true }] }
+      }),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+      release: vi.fn(),
     }
+    return { pool: { connect: async () => client }, client }
   }
 
   function barionState(status: string): Response {
@@ -877,6 +900,24 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
   }
 
   const riasztasok = () => alerts.filter((a) => a.msg.startsWith('RIASZTÁS')).map((a) => a.msg)
+
+  /**
+   * Az ellenőrzés futtatása hamis órával. A Barion PaymentId-nkénti kapuja
+   * (PAYMENT_STATE_MIN_INTERVAL_MS, lib/barion/state.ts) egy ismételt
+   * GetState előtt valós időt várna; ezt átlépjük, így a teszt nem a valós
+   * időn múlik, és egy fölösleges második GetState a hívásszámon látszik, nem
+   * időtúllépésen. A hűtés a `now` bemenetből számol, arra az óra nincs hatással.
+   */
+  async function runPastGate(input: Parameters<typeof runThankYouPaymentStateCheck>[0]) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const pending = runThankYouPaymentStateCheck(input)
+      await vi.advanceTimersByTimeAsync(2 * PAYMENT_STATE_MIN_INTERVAL_MS)
+      return await pending
+    } finally {
+      vi.useRealTimers()
+    }
+  }
 
   it('a lap rendelésszám mellett a válasz UTÁN ütemez egy ellenőrzést, rendelésszám nélkül nem', async () => {
     await KoszonjukPage({ searchParams: Promise.resolve({ order: ORDER_NUMBER }) })
@@ -958,14 +999,29 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
     expect(riasztasok()).toEqual([])
   })
 
-  it('végleges (megszakított) fizetésnél a callback-feldolgozón át lezárja a rendelést és az eseményt', async () => {
-    fetchMock.mockImplementation(async () => barionState('Canceled'))
-    const { payload, update } = fakePayload(order())
+  /**
+   * HARVEST-REGRESSZIÓ (lead, w1-barion-platform-rev2-vel összefésülve): a
+   * végleges ágon a feldolgozó SAJÁT GetState-je a második hívás volt
+   * ugyanarra a PaymentId-re; a platform PaymentId-nkénti kapuja (5,5 s) ezt
+   * a callback-zár alatt várakoztatta (a 6. tanulság mintája). Most az
+   * előzetes állapot megy át a feldolgozónak: egy GetState, a zár ELŐTT.
+   */
+  it('végleges (megszakított) fizetésnél a callback-feldolgozón át lezárja a rendelést és az eseményt, egyetlen GetState-tel a zár előtt', async () => {
+    const events: string[] = []
+    fetchMock.mockImplementation(async () => {
+      events.push('getstate')
+      return barionState('Canceled')
+    })
+    const { pool } = sessionLockPool(events)
+    const { payload, update } = fakePayload(order(), { db: { pool } })
     const { store, docs } = memoryStore()
 
-    expect(
-      await runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
-    ).toBe('processed')
+    expect(await runPastGate({ payload, orderNumber: ORDER_NUMBER, store, now: NOW })).toBe(
+      'processed',
+    )
+
+    const key = callbackLockKey(STORED_PAYMENT_ID)
+    expect(events).toEqual(['getstate', `lock:${key}`, `unlock:${key}`])
 
     expect(docs).toHaveLength(1)
     expect(docs[0]).toMatchObject({
@@ -979,6 +1035,33 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
         data: expect.objectContaining({ status: 'cancelled' }),
       }),
     )
+  })
+
+  /**
+   * a-callback-7 a köszönőoldal útján: a paid-átmenet mellékhatása
+   * (onOrderPaid: visszaigazoló e-mail, számla-job) a callback-zár
+   * elengedése UTÁN fut, nem a zár alatt (a Resend-hívás ne tartsa a zárat).
+   */
+  it('sikeres fizetésnél az onOrderPaid a callback-zár elengedése UTÁN fut', async () => {
+    const events: string[] = []
+    fetchMock.mockImplementation(async () => {
+      events.push('getstate')
+      return barionState('Succeeded')
+    })
+    orderPaidSpy.onOrderPaid.mockImplementationOnce(async () => {
+      events.push('onOrderPaid')
+    })
+    const { pool } = sessionLockPool(events)
+    const { payload } = fakePayload(order({ customer: 7 }), { db: { pool } })
+    const { store, docs } = memoryStore()
+
+    expect(await runPastGate({ payload, orderNumber: ORDER_NUMBER, store, now: NOW })).toBe(
+      'processed',
+    )
+
+    const key = callbackLockKey(STORED_PAYMENT_ID)
+    expect(events).toEqual(['getstate', `lock:${key}`, `unlock:${key}`, 'onOrderPaid'])
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
   })
 
   it.each([
@@ -1061,7 +1144,7 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
    */
   it('8 párhuzamos letöltés egyetlen ellenőrzést indít: nincs GetState-vihar, esemény-kísérlet és RIASZTÁS', async () => {
     fetchMock.mockImplementation(async () => barionState('Started'))
-    const { payload } = fakePayload(order(), { db: { drizzle: serialLock() } })
+    const { payload } = fakePayload(order())
     const { store, docs } = memoryStore()
 
     const outcomes = await Promise.all(
@@ -1076,12 +1159,14 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
     expect(riasztasok()).toEqual([])
 
     // A hűtés lejár: egy későbbi visszatérés újra ellenőriz.
-    await runThankYouPaymentStateCheck({
-      payload,
-      orderNumber: ORDER_NUMBER,
-      store,
-      now: NOW + THANK_YOU_STATE_CHECK_COOLDOWN_MS,
-    })
+    expect(
+      await runPastGate({
+        payload,
+        orderNumber: ORDER_NUMBER,
+        store,
+        now: NOW + THANK_YOU_STATE_CHECK_COOLDOWN_MS,
+      }),
+    ).toBe('still-pending')
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
@@ -1095,8 +1180,7 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
     fetchMock.mockImplementation(async () => barionState('Started'))
     const { payload } = fakePayload(order())
     const { store } = memoryStore()
-    const run = (now: number) =>
-      runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now })
+    const run = (now: number) => runPastGate({ payload, orderNumber: ORDER_NUMBER, store, now })
 
     expect(await run(NOW)).toBe('still-pending')
     expect(await run(NOW - 60_000)).toBe('still-pending')
@@ -1120,16 +1204,23 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
         attempts: 1,
       } as unknown as WebhookEventDoc,
     ])
-    const lock = lockAfterForeignRun(() => {
-      docs[0].attempts = THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS
+    const events: string[] = []
+    let foreignRan = false
+    const { pool } = sessionLockPool(events, () => {
+      if (!foreignRan) {
+        foreignRan = true
+        docs[0].attempts = THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS
+      }
     })
-    const { payload, update } = fakePayload(order(), { db: { drizzle: lock } })
+    const { payload, update } = fakePayload(order(), { db: { pool } })
 
-    expect(
-      await runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
-    ).toBe('attempts-reserved')
+    expect(await runPastGate({ payload, orderNumber: ORDER_NUMBER, store, now: NOW })).toBe(
+      'attempts-reserved',
+    )
     expect(docs[0].attempts).toBe(THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS)
     expect(update).not.toHaveBeenCalled()
+    const key = callbackLockKey(STORED_PAYMENT_ID)
+    expect(events).toEqual([`lock:${key}`, `unlock:${key}`])
   })
 
   it('a Barion hibája nem dob a hívóra (a válasz után fut), a kimenetel „failed", és eseményt sem ír', async () => {

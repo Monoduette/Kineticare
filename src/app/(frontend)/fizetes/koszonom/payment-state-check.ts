@@ -1,15 +1,18 @@
 import { after } from 'next/server'
 import { getPayload, type Payload } from 'payload'
 
-import { withAdvisoryLock } from '@/lib/advisory-lock'
+import { withSessionAdvisoryLock } from '@/lib/advisory-lock'
 import { fetchPaymentState, mapBarionPaymentStatus } from '@/lib/barion'
 import { canonicalBarionGuid } from '@/lib/barion/guid'
-import { createBarionCallbackProcessor } from '@/lib/barion-callback/process-callback'
-import { callbackLockKey } from '@/lib/barion-callback/route-handler'
+import {
+  callbackLockKey,
+  createBarionCallbackProcessor,
+} from '@/lib/barion-callback/process-callback'
 import {
   isTerminallyProcessed,
   processWebhook,
   webhookEventStore,
+  type ProcessWebhookOutcome,
   type WebhookEventDoc,
   type WebhookEventStore,
 } from '@/lib/idempotency'
@@ -33,12 +36,20 @@ import config from '../../../../payload.config'
  *
  * HOGYAN. A lap szerveroldali renderje a válasz UTÁN (`after`) egyszer
  * lekéri a fizetés állapotát, és ha az VÉGLEGES, elindítja ugyanazt a
- * feldolgozót, amit a callback-út és a webhook-retry is futtat: callback-zár
- * (`callbackLockKey`) → `processWebhook` → `createBarionCallbackProcessor`
- * (GetState + a közös állapotgép, soha nem a plugin `confirmOrder`-je). A
+ * feldolgozót, amit a callback-út és a webhook-retry is futtat, ugyanabban a
+ * sorrendben, mint a callback-út futtatója (`runBarionCallbackEvent`,
+ * a-callback-7: kimenő HTTP nem tart adatbázis-zárat):
+ *  1. GetState a zár ELŐTT (az alábbi előzetes lekérés);
+ *  2. session-szintű callback-zár (`withSessionAdvisoryLock`,
+ *     `callbackLockKey`; dedikált kapcsolat, tétlen tranzakció nélkül) →
+ *     `processWebhook` → `createBarionCallbackProcessor` az ELŐRE LEKÉRT
+ *     állapottal (`prefetchedState`): a zár alatt nincs második GetState;
+ *  3. a zár elengedése UTÁN a paid-mellékhatás (`onOrderPaid`: e-mail,
+ *     számla-job; `deferPaidSideEffect`).
+ * A közös állapotgép fut, soha nem a plugin `confirmOrder`-je. A
  * Barion-hívások PaymentId-nkénti fojtása a `fetchPaymentState` saját kapuja
- * (w1-barion-platform); az alábbi hűtés ettől független: azt korlátozza,
- * hányszor indíthatja a LAP ezt a munkát.
+ * (5,5 s, w1-barion-platform); az alábbi hűtés ettől független: azt
+ * korlátozza, hányszor indíthatja a LAP ezt a munkát.
  *
  * AMIBEN NEM BÍZUNK:
  *  - a URL-ben érkező `paymentId`-ben SOHA: csak a rendelésszám választja ki
@@ -77,10 +88,12 @@ import config from '../../../../payload.config'
  *    várakozás közben elavulhat (egy másik replika vagy a callback közben
  *    feldolgozta, illetve kísérletet használt).
  *
- * A végleges ágon a feldolgozó saját GetState-je a második hívás ugyanarra a
- * PaymentId-re. A PaymentId-nkénti Barion-fojtás (5 s) a `fetchPaymentState`
- * kapujában él (w1-barion-platform); a harvestnél ez az ág a platform
- * `runBarionCallbackEvent`-jére vált, az előzetes állapotot átadva.
+ * MIÉRT NEM MÁSODIK GetState. A PaymentId-nkénti kapu a második hívást
+ * 5,5 s-ig várakoztatná; a zár alatt ez a callback-zárat és egy
+ * pool-kapcsolatot tartana, és a paid-levél is ezt várná (a-callback-7, 6.
+ * tanulság). Egy elavult előzetes állapot nem árt: az állapotgép monoton, a
+ * lezárt eseményt a `processWebhook` nem futtatja újra, és a lap csak
+ * VÉGLEGES állapotot ad tovább.
  */
 
 /** A visszatérés-ellenőrzés csak ennél fiatalabb rendelésre fut (a fizetési ablak 30 perc). */
@@ -235,31 +248,52 @@ export async function runThankYouPaymentStateCheck(
     const paymentLog = log.child({ paymentId })
     // Előzetes GetState, zár és esemény-írás nélkül: függő fizetésnél a lap
     // nem nyúl a webhook-eseményekhez (lásd a fejkomment KORLÁTOK pontját).
-    const probe = await fetchPaymentState(paymentId)
+    // Hibája a külső catch-be fut: esemény nem íródik, a mentőháló a
+    // callback, a retry-job és az order-poll.
+    const probe = await fetchPaymentState(paymentId, undefined, { logger: paymentLog })
     if (mapBarionPaymentStatus(probe.Status) === 'payment_pending') {
       return 'still-pending'
     }
 
-    const outcome = await withAdvisoryLock(
-      input.payload,
-      callbackLockKey(paymentId),
-      async () => {
-        // Az őr a ZÁR ALATT újra: a zárra várva egy másik futás (callback,
-        // retry-job, másik replika) lezárhatta az eseményt vagy kísérletet
-        // használhatott.
-        const lockedBlock = eventBlocksCheck(await findBarionEvent(store, paymentId))
-        if (lockedBlock !== null) {
-          return lockedBlock
-        }
-        return processWebhook({
-          store,
-          provider: 'barion',
-          externalId: paymentId,
-          handler: createBarionCallbackProcessor({ payload: input.payload, store }),
-        })
-      },
-      paymentLog,
-    )
+    // A friss paid-átmenet mellékhatása (onOrderPaid) a zár elengedése UTÁN
+    // fut, a feldolgozás további kimenetelétől függetlenül (egy újrapróbálás
+    // már paid rendelést látna, és nem indítaná újra); runBarionCallbackEvent.
+    const deferred: { paidSideEffect: (() => Promise<void>) | null } = { paidSideEffect: null }
+    let outcome: ProcessWebhookOutcome | 'already-processed' | 'attempts-reserved'
+    try {
+      outcome = await withSessionAdvisoryLock(
+        input.payload,
+        callbackLockKey(paymentId),
+        async () => {
+          // Az őr a ZÁR ALATT újra: a zárra várva egy másik futás (callback,
+          // retry-job, másik replika) lezárhatta az eseményt vagy kísérletet
+          // használhatott.
+          const lockedBlock = eventBlocksCheck(await findBarionEvent(store, paymentId))
+          if (lockedBlock !== null) {
+            return lockedBlock
+          }
+          return processWebhook({
+            store,
+            provider: 'barion',
+            externalId: paymentId,
+            handler: createBarionCallbackProcessor({
+              payload: input.payload,
+              store,
+              logger: paymentLog,
+              prefetchedState: { ok: true, state: probe },
+              deferPaidSideEffect: (run) => {
+                deferred.paidSideEffect = run
+              },
+            }),
+          })
+        },
+        paymentLog,
+      )
+    } finally {
+      if (deferred.paidSideEffect !== null) {
+        await deferred.paidSideEffect()
+      }
+    }
     if (typeof outcome === 'string') {
       return outcome
     }
