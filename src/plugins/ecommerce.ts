@@ -1661,11 +1661,24 @@ function isRequestTransactionAdapter(value: unknown): value is RequestTransactio
 }
 
 /**
- * rev3: a kurzus fő sorának zárolása (`SELECT … FOR UPDATE`) a kérés saját
- * tranzakciójában; a zár a tranzakció végéig, tehát a mentés
+ * rev3: a kurzus fő sorának zárolása (`SELECT … FOR NO KEY UPDATE`) a kérés
+ * saját tranzakciójában; a zár a tranzakció végéig, tehát a mentés
  * `db.updateOne`-jáig és commitjáig tart. A kapcsolat `statement_timeout`-ja
  * (payload.config.ts) korlátozza a várakozást: egy beragadt tranzakció mögött
  * a mentés hibával leáll, és nem ír (CLAUDE.md 6. tanulság).
+ *
+ * PR #305 rev3 (breaker BRK-L1, BRK-L3): a zár erőssége `NO KEY UPDATE`, nem
+ * `FOR UPDATE`. Két író így is kizárja egymást (a `NO KEY UPDATE` önmagával,
+ * a sima UPDATE-tel, a DELETE-tel és a Payload nem piszkozat mentésének
+ * `INSERT … ON CONFLICT (id) DO UPDATE SET "id" = …` upsertjével is ütközik),
+ * de nem ütközik a `FOR KEY SHARE` zárral, amelyet a Postgres a kurzusra
+ * hivatkozó sor beszúrásakor (idegen kulcs) vesz: vásárlás (users_rels),
+ * kosár- és rendelés-tétel, haladás, menü, a „Kapcsolódó kurzusok” verziósorai.
+ * `FOR UPDATE` mellett egy ilyen nyitott tranzakció megállította a kurzus
+ * autosave-jét (és fordítva), két egymásra „Kapcsolódó kurzus”-ként hivatkozó
+ * kurzus egyidejű autosave-je pedig holtpontba került (mérve valódi Payload +
+ * Postgres mellett).
+ * https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS
  *
  * Visszatérés: `false`, ha nincs kérés-tranzakció vagy az adapter nem futtat
  * SQL-t (a hívó dönti el, mi legyen ilyenkor). Az SQL-hiba nem nyelhető el: a
@@ -1684,7 +1697,7 @@ async function lockProductRow(req: PayloadRequest, id: number | string): Promise
   }
   await adapter.execute({
     db: transaction,
-    sql: sql`SELECT id FROM "products" WHERE id = ${id} FOR UPDATE`,
+    sql: sql`SELECT id FROM "products" WHERE id = ${id} FOR NO KEY UPDATE`,
   })
   return true
 }
@@ -1712,13 +1725,16 @@ async function lockProductRow(req: PayloadRequest, id: number | string): Promise
  *
  * Minden `update`-et zárol, a piszkozat-mentést is: az a fő sort nem írja, de
  * a zár ára egy rövid várakozás, és így nincs olyan ág, amelyről bizonyítani
- * kellene, hogy nem olvas mércét. Új zársorrendet nem hoz: a nem piszkozat
- * mentés `db.updateOne`-ja ugyanezt a sort eddig is zárolta, csak később, és
- * a zár és az írás között más sort nem zárol. A piszkozat-mentés a
- * verziósorok előtt most a fő sort is zárolja; a kurzus törlése fordítva
- * halad (verziók, majd a fő sor), ezért egy egyidejű törlés és autosave
- * holtpontba kerülhet. Ezt a Postgres felismeri, és az egyik műveletet
- * hibával leállítja; a közzététel és a törlés között ez eddig is így volt.
+ * kellene, hogy nem olvas mércét. A nem piszkozat mentés `db.updateOne`-ja
+ * (upsert, `FOR UPDATE` erősségű sorzár) ugyanezt a sort eddig is zárolta,
+ * csak később; a korábbi, gyengébb zár a mentők sorrendjét nem változtatja.
+ * A piszkozat-mentés eddig a fő sort nem zárolta; most a verziósorok előtt a
+ * fő sort is zárolja, de `NO KEY UPDATE`-tel, így a más kurzusokra hivatkozó
+ * verziósorok beszúrása (`FOR KEY SHARE`) nem akad meg rajta (lásd
+ * lockProductRow). A kurzus törlése fordítva halad (verziók, majd a fő sor),
+ * ezért egy egyidejű törlés és autosave holtpontba kerülhet. Ezt a Postgres
+ * felismeri, és az egyik műveletet hibával leállítja; a közzététel és a
+ * törlés között ez eddig is így volt.
  * Kérés-tranzakció nélkül a zár nem tartana a mentésig: ilyenkor a mentés zár
  * nélkül megy tovább (a korábbi viselkedés), a napló-lánc ellenőrzése a
  * naplózott párhuzamos írást így is felismeri.

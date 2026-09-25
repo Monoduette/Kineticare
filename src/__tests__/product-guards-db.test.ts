@@ -784,7 +784,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     // visszavonása a zárolás és a visszaállítás írása között commitolna, és a
     // visszaállítás `_status: 'published'`-je a kivett pipa mellé kerülne
     // (élő, ingyenes kurzus). A visszaállítást a fő sor írása ELŐTT tartjuk
-    // fel: ekkor a sort csak a hook `SELECT … FOR UPDATE`-je zárolhatja, tehát
+    // fel: ekkor a sort csak a hook `SELECT … FOR NO KEY UPDATE`-je zárolhatja, tehát
     // a visszavonás csak arra várhat.
     const pg = await import('pg')
     const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
@@ -1466,4 +1466,93 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     expect(await save(id, staff, { _status: 'published' })).toBe('OK')
     expect((await mainRow(id))._status).toBe('published')
   }, 120_000)
+
+  /**
+   * PR #305 rev3 (breaker BRK-L1): a mentés sorzárja nem ütközhet a kurzusra
+   * hivatkozó sor beszúrásának idegenkulcs-zárjával (`FOR KEY SHARE`). Itt egy
+   * vásárlás (users_rels.products_id) nyitott tranzakciója tartja; ugyanígy
+   * zárol a kosár- és rendelés-tétel, a haladás és a menü. `FOR UPDATE`
+   * erősségű zárnál a tulajdonos autosave-je e tranzakció mögött várt (egy
+   * beragadt tranzakció mögött a `statement_timeout`-ig), és fordítva: a
+   * vásárlás és a pénztár beszúrása várt minden autosave mögött.
+   */
+  it('PR #305 rev3 (BRK-L1): a kurzusra hivatkozó, nyitott vásárlás-beszúrás nem állítja meg a tulajdonos autosave-jét', async () => {
+    const pg = await import('pg')
+    const holder = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await holder.connect()
+    await observer.connect()
+    try {
+      const id = await createPublished('l1-autosave')
+      const holderPid = await backendPid(holder)
+      await holder.query('BEGIN')
+      await holder.query(
+        `INSERT INTO users_rels ("order", parent_id, path, products_id) VALUES (99, $1, 'purchases', $2)`,
+        [staff.id, id],
+      )
+      let done = false
+      const saving = autosave(id, owner, { shortDescription: 'autosave l1' }).finally(() => {
+        done = true
+      })
+      const blocked = await untilWaitersBehind(observer, holderPid, 1, () => done)
+      await holder.query('ROLLBACK')
+      await saving
+      expect(blocked, 'az autosave a vásárlás idegenkulcs-zárja mögött várt').toBe(false)
+    } finally {
+      await holder.query('ROLLBACK').catch(() => undefined)
+      await holder.end()
+      await observer.end()
+    }
+  }, 60_000)
+
+  /**
+   * PR #305 rev3 (breaker BRK-L3): két kurzus, amelyek egymást „Kapcsolódó
+   * kurzus”-ként sorolják fel (a szokásos keresztértékesítés), egyszerre
+   * autosave-el. Mindkét mentés a saját fő sorát zárolja, majd a verzió
+   * kapcsolat-sorait szúrja be a másik kurzusra (`_products_v_rels`,
+   * idegenkulcs-zár a másik fő soron). `FOR UPDATE` erősségű zárnál ez
+   * kölcsönös várakozás: a Postgres az egyiket `deadlock detected`-del
+   * leállította, a tulajdonos autosave-je elbukott. A sorrendet egy külső
+   * kapcsolat táblazára rögzíti: mindkét mentés a kapcsolat-soroknál áll be.
+   */
+  it('PR #305 rev3 (BRK-L3): két, egymásra „Kapcsolódó kurzus”-ként hivatkozó kurzus egyidejű autosave-je nem kerül holtpontba', async () => {
+    const pg = await import('pg')
+    const holder = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await holder.connect()
+    await observer.connect()
+    try {
+      const p = await createPublished('l3-p')
+      const q = await createPublished('l3-q')
+      await payload.update({
+        collection: 'products',
+        id: p,
+        data: { relatedProducts: [q] },
+        overrideAccess: true,
+      })
+      await payload.update({
+        collection: 'products',
+        id: q,
+        data: { relatedProducts: [p] },
+        overrideAccess: true,
+      })
+      const holderPid = await backendPid(holder)
+      await holder.query('BEGIN')
+      await holder.query('LOCK TABLE _products_v_rels IN SHARE MODE')
+      const autosaveOutcome = (id: number) =>
+        autosave(id, owner, { shortDescription: `autosave ${id}` }).then(
+          () => 'OK',
+          (error: unknown) => (error instanceof Error ? error.message : String(error)),
+        )
+      const first = autosaveOutcome(p)
+      const second = autosaveOutcome(q)
+      expect(await untilWaitersBehind(observer, holderPid, 2)).toBe(true)
+      await holder.query('COMMIT')
+      expect([await first, await second]).toEqual(['OK', 'OK'])
+    } finally {
+      await holder.query('ROLLBACK').catch(() => undefined)
+      await holder.end()
+      await observer.end()
+    }
+  }, 60_000)
 })

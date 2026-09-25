@@ -76,11 +76,12 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     // r2-termekor (rev1, rev2): a validálás nélküli írást és a munkatárs
     // verzió-visszaállítását piszkozattá tevő hookok a gyáriak ELÉ kerülnek
     // (beforeChange), illetve mögéjük (beforeOperation). PR #305 rev2-b: a
-    // fő sor zárolása a lista VÉGÉN áll, közvetlenül az audit plugin
-    // hozzáfűzött „before” olvasása előtt.
+    // fő sor zárolása a kollekció listájában áll, tehát az audit plugin
+    // később hozzáfűzött „before” olvasása előtt fut (a zár hatását a
+    // product-guards-db X1 és B1 tesztje méri).
     expect(products.hooks?.beforeChange).toHaveLength(4)
     expect(products.hooks?.beforeChange?.slice(2, 3)).toEqual(hooks.beforeChange)
-    expect(products.hooks?.beforeChange?.[3]).toBe(productUpdateLocksRow)
+    expect(products.hooks?.beforeChange).toContain(productUpdateLocksRow)
     expect(products.hooks?.beforeOperation).toHaveLength(2)
     expect(products.hooks?.beforeOperation?.slice(0, 1)).toEqual(hooks.beforeOperation)
     expect(hooks.beforeChange).toEqual([beforeChange])
