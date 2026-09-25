@@ -112,11 +112,13 @@ A teendő riasztás-levél nélkül is ez. Ha a levél nem jött meg (például 
 is megmutatja, és a PostHog `kc_alert` eseménye is, ha a PostHog a 2. pont
 szerint be van állítva.
 
-Okonként naponta legfeljebb egy ilyen riasztás-levél jön. Ha a levél nem ment
-ki (például mert a levélküldő szolgáltatás épp hibázott), a rendszer a keret
-következő számolásakor újra küldi: az Irányítópult megnyitásakor vagy a napi
-összesítő következő próbájánál. Egy új deploy után az első számolás újra
-jelez.
+Okonként naponta legfeljebb egy ilyen riasztás-levél jön. Ha a levél átmeneti
+hiba miatt nem ment ki (például mert a levélküldő szolgáltatás épp nem volt
+elérhető), a rendszer a keret következő számolásakor újra küldi: az
+Irányítópult megnyitásakor vagy a napi összesítő következő próbájánál.
+Végleges hibánál (például hibás levélküldő-beállításnál) aznap nem próbálja
+újra, mert az ismétlés ugyanúgy elbukna. Egy új deploy után, így a beállítás
+javítása után is, az első számolás újra jelez.
 
 A régebbi riasztások kódja az üzenet első mondatrészéből képződik (ékezet
 nélkül, kötőjellel). A leggyakoribbak:

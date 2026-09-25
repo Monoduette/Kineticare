@@ -48,10 +48,15 @@
  * egyszer), a következő előfordulás csak annak lejártakor érne ide, addig a
  * kiesett levél nem pótlódna. Az ilyen forrás a riasztás contextjében
  * megadhatja a saját fojtási kulcsát (`ALERT_SOURCE_THROTTLE_FIELD`), és a
- * csatorna ugyanezekben az esetekben azt is feloldja. Kézbesítés után, a
- * kódfojtás által elnyelt ismétlésnél, noop-szolgáltatónál és címzett
- * nélkül nem oldja fel: az elnyelt ismétlést a következő levél megszámolja,
- * az utóbbi kettőn pedig csak redeploy segít. A forrás saját kulcsa a
+ * csatorna azt is feloldja, ha a levél a plafon miatt vár, vagy újrapróbálható
+ * hibával nem ment ki (`shouldRetrySend`: szolgáltatói 429 vagy 5xx, hálózati
+ * hiba, dobás). Kézbesítés után, a kódfojtás által elnyelt ismétlésnél,
+ * noop-szolgáltatónál, címzett nélkül és végleges levélhibánál (Codex, PR
+ * #306) nem oldja fel: az elnyelt ismétlést a következő levél megszámolja;
+ * bizonytalan kézbesítésnél a levél célba érhetett; a többi esetben az
+ * ismétlés ugyanúgy elbukna, és minden előfordulás a levélplafont fogyasztaná.
+ * Ezeken a beállítás javítása és a redeploy segít, az pedig friss fojtással
+ * indul. A forrás saját kulcsa a
  * levél-fojtás identitásának is része (Devin, PR #306): így egy kód alatti két
  * külön ok (az AAM hiányzó összege és lapozási korlátja) egy órán belül is
  * külön levelet kap, és egyik sem vár egy napot a pótlásra.
@@ -61,6 +66,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { releaseThrottledAlert, shouldEmitThrottledAlert } from '../alert-throttle'
 import type { SendMailInput } from '../email'
+import { shouldRetrySend } from '../email/retry'
 import type { SendResult } from '../email/types'
 import type { PostHogCapture } from '../feedback/posthog-capture'
 import type { AlertLogEntry, AlertSink, Logger } from '../logger'
@@ -189,9 +195,9 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
   }
 
   /**
-   * A levél nem ment ki, vagy a plafon miatt vár: a kód fojtása, és ha a
-   * forrás megadta, a forrás saját fojtása is feloldódik, így a következő
-   * előfordulás újra próbálkozik (lásd a fájl elejét).
+   * A levél nem ment ki, vagy a plafon miatt vár: a kód fojtása feloldódik, és
+   * ha a hívó átadja, a forrás saját fojtása is, így a következő előfordulás
+   * újra próbálkozik (lásd a fájl elejét).
    */
   function releaseForRetry(throttleKey: string, sourceThrottleKey: string | null): void {
     releaseThrottledAlert(throttleKey)
@@ -280,10 +286,14 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
       return
     }
     if (!result.ok) {
-      // A kiesett levél ne némítsa el a kódot egy órára, és a forrás saját
-      // fojtása se napokra: a következő előfordulás újra próbálkozik (a
-      // vihar-plafon továbbra is véd).
-      releaseForRetry(throttleKey, sourceThrottleKey)
+      // A kiesett levél ne némítsa el a kódot egy órára: a következő
+      // előfordulás újra próbálkozik (a vihar-plafon továbbra is véd). A forrás
+      // saját, akár napos fojtása csak újrapróbálható hibánál oldódik fel
+      // (Codex, PR #306): végleges hibánál (érvénytelen beállítás, 4xx,
+      // bizonytalan kézbesítés) minden számolás újra riasztana és újra
+      // próbálkozna, a levélplafont fogyasztva, holott az ismétlés ugyanúgy
+      // elbukna, vagy a levél már célba érhetett.
+      releaseForRetry(throttleKey, shouldRetrySend(result) ? sourceThrottleKey : null)
       suppressedByIdentity.set(mailIdentity, suppressed)
       log.warn('riasztás: a riasztás-levél nem ment ki', {
         alertCode: summary.alertCode,

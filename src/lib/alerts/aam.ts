@@ -328,12 +328,13 @@ export const AAM_INCOMPLETE_ALERT_CODE = 'aam-keret-nem-teljes'
  * sokszorozzák (PR #305, devin5).
  *
  * A fojtás a kézbesítést nem nyelheti el (breaker BRK-1, devin5 rev1): ha a
- * riasztás-levél nem ment ki (szolgáltatói hiba) vagy a vihar-plafon miatt
- * vár, a riasztás-csatorna ezt a fojtást is feloldja
+ * riasztás-levél átmeneti szolgáltatói hibával nem ment ki, vagy a
+ * vihar-plafon miatt vár, a riasztás-csatorna ezt a fojtást is feloldja
  * (`ALERT_SOURCE_THROTTLE_FIELD`, src/lib/alerts/sink.ts), így a következő
- * számolás újra riaszt. Címzett vagy e-mail-szolgáltató nélkül nincs
- * feloldás: azt csak redeploy javítja, az pedig friss fojtással indul. A
- * „nem számolható” sor ezért a levél nélkül is megmondja a teendőt
+ * számolás újra riaszt. Címzett vagy e-mail-szolgáltató nélkül, és végleges
+ * levélhibánál (Codex, PR #306) nincs feloldás: ezt csak a beállítás
+ * javítása és a redeploy oldja meg, az pedig friss fojtással indul. A „nem
+ * számolható” sor ezért a levél nélkül is megmondja a teendőt
  * (`formatAamUnavailableLine`).
  */
 const AAM_INCOMPLETE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000
@@ -442,7 +443,7 @@ function alertAamIncomplete(error: AamIncompleteError, nowMs: number): void {
  * tárgyévi számla összege egyik forrásból sem ismert, a `computeAamStatus`
  * dob; ezt a függvény csak riasztja és továbbdobja. A riasztás okonként és
  * tárgyévenként naponta legfeljebb egyszer szól (`alertAamIncomplete`); ha a
- * levele nem ment ki, a következő számolás újra riaszt.
+ * levele átmeneti hibával nem ment ki, a következő számolás újra riaszt.
  *
  * A kijelzés hívói (napi összesítő, Figyelmet igényel) a `readAamForDisplay`-t
  * használják: ez a hibából „nem számolható” sort ad, és a teendők számai

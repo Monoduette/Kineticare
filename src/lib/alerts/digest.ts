@@ -127,6 +127,13 @@ export interface DigestState {
    * némítaná el), akkor sem, ha a `startDay` egyszer nem törölné.
    */
   pendingClaim: PendingDigestClaim | null
+  /**
+   * Épp fut-e a függő nyom pótlása (Devin, PR #306). Ugyanennek a folyamatnak
+   * egy átfedő futása (kézi job-indítás az ütemezés mellett) addig nem kezd
+   * másodikat; a zár nélküli (teszt/mock) úton ez az egyetlen védelem a
+   * kétszer beírt nyom ellen.
+   */
+  pendingClaimWriting: boolean
 }
 
 /** A kiment, de be nem írt napi nyom: melyik napra és mit kell beírni. */
@@ -145,6 +152,7 @@ export function createDigestState(): DigestState {
     providerWarned: false,
     recipientWarned: false,
     pendingClaim: null,
+    pendingClaimWriting: false,
   }
 }
 
@@ -367,8 +375,18 @@ function claimPayload(deps: DigestDeps): DigestClaimPayload {
  * A kiment levél be nem írt napi nyomának pótlása (breaker, PR #305 rev2).
  * Minden futás elején, az esedékesség vizsgálata előtt fut, mert a küldés után
  * a nap már le van zárva. A nyom arra a napra kerül, amelyen a levél kiment,
- * és csak azon a napon pótoljuk. Nem dob: a `writeAuditLog` best-effort, a
- * sikertelen pótlást maga naplózza, és a következő futás újra próbálja.
+ * és csak azon a napon pótoljuk.
+ *
+ * A pótlás a napi zár alatt fut, és a zár alatt újra megnézi, van-e már nyom
+ * a napra (Devin, PR #306). Az `audit-logs`-on nincs egyedi megszorítás, így
+ * két átfedő pótlás második sort írna, és akkor is, ha közben egy másik
+ * példány beírta a sajátját (deploy alatt a Resend a levelet nem kettőzi, de
+ * a nyomát az a példány is beírja). Foglalt zárnál a kör kimarad, a függő nyom
+ * megmarad, és a következő futás újra próbálja. Ugyanennek a folyamatnak egy
+ * átfedő futása nem kezd második pótlást (`pendingClaimWriting`).
+ *
+ * Nem dob: a zár és az olvasás hibáját figyelmeztetésként naplózza, a
+ * `writeAuditLog` best-effort, és a következő futás újra próbálja.
  */
 async function retryPendingClaim(deps: DigestDeps, state: DigestState): Promise<void> {
   const pending = state.pendingClaim
@@ -381,9 +399,40 @@ async function retryPendingClaim(deps: DigestDeps, state: DigestState): Promise<
     return
   }
   const claims = asDigestClaimPayload(deps.payload)
-  if (claims !== null && (await recordDigestSent(claims, pending.day, pending.after))) {
+  if (claims === null || state.pendingClaimWriting) {
+    return
+  }
+  state.pendingClaimWriting = true
+  try {
+    const locked = await withDigestTryLock(
+      deps.payload,
+      `alerts:daily-digest:${pending.day}`,
+      async (): Promise<'mar-megvolt' | 'beirva' | 'sikertelen'> => {
+        if (await digestSentOn(claims, pending.day)) {
+          return 'mar-megvolt'
+        }
+        return (await recordDigestSent(claims, pending.day, pending.after))
+          ? 'beirva'
+          : 'sikertelen'
+      },
+      deps.logger,
+    )
+    if (!locked.acquired || locked.value === 'sikertelen' || state.pendingClaim !== pending) {
+      return
+    }
     state.pendingClaim = null
-    deps.logger.info('napi összesítő: a napi nyom utólag beíródott')
+    deps.logger.info(
+      locked.value === 'beirva'
+        ? 'napi összesítő: a napi nyom utólag beíródott'
+        : 'napi összesítő: a napi nyomot közben egy másik futás beírta, a pótlás nem ír másodikat',
+    )
+  } catch (error) {
+    deps.logger.warn(
+      'napi összesítő: a napi nyom pótlása most nem sikerült, a következő futás újra próbálja',
+      { error: errorText(error) },
+    )
+  } finally {
+    state.pendingClaimWriting = false
   }
 }
 
@@ -483,7 +532,8 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   //     és egy később induló példány aznap még egyszer küldhet.
   //  2. Ha a nyom írása a küldés után elbukik, ez a folyamat a következő
   //     futásán pótolja (`retryPendingClaim`). Addig, jellemzően 5 percig,
-  //     egy közben induló vagy párhuzamosan futó példány még egyszer küldhet.
+  //     egy közben induló vagy párhuzamosan futó példány még egyszer küldhet;
+  //     a pótlás ilyenkor annak nyomát látva nem ír másodikat.
   //     Ugyanennek a folyamatnak egy átfedő futása (kézi job-indítás) nem
   //     küldhet: a zár alatt a függő nyomot is nézzük.
   //  3. Ha a zár kapcsolata a küldés közben megszakad (pl.

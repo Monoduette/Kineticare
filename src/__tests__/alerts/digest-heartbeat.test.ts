@@ -112,7 +112,10 @@ function digestHarness(options: {
   const state = createDigestState()
   // Az OWNER_ALERT_EMAILS a futások között változhat (napközbeni beállítás).
   const settings = { recipients: options.recipients ?? ['tulajdonos@example.com'] }
-  const payload = options.db === undefined ? memory.payload : { ...memory.payload, db: options.db }
+  // Ugyanaz az objektum (nem másolat), hogy a teszt későbbi cseréi (pl. a
+  // `failAuditWrites`) a zárral futó úton is érvényesek legyenek.
+  const payload =
+    options.db === undefined ? memory.payload : Object.assign(memory.payload, { db: options.db })
   const deps = (nowMs: number, processState: DigestState = state): DigestDeps => ({
     payload: payload as never,
     sendMail,
@@ -124,6 +127,23 @@ function digestHarness(options: {
     state: processState,
   })
   return { mails, entries, sendMail, state, deps, memory, settings }
+}
+
+/**
+ * A napi nyom (`audit-logs`) írása az első `times` alkalommal átmenetileg
+ * hibázik, mint a pool 10 s-os connectionTimeoutja egy Postgres-újraindulás
+ * alatt; utána a memória-tárba ír.
+ */
+function failAuditWrites(memory: ReturnType<typeof createMemoryPayload>, times: number): void {
+  const create = memory.payload.create
+  let remaining = times
+  memory.payload.create = async (args) => {
+    if (args.collection === 'audit-logs' && remaining > 0) {
+      remaining -= 1
+      throw new Error('timeout exceeded when trying to connect')
+    }
+    return create(args)
+  }
 }
 
 /**
@@ -434,17 +454,8 @@ describe('napi összesítő — küldés', () => {
       orders: openOrders(MORNING),
       send: async () => ({ ok: true, provider: 'smtp' }),
     })
-    // A nyom írása a küldés után és az első pótláskor is átmenetileg hibázik
-    // (pl. a pool 10 s-os connectionTimeoutja egy Postgres-újraindulás alatt).
-    const create = h.memory.payload.create
-    let transientFailures = 2
-    h.memory.payload.create = async (args) => {
-      if (args.collection === 'audit-logs' && transientFailures > 0) {
-        transientFailures -= 1
-        throw new Error('timeout exceeded when trying to connect')
-      }
-      return create(args)
-    }
+    // A nyom írása a küldés után és az első pótláskor is átmenetileg hibázik.
+    failAuditWrites(h.memory, 2)
 
     expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
     // A folyamat tovább él, és 5 percenként pollol.
@@ -464,6 +475,57 @@ describe('napi összesítő — küldés', () => {
         data: expect.objectContaining({ action: 'daily-digest-sent', entityId: '2026-09-24' }),
       }),
     ])
+  })
+
+  // A kézi job-indítás az ütemezés mellett átfedő futást ad: mindkettő a függő
+  // nyomot pótolná, és az audit-logs-on nincs egyedi megszorítás.
+  it('Devin (PR #306): két átfedő futás közül csak az egyik pótolja a függő napi nyomot, így a napra egy nyom kerül', async () => {
+    const h = digestHarness({ orders: openOrders(MORNING) })
+    failAuditWrites(h.memory, 1)
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    expect(h.state.pendingClaim).not.toBeNull()
+
+    const at = MORNING + 5 * 60_000
+    const outcomes = await Promise.all([
+      runDailyDigestIfDue(h.deps(at)),
+      runDailyDigestIfDue(h.deps(at)),
+    ])
+
+    expect(outcomes).toEqual(['nem-esedekes', 'nem-esedekes'])
+    expect(h.state.pendingClaim).toBeNull()
+    expect(h.memory.createCalls).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'daily-digest-sent', entityId: '2026-09-24' }),
+      }),
+    ])
+  })
+
+  // Deploy alatt egy másik példány a függő nyom mellett is küldhet: a Resend az
+  // idempotenciakulccsal a levelet nem kettőzi, de a nyomát az a példány is beírja.
+  it('Devin (PR #306): a függő nyom pótlása foglalt zárnál kimarad, és ha közben egy másik példány beírta a napi nyomot, nem ír másodikat', async () => {
+    const lock = { free: true }
+    const lockPool = fakeLockPool({ tryLock: async () => ({ rows: [{ locked: lock.free }] }) })
+    const h = digestHarness({ orders: openOrders(MORNING), db: { pool: lockPool.pool } })
+    failAuditWrites(h.memory, 1)
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+
+    // 07:15: a napi zárat épp a másik példány tartja (küld), a pótlás nem ír.
+    lock.free = false
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))).toBe('nem-esedekes')
+    expect(h.memory.createCalls).toHaveLength(0)
+    expect(h.state.pendingClaim).not.toBeNull()
+
+    // A másik példány (saját, üres állapottal) végez, és beírja a saját nyomát.
+    lock.free = true
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 6 * 60_000, createDigestState()))).toBe(
+      'elkuldve',
+    )
+    expect(h.memory.createCalls).toHaveLength(1)
+
+    // 07:20: a pótlás a zár alatt látja a nyomot, és nem ír másodikat.
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 10 * 60_000))).toBe('nem-esedekes')
+    expect(h.state.pendingClaim).toBeNull()
+    expect(h.memory.createCalls).toHaveLength(1)
   })
 
   it('breaker (PR #305 rev4): a 23:55-kor kiment levél be nem írt nyoma nem kerül a másnapra, a másnapi levél egy 421 után is kimegy', async () => {
