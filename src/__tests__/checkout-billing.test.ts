@@ -593,7 +593,7 @@ describe('planCheckoutSubmission — a beküldés a MÓDOSÍTOTT állapotból é
     expect(plan.focusElementId).toBe('kc-field-billingCity')
   })
 
-  it('több hibás mezőnél az ELSŐ (megjelenítési sorrend szerinti) kapja a fókuszt', () => {
+  it('több hibás mezőnél az első hiányzó elem a megjelenítési sorrendben első mező', () => {
     let values = withBillingValue(prefillBillingForm(PROFILE), 'zip', '')
     values = withBillingValue(values, 'street', '')
     const plan = planCheckoutSubmission(context(values))
@@ -619,7 +619,7 @@ describe('planCheckoutSubmission — a beküldés a MÓDOSÍTOTT állapotból é
     })
   })
 
-  it('hiányzó elállási nyilatkozat: a hiányzó jelölőnégyzet kapja a fókuszt', () => {
+  it('hiányzó elállási nyilatkozat: az első hiányzó elem a hiányzó jelölőnégyzet', () => {
     const base = context(prefillBillingForm(PROFILE))
     expect(
       planCheckoutSubmission({ ...base, waiverStartAccepted: false, waiverLossAccepted: false }),
