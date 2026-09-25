@@ -52,8 +52,13 @@ export const PENDING_PAYMENT_ALERT_AFTER_MS = DAY_MS
 export const REFUND_INTENT_STUCK_AFTER_MS = 15 * MINUTE_MS
 /** A kézzel rendezhető kategóriák visszatekintési ablaka (napokban). */
 export const ATTENTION_LOOKBACK_DAYS = 14
-/** A havi egyeztetés runbookja: az ablaknál régebbi sikertelen bizonylatokat is listázza. */
-export const MONTHLY_RECONCILIATION_RUNBOOK_PATH = 'docs/uzemeltetes/08-havi-egyeztetes.md'
+/**
+ * A havi egyeztetés helye a tulajdonosi kézikönyvben
+ * (docs/uzemeltetes/08-havi-egyeztetes.md): az ablaknál régebbi sikertelen
+ * bizonylatokat is listázza. Az Irányítópulton is látszik, ezért fejezetnévvel
+ * hivatkozunk rá, nem repó-útvonallal.
+ */
+export const MONTHLY_RECONCILIATION_CHAPTER = 'tulajdonosi kézikönyv, 08. fejezet'
 
 /**
  * Nem lezárt visszatérítési szándékok (a refund-intents `state` értékei): a
@@ -202,7 +207,7 @@ export function attentionDefinitions(
       // Design System, Notification banner: „tell the user about something they
       // need to know about” (https://design-system.service.gov.uk/components/notification-banner/).
       // A havi runbook (08) sikertelen-bizonylat listájának nincs ablaka.
-      teendo: `Az utolsó ${ATTENTION_LOOKBACK_DAYS} napban a rendszer nem tudta kiállítani a bizonylatot. Állítsd ki kézzel a Számlázz.hu-ban. Ha a rendelésen több visszatérítés volt, egy korábbi helyesbítő akkor is hiányozhat, ha a legutóbbi kiállítottnak látszik. A ${ATTENTION_LOOKBACK_DAYS} napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (${MONTHLY_RECONCILIATION_RUNBOOK_PATH}).`,
+      teendo: `Az utolsó ${ATTENTION_LOOKBACK_DAYS} napban a rendszer nem tudta kiállítani a bizonylatot. Állítsd ki kézzel a Számlázz.hu-ban. Ha a rendelésen több visszatérítés volt, egy korábbi helyesbítő akkor is hiányozhat, ha a legutóbbi kiállítottnak látszik. A ${ATTENTION_LOOKBACK_DAYS} napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (${MONTHLY_RECONCILIATION_CHAPTER}).`,
     },
     {
       key: 'visszateritesElakadt',

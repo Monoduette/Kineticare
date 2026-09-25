@@ -48,6 +48,9 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
   // 2031-05-17 07:10 Budapest (nyári idő, UTC+2).
   const NOW = Date.parse('2031-05-17T05:10:00Z')
   const DAY = '2031-05-17'
+  // A foglalt zár esetéhez külön nap, hogy az előző eset nyoma ne hasson rá.
+  const BUSY_NOW = Date.parse('2031-05-18T05:10:00Z')
+  const BUSY_DAY = '2031-05-18'
   let payload: Payload
   let releaseBootstrap: (() => void) | undefined
   let userId: number | undefined
@@ -56,9 +59,18 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
 
   async function deleteDayClaims(): Promise<void> {
     await adapter().pool.query(
-      'DELETE FROM audit_logs WHERE action = $1 AND entity_type = $2 AND entity_id = $3',
-      [DIGEST_SENT_ACTION, DIGEST_ENTITY_TYPE, DAY],
+      'DELETE FROM audit_logs WHERE action = $1 AND entity_type = $2 AND entity_id = ANY($3)',
+      [DIGEST_SENT_ACTION, DIGEST_ENTITY_TYPE, [DAY, BUSY_DAY]],
     )
+  }
+
+  // SMTP-szerű küldés: nincs szolgáltatói idempotencia, és időbe telik.
+  function smtpLikeSend(sent: SendMailInput[]) {
+    return async (input: SendMailInput): Promise<SendResult> => {
+      sent.push(input)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      return { ok: true, provider: 'smtp' }
+    }
   }
 
   beforeAll(async () => {
@@ -114,12 +126,7 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
 
   it('két párhuzamos folyamat közül csak az egyik küld, és egy újraindult folyamat sem küld aznap még egyszer', async () => {
     const sent: SendMailInput[] = []
-    // SMTP-szerű küldés: nincs szolgáltatói idempotencia, és időbe telik.
-    const sendMail = async (input: SendMailInput): Promise<SendResult> => {
-      sent.push(input)
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      return { ok: true, provider: 'smtp' }
-    }
+    const sendMail = smtpLikeSend(sent)
     const freshProcess = (): Promise<DigestOutcome> =>
       runDailyDigestIfDue({
         payload,
@@ -132,7 +139,12 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
       })
 
     const outcomes = await Promise.all([freshProcess(), freshProcess()])
-    expect([...outcomes].sort()).toEqual(['elkuldve', 'mar-elkuldve'])
+    // A másik példány vagy a küldés alatt ér a zárhoz (folyamatban), vagy utána
+    // (a nyomot látja); küldeni egyik esetben sem küld.
+    expect(outcomes.filter((outcome) => outcome === 'elkuldve')).toHaveLength(1)
+    expect(['folyamatban', 'mar-elkuldve']).toContain(
+      outcomes.find((outcome) => outcome !== 'elkuldve'),
+    )
     expect(sent).toHaveLength(1)
 
     // Deploy után: új folyamat, üres állapottal.
@@ -146,4 +158,44 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
     expect(claims.rows).toHaveLength(1)
     expect(JSON.stringify(claims.rows)).not.toContain('@')
   })
+
+  it('breaker (PR #305): ha egy másik példány tartja a napi zárat (lassú SMTP-küldés), ez a futás nem vár rá, nem dob és nem küld; a zár elengedése után küld', async () => {
+    const sent: SendMailInput[] = []
+    const state = createDigestState()
+    const run = (): Promise<DigestOutcome> =>
+      runDailyDigestIfDue({
+        payload,
+        sendMail: smtpLikeSend(sent),
+        recipients: () => ['tulajdonos@example.test'],
+        logger: silentLogger,
+        nowMs: BUSY_NOW,
+        serverUrl: 'https://kineticare.hu',
+        state,
+      })
+
+    // A „másik példány”: saját kapcsolaton, nyitott tranzakcióban tartja a zárat.
+    const holder = await adapter().pool.connect()
+    try {
+      await holder.query('BEGIN')
+      await holder.query('select pg_advisory_xact_lock(hashtextextended($1::text, 0))', [
+        `alerts:daily-digest:${BUSY_DAY}`,
+      ])
+      // A várakozó zár a pool 30 s-os statement_timeoutjáig állna, majd dobna
+      // (hamis riasztás); 10 s bőven elég a nem váró útnak.
+      const outcome = await Promise.race([
+        run().catch((error: unknown) => `DOBOTT: ${String(error)}`),
+        new Promise<string>((resolve) => setTimeout(() => resolve('VART A ZARRA'), 10_000)),
+      ])
+      expect(outcome).toBe('folyamatban')
+      expect(sent).toHaveLength(0)
+    } finally {
+      await holder.query('ROLLBACK')
+      holder.release()
+    }
+
+    // A zár felszabadult (a másik példány nem írt nyomot, pl. elbukott a küldése):
+    // a következő futás ugyanabban a folyamatban pótolja.
+    expect(await run()).toBe('elkuldve')
+    expect(sent).toHaveLength(1)
+  }, 30_000)
 })

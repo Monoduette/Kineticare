@@ -18,6 +18,11 @@
  * olvassuk, így egy 07:00 utáni újraindulás vagy deploy sem küld második
  * összesítőt. A „megnézem, elküldöm, beírom” lépés napi kulcsú Postgres
  * advisory-zár alatt fut, így két átfedő példány közül csak az egyik küld.
+ * A zárra nem várunk: ha foglalt, a másik példány épp küld, és ez a kör
+ * `folyamatban` kimenettel, riasztás nélkül kimarad. Nyom csak valódi
+ * kézbesítés után kerül be: a noop-szolgáltató (nincs RESEND_API_KEY és
+ * SMTP_HOST) „sikere” nem zárja le a napot, így a szolgáltató aznapi
+ * beállítása és a deploy után még kimegy a levél.
  *
  * A folyamaton belüli állapot (`DigestState`) csak a napon belüli
  * ütemezést tartja:
@@ -36,7 +41,6 @@
 
 import type { Payload } from 'payload'
 
-import { withAdvisoryLock } from '../advisory-lock'
 import { budapestDateString, budapestDateTimeString } from '../date/budapest'
 import type { SendMailInput } from '../email'
 import type { SendResult } from '../email/types'
@@ -55,7 +59,9 @@ import {
   asDigestClaimPayload,
   digestSentOn,
   recordDigestSent,
+  withDigestTryLock,
   type DigestClaimPayload,
+  type DigestLockResult,
 } from './digest-claim'
 
 /** Budapest szerinti óra, amelytől az összesítő esedékes. */
@@ -132,6 +138,7 @@ export type DigestOutcome =
   | 'nincs-cimzett'
   | 'elkuldve'
   | 'mar-elkuldve'
+  | 'folyamatban'
   | 'hiba'
   | 'feladva'
 
@@ -314,7 +321,8 @@ function claimPayload(deps: DigestDeps): DigestClaimPayload {
  * Az összesítő, ha esedékes. A lekérdezési, a nyom-olvasási és a zár-hibát
  * a hívóra dobja (az order-poll riaszt, lásd poll-watch.ts), és a következő
  * próbát növekvő várakozás után engedi; a levélküldés hibája `hiba` vagy
- * `feladva` kimenet, nem dobás.
+ * `feladva` kimenet, nem dobás. Ha a napi zárat épp egy másik példány tartja,
+ * a kimenet `folyamatban`: nem hiba, a nap nyitva marad.
  */
 export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutcome> {
   const state = deps.state ?? processDigestState
@@ -384,16 +392,20 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
     serverUrl: deps.serverUrl,
   })
 
-  // A nyom ellenőrzése, a küldés és a nyom beírása egy napi zár alatt: egy
-  // átfedő példány a zárra vár, és utána a nyomot látva nem küld. A zár
+  // A nyom ellenőrzése, a küldés és a nyom beírása egy napi zár alatt. A zárra
+  // nem várunk (a várakozás a pool 30 s-os statement_timeoutjába futna, és
+  // hamis riasztást adna, miközben a másik példány küld): foglalt zárnál ez a
+  // kör kimarad, a következő futás a nyomot látva már nem küld. A zár
   // tranzakciója a küldés alatt tétlen; a Resend-hívás időkorlátja 10 s, jóval
-  // a 60 s-os idle_in_transaction_session_timeout alatt.
+  // a 60 s-os idle_in_transaction_session_timeout alatt. (Ismert rés: egy 60 s-nál
+  // hosszabb, többlépéses SMTP-küldés alatt a Postgres bonthatja a zár
+  // kapcsolatát, és egy közben induló példány küldhet még egyet.)
   // Ha a zár a küldés UTÁN hibázik, a küldés eredménye itt marad meg.
   const attempt: { result?: SendResult } = {}
-  let alreadySent = false
+  let locked: DigestLockResult<boolean> = { acquired: false }
   try {
-    alreadySent = await withAdvisoryLock(
-      deps.payload as unknown as Payload,
+    locked = await withDigestTryLock(
+      deps.payload,
       `alerts:daily-digest:${today}`,
       async () => {
         if (await digestSentOn(claims, today)) {
@@ -402,7 +414,13 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
         state.sendAttempts += 1
         const result = await sendDigest(deps, recipients, mail, today)
         attempt.result = result
-        if (
+        if (result.ok && result.provider === 'noop') {
+          // Nincs levélszolgáltató: semmi nem ment ki, ezért nyom sem kerül be,
+          // hogy a szolgáltató beállítása és a deploy után még aznap kimenjen.
+          log.warn(
+            'napi összesítő: nincs levélszolgáltató beállítva (noop), a levél nem ment ki; a napi nyom nem íródik be',
+          )
+        } else if (
           result.ok &&
           !(await recordDigestSent(claims, today, { teendo: total, provider: result.provider }))
         ) {
@@ -423,7 +441,13 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
     log.warn('napi összesítő: a zár a küldés után hibával zárult', { error: errorText(error) })
   }
 
-  if (alreadySent) {
+  if (attempt.result === undefined && !locked.acquired) {
+    // Egy másik példány épp a zár alatt van (küld). Nem hiba, nem riasztunk,
+    // és a napot sem zárjuk: ha az a küldés elbukna, itt még pótolható.
+    log.info('napi összesítő: egy párhuzamos futás épp küldi, ez a kör kimarad')
+    return 'folyamatban'
+  }
+  if (locked.acquired && locked.value) {
     state.done = true
     log.info('napi összesítő: ma már elküldte egy korábbi vagy párhuzamos futás')
     return 'mar-elkuldve'

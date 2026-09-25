@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resetAlertThrottle, shouldEmitThrottledAlert } from '../../lib/alert-throttle'
 import {
+  assemblyRetryDelayMs,
   budapestHour,
   createDigestState,
   isDigestDue,
@@ -87,6 +88,8 @@ function digestHarness(options: {
   send?: (input: SendMailInput) => Promise<SendResult>
   recipients?: readonly string[]
   vatMode?: string
+  /** A Payload `db`-je (a drizzle-zárhoz); nélküle a zár teszt/mock módban kimarad. */
+  db?: unknown
 }) {
   const mails: SendMailInput[] = []
   const entries: Recorded[] = []
@@ -106,8 +109,9 @@ function digestHarness(options: {
   const state = createDigestState()
   // Az OWNER_ALERT_EMAILS a futások között változhat (napközbeni beállítás).
   const settings = { recipients: options.recipients ?? ['tulajdonos@example.com'] }
+  const payload = options.db === undefined ? memory.payload : { ...memory.payload, db: options.db }
   const deps = (nowMs: number, processState: DigestState = state): DigestDeps => ({
-    payload: memory.payload as never,
+    payload: payload as never,
     sendMail,
     recipients: () => settings.recipients,
     logger: recordingLogger(entries),
@@ -181,7 +185,7 @@ describe('napi összesítő — küldés', () => {
     // Devin (PR #305): a 14 napos ablakot a levél kimondja, és a teljes listára
     // (havi egyeztetés, runbook 08) mutat, a szöveges és a HTML-részben is.
     const ablak =
-      'A 14 napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (docs/uzemeltetes/08-havi-egyeztetes.md).'
+      'A 14 napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (tulajdonosi kézikönyv, 08. fejezet).'
     expect(text).toContain(ablak)
     expect(h.mails[0]?.html).toContain(ablak)
     const hrefs = [...text.matchAll(/Lista: (\S+)/g)].map((match) => match[1] ?? '')
@@ -326,6 +330,70 @@ describe('napi összesítő — küldés', () => {
     // Másnap a nyom nem gátol.
     const nextMorning = MORNING + 24 * 60 * 60_000
     expect(await runDailyDigestIfDue(h.deps(nextMorning, createDigestState()))).toBe('elkuldve')
+  })
+
+  it('breaker (PR #305): a noop-szolgáltató „küldése” nem ír napi nyomot, így a szolgáltató aznapi beállítása és a deploy után kimegy a levél', async () => {
+    // 07:10: se RESEND_API_KEY, se SMTP_HOST; a sendMail noop-sikert ad.
+    const provider = { name: 'noop' as 'noop' | 'smtp' }
+    const h = digestHarness({
+      orders: openOrders(MORNING),
+      send: async () => ({ ok: true, provider: provider.name }),
+    })
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    expect(h.memory.createCalls).toHaveLength(0)
+    expect(h.entries.some((entry) => entry.level === 'warn' && entry.msg.includes('noop'))).toBe(
+      true,
+    )
+
+    // 08:00: az üzemeltető beállítja az SMTP-t, a deploy új folyamatot indít.
+    provider.name = 'smtp'
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 50 * 60_000, createDigestState()))).toBe(
+      'elkuldve',
+    )
+    expect(h.sendMail).toHaveBeenCalledTimes(2)
+    expect(h.memory.createCalls).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'daily-digest-sent', entityId: '2026-09-24' }),
+      }),
+    ])
+  })
+
+  it('ha a zár a küldés előtt hibázik, nincs küldés, a hiba a hívóé, és a következő próba a lekérdezési hiba várakozása után jön', async () => {
+    const transaction = vi.fn(async (): Promise<never> => {
+      throw new Error('a zár kapcsolata nem jött létre')
+    })
+    const h = digestHarness({ orders: openOrders(MORNING), db: { drizzle: { transaction } } })
+
+    await expect(runDailyDigestIfDue(h.deps(MORNING))).rejects.toThrow('a zár kapcsolata')
+    expect(h.sendMail).not.toHaveBeenCalled()
+
+    // A várakozás alatt nincs újabb lekérdezés és zár-próba (se riasztás).
+    const waitMs = assemblyRetryDelayMs(1)
+    expect(await runDailyDigestIfDue(h.deps(MORNING + waitMs - 60_000))).toBe('nem-esedekes')
+    expect(transaction).toHaveBeenCalledTimes(1)
+    await expect(runDailyDigestIfDue(h.deps(MORNING + waitMs))).rejects.toThrow()
+    expect(transaction).toHaveBeenCalledTimes(2)
+  })
+
+  it('ha a zár a küldés UTÁN hibázik, a kiment levél eredménye marad: nincs hamis riasztás és második levél', async () => {
+    const transaction = vi.fn(
+      async (run: (tx: { execute: () => Promise<unknown> }) => Promise<unknown>) => {
+        await run({ execute: async () => ({ rows: [{ locked: true }] }) })
+        throw new Error('a zár tranzakciójának lezárása megszakadt')
+      },
+    )
+    const h = digestHarness({ orders: openOrders(MORNING), db: { drizzle: { transaction } } })
+
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    expect(h.sendMail).toHaveBeenCalledTimes(1)
+    expect(
+      h.entries.some(
+        (entry) =>
+          entry.level === 'warn' && entry.msg.includes('a zár a küldés után hibával zárult'),
+      ),
+    ).toBe(true)
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))).toBe('nem-esedekes')
+    expect(h.sendMail).toHaveBeenCalledTimes(1)
   })
 
   it('a 70%-os AAM-keret AAM áfakulcsnál önmagában is levelet küld; hiányzó vagy 27%-os kulcsnál az AAM-sor kimarad', async () => {
