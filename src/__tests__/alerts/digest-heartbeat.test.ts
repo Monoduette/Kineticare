@@ -439,6 +439,50 @@ describe('napi összesítő — küldés', () => {
     ])
   })
 
+  it('breaker (PR #305 rev4): a 23:55-kor kiment levél be nem írt nyoma nem kerül a másnapra, a másnapi levél egy 421 után is kimegy', async () => {
+    // 2026-09-24 23:55 Budapest: a nap első esedékes futása késő este (pl. a
+    // worker addig állt). A levél kimegy, a nyom írása átmenetileg hibázik.
+    const lateEvening = Date.parse('2026-09-24T21:55:00Z')
+    const results: SendResult[] = [
+      { ok: true, provider: 'smtp' },
+      { ok: false, provider: 'smtp', retryable: true, error: '421' },
+      { ok: true, provider: 'smtp' },
+    ]
+    const h = digestHarness({
+      orders: openOrders(lateEvening),
+      send: async () => results.shift() ?? { ok: false, provider: 'smtp', retryable: true },
+    })
+    const create = h.memory.payload.create
+    const audit = { broken: true }
+    h.memory.payload.create = async (args) => {
+      if (args.collection === 'audit-logs' && audit.broken) {
+        throw new Error('timeout exceeded when trying to connect')
+      }
+      return create(args)
+    }
+
+    expect(await runDailyDigestIfDue(h.deps(lateEvening))).toBe('elkuldve')
+    // Éjfél után az írás már sikerülne, de az előző napi nyom nem íródhat be
+    // az új napra.
+    audit.broken = false
+    for (let minute = 5; minute <= 7 * 60; minute += 5) {
+      expect(await runDailyDigestIfDue(h.deps(lateEvening + minute * 60_000))).toBe('nem-esedekes')
+    }
+    // 2026-09-25 07:00: az első küldés újrapróbálható hibát kap, 07:05-kor kimegy.
+    const nextSeven = lateEvening + (7 * 60 + 5) * 60_000
+    expect(await runDailyDigestIfDue(h.deps(nextSeven))).toBe('hiba')
+    expect(await runDailyDigestIfDue(h.deps(nextSeven + 5 * 60_000))).toBe('elkuldve')
+
+    expect(h.sendMail).toHaveBeenCalledTimes(3)
+    // Az előző napi nyom elveszett (a folyamat nem pótolta más napon), a
+    // másnapi levél a saját napjára került.
+    expect(h.memory.createCalls).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'daily-digest-sent', entityId: '2026-09-25' }),
+      }),
+    ])
+  })
+
   it('breaker (PR #305): a noop-szolgáltató „küldése” nem ír napi nyomot, így a szolgáltató aznapi beállítása és a deploy után kimegy a levél', async () => {
     // 07:10: se RESEND_API_KEY, se SMTP_HOST; a sendMail noop-sikert ad.
     const provider = { name: 'noop' as 'noop' | 'smtp' }
@@ -453,6 +497,11 @@ describe('napi összesítő — küldés', () => {
     )
     // A napló ne mondja, hogy kiment a levél, ha semmi nem ment ki.
     expect(h.entries.some((entry) => entry.msg.includes('levél elküldve'))).toBe(false)
+    // Ugyanez a folyamat tovább pollol: nyomot később sem ír (a noop nem hagy
+    // függő nyomot, amelyet egy későbbi futás pótolna).
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))).toBe('nem-esedekes')
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 10 * 60_000))).toBe('nem-esedekes')
+    expect(h.memory.createCalls).toHaveLength(0)
 
     // 08:00: az üzemeltető beállítja az SMTP-t, a deploy új folyamatot indít.
     provider.name = 'smtp'

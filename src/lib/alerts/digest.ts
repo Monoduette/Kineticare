@@ -103,9 +103,17 @@ export interface DigestState {
   recipientWarned: boolean
   /**
    * A kiment levél napi nyoma, ha a küldés után nem íródott be: a nap további
-   * futásai pótolják (`retryPendingClaim`), és új napon a `startDay` törli.
+   * futásai pótolják (`retryPendingClaim`). A nap a nyomban van, nem csak a
+   * `day` mezőben: így egy későbbi napra sem íródhat be (az a másnapi levelet
+   * némítaná el), akkor sem, ha a `startDay` egyszer nem törölné.
    */
-  pendingClaim: DigestClaimAfter | null
+  pendingClaim: PendingDigestClaim | null
+}
+
+/** A kiment, de be nem írt napi nyom: melyik napra és mit kell beírni. */
+export interface PendingDigestClaim {
+  readonly day: string
+  readonly after: DigestClaimAfter
 }
 
 export function createDigestState(): DigestState {
@@ -335,12 +343,16 @@ function claimPayload(deps: DigestDeps): DigestClaimPayload {
  */
 async function retryPendingClaim(deps: DigestDeps, state: DigestState): Promise<void> {
   const pending = state.pendingClaim
-  const day = state.day
-  if (pending === null || day !== budapestDateString(new Date(deps.nowMs))) {
+  if (pending === null) {
+    return
+  }
+  if (pending.day !== budapestDateString(new Date(deps.nowMs))) {
+    // Egy elmúlt nap nyoma már semmit nem véd, más napra beírni pedig tilos.
+    state.pendingClaim = null
     return
   }
   const claims = asDigestClaimPayload(deps.payload)
-  if (claims !== null && (await recordDigestSent(claims, day, pending))) {
+  if (claims !== null && (await recordDigestSent(claims, pending.day, pending.after))) {
     state.pendingClaim = null
     deps.logger.info('napi összesítő: a napi nyom utólag beíródott')
   }
@@ -430,16 +442,18 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   // idle_in_transaction_session_timeout nem szakítja meg, és a zár
   // kapcsolatának hibája csak figyelmeztetés, nem uncaughtException.
   //
-  // Ismert rések. Az 1–3. csak SMTP-n küldhet második levelet, a Resend
-  // idempotenciakulcsa ezt kivédi:
+  // Ismert rések. Az 1–3. esetben második levél csak SMTP-n mehet ki, mert a
+  // Resend idempotenciakulcsa ezt kivédi:
   //  1. Ha a folyamat a küldés és a nyom beírása között leáll, nyom nem lesz,
   //     és egy később induló példány aznap még egyszer küldhet.
   //  2. Ha a nyom írása a küldés után elbukik, ez a folyamat a következő
   //     futásán pótolja (`retryPendingClaim`). Addig, jellemzően 5 percig,
-  //     egy közben induló példány még egyszer küldhet.
+  //     egy közben induló vagy párhuzamosan futó példány még egyszer küldhet.
+  //     Ugyanennek a folyamatnak egy átfedő futása (kézi job-indítás) nem
+  //     küldhet: a zár alatt a függő nyomot is nézzük.
   //  3. Ha a zár kapcsolata a küldés közben megszakad (pl.
-  //     Postgres-újraindulás), a zár felszabadul, és egy közben induló
-  //     példány a nyom beírása előtt küldhet még egyet.
+  //     Postgres-újraindulás), a zár felszabadul, és egy közben induló vagy
+  //     párhuzamosan futó példány a nyom beírása előtt küldhet még egyet.
   //  4. Ha a zárat tartó kliens FIN nélkül tűnik el (hálózati szakadás,
   //     gépleállás), a Postgres a session zárját csak akkor engedi el, amikor
   //     a szerver TCP keepalive-ja észleli a halott kapcsolatot. Ez a Linux
@@ -455,7 +469,9 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
       deps.payload,
       `alerts:daily-digest:${today}`,
       async () => {
-        if (await digestSentOn(claims, today)) {
+        // A függő nyom azt jelenti, hogy ez a folyamat ma már elküldte a levelet
+        // (breaker, PR #305 rev4): egy átfedő futás nem küldheti újra.
+        if (state.pendingClaim?.day === today || (await digestSentOn(claims, today))) {
           return true
         }
         state.sendAttempts += 1
@@ -471,9 +487,9 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
           const claim: DigestClaimAfter = { teendo: total, provider: result.provider }
           if (!(await recordDigestSent(claims, today, claim))) {
             // A levél kiment: a nyomot a következő futások pótolják.
-            state.pendingClaim = claim
+            state.pendingClaim = { day: today, after: claim }
             log.warn(
-              'napi összesítő: a levél kiment, de a napi nyom nem íródott be; a következő futás pótolja, addig egy újonnan induló példány ma még egyszer elküldheti',
+              'napi összesítő: a levél kiment, de a napi nyom nem íródott be; a következő futás pótolja, addig egy közben induló vagy párhuzamosan futó példány ma még egyszer elküldheti',
             )
           }
         }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { BasePayload, type Payload } from 'payload'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   createDigestState,
@@ -63,6 +63,8 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
   // A zár alatti újraolvasás és a megszakadt zár-kapcsolat esetének saját napja.
   const RACE_DAY = '2031-05-19'
   const DROP_DAY = '2031-05-20'
+  // Egy folyamat két átfedő futásának saját napja.
+  const OVERLAP_DAY = '2031-05-21'
   let payload: Payload
   let releaseBootstrap: (() => void) | undefined
   let userId: number | undefined
@@ -72,7 +74,7 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
   async function deleteDayClaims(): Promise<void> {
     await adapter().pool.query(
       'DELETE FROM audit_logs WHERE action = $1 AND entity_type = $2 AND entity_id = ANY($3)',
-      [DIGEST_SENT_ACTION, DIGEST_ENTITY_TYPE, [DAY, BUSY_DAY, RACE_DAY, DROP_DAY]],
+      [DIGEST_SENT_ACTION, DIGEST_ENTITY_TYPE, [DAY, BUSY_DAY, RACE_DAY, DROP_DAY, OVERLAP_DAY]],
     )
   }
 
@@ -325,5 +327,78 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
     } finally {
       probe.release()
     }
+  }, 30_000)
+
+  it('breaker (PR #305 rev4): egy folyamat két átfedő futása közül a második nem küld újra, ha az első levele kiment, de a nyoma nem íródott be', async () => {
+    // Átfedés élesben: a staff/owner kézi job-indítása (/api/payload-jobs/run)
+    // croner-védelem nélkül fut, a runJobs pedig Promise.all-lal viszi a sort.
+    const sent: SendMailInput[] = []
+    let releaseFirstSend = (): void => undefined
+    const firstSendGate = new Promise<void>((resolve) => {
+      releaseFirstSend = resolve
+    })
+    const sendMail = async (input: SendMailInput): Promise<SendResult> => {
+      sent.push(input)
+      if (sent.length === 1) await firstSendGate
+      return { ok: true, provider: 'smtp' }
+    }
+    // Az első futás nyom-írása átmenetileg hibázik; a második futás számolása
+    // addig vár, amíg az első le nem zárult.
+    let auditFailures = 1
+    const countGate: { wait: Promise<void> | null; open: () => void } = {
+      wait: null,
+      open: () => undefined,
+    }
+    const flaky = new Proxy(payload, {
+      get(target, prop) {
+        if (prop === 'create') {
+          return async (args: Parameters<Payload['create']>[0]) => {
+            if (args.collection === 'audit-logs' && auditFailures > 0) {
+              auditFailures -= 1
+              throw new Error('timeout exceeded when trying to connect')
+            }
+            return target.create(args)
+          }
+        }
+        if (prop === 'count') {
+          return async (args: Parameters<Payload['count']>[0]) => {
+            if (countGate.wait !== null) await countGate.wait
+            return target.count(args)
+          }
+        }
+        const value: unknown = Reflect.get(target, prop, target)
+        return typeof value === 'function'
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value
+      },
+    })
+    const state = createDigestState()
+    const nowMs = Date.parse(`${OVERLAP_DAY}T05:10:00Z`)
+    const runOnce = (at: number): Promise<DigestOutcome> =>
+      runDailyDigestIfDue({
+        payload: flaky,
+        sendMail,
+        recipients: () => ['tulajdonos@example.test'],
+        logger: silentLogger,
+        nowMs: at,
+        serverUrl: 'https://kineticare.hu',
+        state,
+      })
+
+    const first = runOnce(nowMs)
+    await vi.waitFor(() => expect(sent).toHaveLength(1), { timeout: 10_000 })
+    countGate.wait = new Promise<void>((resolve) => {
+      countGate.open = resolve
+    })
+    const second = runOnce(nowMs + 1_000)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    releaseFirstSend()
+    expect(await first).toBe('elkuldve')
+    expect(state.pendingClaim).not.toBeNull()
+    countGate.open()
+    const secondOutcome = await second
+
+    expect(sent).toHaveLength(1)
+    expect(['mar-elkuldve', 'folyamatban']).toContain(secondOutcome)
   }, 30_000)
 })
