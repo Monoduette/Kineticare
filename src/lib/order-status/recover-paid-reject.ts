@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import type { Order, RefundIntent } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { shouldEmitThrottledAlert } from '../alert-throttle'
+import { ALERT_CODES } from '../alerts/classify'
 import { refundPayment, type BarionPaymentStateResponse } from '../barion'
 import { validateRefundResponseProof } from '../barion/refund-response-proof'
 import { formatPriceHuf } from '../format-price'
@@ -313,7 +314,7 @@ async function reportUnknownAutomaticAttempt(
   context.log.error(
     'RIASZTÁS: az automatikus visszatérítés kimenete nem dönthető el a Barion válaszából; a kísérlet blokkol, a fizetés-ellenőrzés a Barion adataiból egyezteti, új visszatérítés addig nem indul',
     {
-      alertCode: 'automatikus-visszaterites-kimenete-ismeretlen',
+      alertCode: ALERT_CODES.automatikusVisszateritesKimeneteIsmeretlen,
       orderId: relationId(intent.order),
       source: context.source,
       amountHuf: intent.requestedAmountHuf,
@@ -678,7 +679,7 @@ export async function recoverRejectedSucceededPayment(
       log.error(
         'RIASZTÁS: az automatikus visszatérítés a Barion-kérés után megszakadt, a kimenet rögzítése nem fejeződött be; a fizetés-ellenőrzés a Barion adataiból egyezteti',
         {
-          alertCode: 'automatikus-visszaterites-kimenete-ismeretlen',
+          alertCode: ALERT_CODES.automatikusVisszateritesKimeneteIsmeretlen,
           orderId: input.order.id,
           source: input.source,
           reason: input.reason,

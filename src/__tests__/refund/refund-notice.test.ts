@@ -311,13 +311,16 @@ describe('a visszatérítési értesítő kiküldése a lezárás után', () => 
     expect(errors).toEqual([])
   })
 
-  it('a sikertelen küldés nem változtat a visszatérítés eredményén, és RIASZTÁS-t ad', async () => {
+  // Végleges elutasítás: az átmeneti hibák újrapróbálását és a bizonytalan
+  // riasztást a w1b-r1-2-refund-notice-retry.test.ts bizonyítja a
+  // Resend-határon (W1B-5).
+  it('a véglegesen elutasított küldés nem változtat a visszatérítés eredményén, és RIASZTÁS-t ad', async () => {
     const f = fixture()
     Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
     mail.send.mockResolvedValue({
       ok: false,
       provider: 'resend',
-      retryable: true,
+      retryable: false,
       error: 'SYNTHETIC',
     })
     const { log, errors } = spyLogger()

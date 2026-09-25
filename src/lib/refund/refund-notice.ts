@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { Order, RefundIntent } from '../../payload-types'
+import { ALERT_CODES } from '../alerts/classify'
 import { auditLogStore, writeAuditLog } from '../audit'
 import { KAPCSOLATI_EMAIL_TARTALEK } from '../contact-email'
 import { kapcsolatiEmailPayloadbol } from '../contact-email-server'
@@ -8,6 +9,7 @@ import { courseTitle } from '../courses'
 import { sendMail } from '../email'
 import { maskEmail, maskEmailsInText } from '../email/mask'
 import { isUsableReplyToAddress } from '../email/reply-to'
+import type { SendResult } from '../email/types'
 import {
   refundNoticeEmail,
   REFUND_NOTICE_TEMPLATE_VERSION,
@@ -27,18 +29,56 @@ import type { OrderRefundEntry } from './refund-order'
  *   (https://resend.com/docs/dashboard/emails/idempotency-keys): ugyanaz a
  *   kulcs 24 órán belül nem indít második levelet. A committed átmenet
  *   egyetlen SQL CAS (intent-store.ts), ezért a küldést minden kísérletre
- *   pontosan egy hívó indítja; a kulcs a futás közbeni ismétlés ellen véd.
+ *   pontosan egy hívó indítja.
+ * - Újrapróbálás (W1B-5): az átmeneti hibát (429, 5xx, hálózati hiba,
+ *   időtúllépés, egyidejű kérés miatti 409, azaz `retryable === true`) a
+ *   függvény ugyanazzal a kulccsal legfeljebb kétszer újrapróbálja, rövid
+ *   szünettel és időkereten belül (REFUND_NOTICE_RETRY_DELAYS_MS,
+ *   REFUND_NOTICE_TIME_BUDGET_MS). Ha az első kérést a Resend már
+ *   befogadta, a kulcs miatt a második nem küld új levelet. A szünet rövid,
+ *   mert a küldés a tulajdonos visszatérítési kérésén belül fut, és a panel
+ *   legfeljebb 30 másodpercet vár. A végleges elutasítás (`retryable ===
+ *   false`) nem ismétlődik.
+ * - A záró riasztás megkülönbözteti a biztosan el nem ment levelet (végleges
+ *   elutasítás: kézzel kell pótolni) a bizonytalantól (időtúllépés vagy
+ *   átmeneti hiba után a levél kimehetett: előbb a Resend naplójában kell
+ *   megnézni a kulcsot, különben a vevő két levelet kap).
  * - Sorrend: a küldés a pénzügyi lezárás UTÁN, a rendelés-záron KÍVÜL fut
  *   (HTTP a zár alatt tilos, refund-order.ts fejléce). Ha a folyamat a
  *   lezárás és a küldés között áll le, a levél elmarad: ez elfogadott, mert
  *   a dupla értesítés rosszabb, mint az elmaradt udvariassági levél. A
- *   sikertelen küldés error-szintű RIASZTÁS-t ad, hogy a stáb kézzel
- *   pótolhassa.
+ *   sikertelen vagy bizonytalan küldés error-szintű RIASZTÁS-t ad, saját
+ *   riasztáskóddal (docs/uzemeltetes/11-riasztas-es-ugyelet.md), hogy a stáb
+ *   kézzel pótolhassa.
  * - Sosem dob: a visszatérítés eredménye nem múlhat egy levélen.
  * - A küldés bizonyítéka (szolgáltatói üzenet-azonosító, sablonváltozat,
  *   címzett) a műveletnaplóba kerül.
  */
 export const REFUND_NOTICE_AUDIT_ACTION = 'refund-notice-email'
+
+/**
+ * A szünetek az újrapróbálások előtt (ms): legfeljebb három kérés, összesen
+ * 4 másodperc várakozással.
+ *
+ * A ciklus helyi: a közös `sendWithRetry` segéd (src/lib/email/retry.ts) még
+ * csak a team/w1-fogyasztoi-rev1 ágon él, és egy ezen az ágon még nem létező
+ * `deliveryUncertain` mezőre épít. A két ág összefésülése után ez a ciklus
+ * arra cserélhető; ott a `deliveryUncertain === true` azt jelenti, hogy nincs
+ * újrapróbálás, és a bizonytalan riasztás megy ki.
+ */
+export const REFUND_NOTICE_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000]
+
+/**
+ * Az újrapróbálások időkerete (ms). A küldés a tulajdonos visszatérítési
+ * kérésén belül fut, a panel 30 másodpercet vár (RefundPanel.tsx
+ * REQUEST_TIMEOUT_MS), egy Resend-kérés pedig legfeljebb 10 másodpercig tart
+ * (email/resend.ts). Újabb kísérlet csak akkor indul, ha az eddig eltelt idő
+ * és a következő szünet együtt a kereten belül marad: két időtúllépéses
+ * kísérlet után (10 + 1 + 10 másodperc) már nem indul harmadik, így a levél a
+ * panel türelmét nem emészti fel. A gyors (azonnal visszautasított) átmeneti
+ * hibákat mind a három kísérlet lefedi.
+ */
+export const REFUND_NOTICE_TIME_BUDGET_MS = 15_000
 
 export function refundNoticeIdempotencyKey(intentId: number | string): string {
   return `refund:${intentId}`
@@ -52,6 +92,8 @@ export interface SendRefundNoticeInput {
   kind: RefundNoticeKind
   document: RefundNoticeDocument
   logger?: Logger
+  /** Injektálható várakozás az újrapróbálások között (teszteléshez); alapból valódi időzítő. */
+  sleep?: (ms: number) => Promise<void>
 }
 
 function snapshotString(order: Order, key: 'name' | 'email'): string {
@@ -162,12 +204,43 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
       supportEmail,
     })
     const replyTo = isUsableReplyToAddress(supportEmail) ? supportEmail : undefined
-    const result = await sendMail({
+    const idempotencyKey = refundNoticeIdempotencyKey(intent.id)
+    const message = {
       to: recipient,
       ...template,
       ...(replyTo ? { replyTo } : {}),
-      idempotencyKey: refundNoticeIdempotencyKey(intent.id),
-    })
+      idempotencyKey,
+    }
+    const sleep =
+      input.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+    const startedAt = Date.now()
+    let attempts = 0
+    let result: SendResult
+    for (;;) {
+      attempts += 1
+      result = await sendMail(message)
+      const delay = REFUND_NOTICE_RETRY_DELAYS_MS[attempts - 1]
+      if (
+        result.ok ||
+        // Az SMTP-kapcsolat a tartalom átadása után szakadt meg: a levél célba
+        // érhetett, és SMTP-n nincs idempotencia, az újraküldés második levelet
+        // íratna a vevőnek.
+        result.deliveryUncertain === true ||
+        result.retryable !== true ||
+        delay === undefined ||
+        Date.now() - startedAt + delay > REFUND_NOTICE_TIME_BUDGET_MS
+      ) {
+        break
+      }
+      log.warn(
+        'visszatérítési értesítő: átmeneti küldési hiba, újrapróbálom ugyanazzal a kulccsal',
+        {
+          attempt: attempts,
+          error: result.error === undefined ? undefined : maskEmailsInText(result.error),
+        },
+      )
+      await sleep(delay)
+    }
     if (!result.ok && result.deliveryUncertain === true) {
       // A levél célba érhetett (SMTP: a kapcsolat a tartalom átadása után
       // szakadt meg, lásd SendResult.deliveryUncertain). A „NEM ment ki, küldd
@@ -176,27 +249,39 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
       log.error(
         'RIASZTÁS: a vevői visszatérítési értesítő kézbesítése BIZONYTALAN. Az SMTP-kapcsolat a levél tartalmának átadása után megszakadt, a szerver átvehette, ezért automatikus újraküldés nincs. Nézd meg az SMTP-szolgáltató naplójában (vagy kérdezd meg a vevőt), megérkezett-e; csak akkor küldd el kézzel, ha nem.',
         {
+          alertCode: ALERT_CODES.visszateritesiErtesitoBizonytalan,
           cimzett: maskEmail(recipient),
+          attempts,
           error: result.error === undefined ? undefined : maskEmailsInText(result.error),
         },
       )
       return
     }
     if (!result.ok) {
-      log.error(
-        'RIASZTÁS: a vevői visszatérítési értesítő NEM ment ki. A visszatérítés megtörtént; küldd el kézzel a vevőnek a rendelésszámmal és az összeggel.',
-        {
-          cimzett: maskEmail(recipient),
-          retryable: result.retryable ?? null,
-          error: result.error === undefined ? undefined : maskEmailsInText(result.error),
-        },
-      )
+      const context = {
+        cimzett: maskEmail(recipient),
+        attempts,
+        retryable: result.retryable ?? null,
+        error: result.error === undefined ? undefined : maskEmailsInText(result.error),
+      }
+      if (result.retryable === false) {
+        log.error(
+          'RIASZTÁS: a vevői visszatérítési értesítő NEM ment ki. A visszatérítés megtörtént; küldd el kézzel a vevőnek a rendelésszámmal és az összeggel.',
+          { alertCode: ALERT_CODES.visszateritesiErtesitoNemMentKi, ...context },
+        )
+      } else {
+        log.error(
+          `RIASZTÁS: a vevői visszatérítési értesítő kiküldése bizonytalan, lehet, hogy kiment. Mielőtt kézzel elküldöd, nézd meg a Resend naplójában a ${idempotencyKey} kulcsú levelet.`,
+          { alertCode: ALERT_CODES.visszateritesiErtesitoBizonytalan, ...context },
+        )
+      }
       return
     }
     if (result.provider === 'noop') {
       if (process.env.NODE_ENV === 'production') {
         log.error(
           'RIASZTÁS: nincs e-mail-szolgáltató beállítva (RESEND_API_KEY / SMTP_HOST), a vevői visszatérítési értesítő NEM ment ki. Küldd el kézzel a vevőnek.',
+          { alertCode: ALERT_CODES.visszateritesiErtesitoNincsSzolgaltato },
         )
       } else {
         log.info('visszatérítési értesítő szimulálva (noop e-mail-szolgáltató)')
@@ -218,7 +303,7 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
         recipient,
         provider: result.provider,
         providerMessageId: result.id ?? null,
-        idempotencyKey: refundNoticeIdempotencyKey(intent.id),
+        idempotencyKey,
         templateVersion: REFUND_NOTICE_TEMPLATE_VERSION,
         kind: input.kind,
         document: input.document,
@@ -241,9 +326,15 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
       )
     }
   } catch (error) {
+    // A kivétel a küldés UTÁN is érkezhet (például a műveletnapló írásakor),
+    // ezért a levél akár ki is mehetett: a bizonytalan kód a helyes teendőt
+    // adja (előbb a Resend naplója, csak utána kézi küldés).
     log.error(
-      'RIASZTÁS: a vevői visszatérítési értesítő összeállítása vagy küldése kivétellel leállt, a levél valószínűleg NEM ment ki. Küldd el kézzel a vevőnek.',
-      { error: error instanceof Error ? maskEmailsInText(error.message) : String(error) },
+      `RIASZTÁS: a vevői visszatérítési értesítő összeállítása vagy küldése kivétellel leállt, a levél kiküldése bizonytalan. Mielőtt kézzel elküldöd a vevőnek, nézd meg a Resend naplójában a ${refundNoticeIdempotencyKey(intent.id)} kulcsú levelet.`,
+      {
+        alertCode: ALERT_CODES.visszateritesiErtesitoBizonytalan,
+        error: error instanceof Error ? maskEmailsInText(error.message) : String(error),
+      },
     )
   }
 }

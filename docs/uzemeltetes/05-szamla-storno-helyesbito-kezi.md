@@ -23,8 +23,14 @@ vissza. Ezért először:
 1. A Számlázz.hu felületén keress rá a rendelésszámra (KH-ÉÉÉÉ-NNNNNN). A
    számla rendelésszáma és külső azonosítója is ez; a helyesbítőé
    `KH-…-HELYESBITO-<sorszám>`.
-2. Ha a bizonylat **megvan**: ne állíts ki újat. Szólj a fejlesztőnek a
-   rendelésszámmal és a bizonylat számával, hogy a rendelésen is rögzítse.
+2. Ha a bizonylat **megvan**: ne állíts ki újat. Szólj az üzemeltetőnek a
+   rendelésszámmal, a bizonylat számával és a teljesítés dátumával, hogy a
+   rendelésen is rögzítse. Számlánál, ha a „Számla állapota” „Sikertelen”, ezt
+   az üzemeltető a `npm run record:manual-invoice` paranccsal teszi meg (lásd
+   a 2. pont végét); utána a visszatérítés az adminból indítható. Ha a
+   számla állapota még „Függőben”, a rendszer maga veszi át a megtalált
+   számlát. Stornóhoz és
+   helyesbítőhöz ilyen eszköz még nincs: ezeket a fejlesztő rögzíti.
 3. Ha **nincs meg**: nézd meg a rendelésen az „… utolsó hibája” mezőt. Ha
    3-as hibakód vagy kulcshiba áll benne, a Számla Agent kulcs a hibás
    ([12](12-szamla-agent-kulcs-csere.md)); ilyenkor minden számla elbukik,
@@ -41,6 +47,18 @@ vissza. Ezért először:
 3. A rendelésszám mezőbe és a megjegyzésbe írd be a rendelésszámot.
 4. Vezesd fel az eltéréslistára ([08](08-havi-egyeztetes.md)): rendelésszám,
    kézi számla száma, miért kellett.
+5. Küldd el az üzemeltetőnek a rendelésszámot, a kézi számla sorszámát és a
+   teljesítés dátumát. Az üzemeltető így rögzíti a rendelésen:
+   - próbafutás, ami semmit nem ír, csak megmutatja, mit változtatna, és ha
+     valami nem stimmel, miért nem írna:
+     `npm run record:manual-invoice -- --order KH-ÉÉÉÉ-NNNNNN --invoice <sorszám> --teljesites ÉÉÉÉ-HH-NN`;
+   - ha a próbafutás rendben van, ugyanez `OWNER_MANUAL_INVOICE_CONFIRM=igen`
+     beállítással. A rögzítés a Műveletnaplóba is bekerül.
+
+   Ezután a rendelés „Számla állapota” „Kiállítva” lesz, a korábbi hiba szövege
+   megmarad. A visszatérítés innen már indítható az adminból, és a stornó vagy
+   a helyesbítő a kézi számlához készül el. Ha a rendelésen már van számlaszám,
+   vagy a számla még nem „Sikertelen”, az eszköz nem ír semmit.
 
 ## 3. Stornó kézzel (teljes visszatérítés után)
 
@@ -52,6 +70,11 @@ vissza. Ezért először:
 
 ## 4. Helyesbítő kézzel (részleges visszatérítés után)
 
+Amíg a rendelés Visszatérítés paneljén az áll, hogy a rendszer a háttérben
+keresi a helyesbítőt a Számlázz.hu-ban („Ne állíts ki kézzel helyesbítőt, amíg
+ez az üzenet látszik.”), ne állítsd ki kézzel: a rendszer maga pótolja, és a
+kézi mellé egy második helyesbítő készülne.
+
 1. A Számlázz.hu-ban az eredeti számlához állíts ki módosító (helyesbítő)
    számlát a visszatérített összeggel csökkentve.
 2. A teljesítés dátuma az eredeti számla teljesítési dátuma (a rendelésen:
@@ -62,9 +85,11 @@ vissza. Ezért először:
 
 ## 5. Utána
 
-- A rendelés mezői kézzel nem írhatók, ezért a „Sikertelen” felirat a
-  rendelésen marad. A napi összesítő 14 nap után magától elhagyja; addig a
-  levélben ismét látod. Ez nem új hiba.
+- A rendelés mezői kézzel nem írhatók. A kézi **számla** számát az üzemeltető
+  rögzíti (2. pont vége), utána a „Sikertelen” helyett „Kiállítva” áll a
+  rendelésen. A kézi **stornó** és **helyesbítő** rögzítésére még nincs eszköz,
+  ezért azoknál a „Sikertelen” felirat marad. A napi összesítő 14 nap után
+  magától elhagyja; addig a levélben ismét látod. Ez nem új hiba.
 - Ha egy héten belül két bizonylat is elbukik ugyanazzal a hibával, szólj a
   fejlesztőnek: az már rendszerhiba.
 - A könyvelő havonta megkapja az eltéréslistát.

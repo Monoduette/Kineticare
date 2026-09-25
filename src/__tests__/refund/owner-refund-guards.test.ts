@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { documents, fixture, provider, store } from '../refund-fixture'
 import { BarionApiError, type BarionPaymentStateResponse } from '../../lib/barion'
 import type { Logger } from '../../lib/logger'
+import { refundInvoiceGate } from '../../lib/refund/invoice-gate'
 import { refundOrder } from '../../lib/refund/refund-order'
+import { recordManualInvoiceNumber } from '../../lib/szamlazz/manual-invoice-record'
 
 /**
  * A tulajdonosi visszatérítés 2. körös őrei a szolgáltatás határán
@@ -17,7 +19,8 @@ import { refundOrder } from '../../lib/refund/refund-order'
 const OPERATION_KEY = 'A'.repeat(43)
 /** A tulajdonosi szöveg eleje; a teljes szöveget a számla-kapu modulja adja. */
 const INVOICE_PENDING = 'A számla még nem készült el, ezért a visszatérítés még nem indítható.'
-const INVOICE_FAILED = 'A számla kiállítása nem sikerült, ezért a visszatérítés nem indítható'
+const INVOICE_FAILED =
+  'A számla automatikus kiállítása nem sikerült, ezért a visszatérítés most nem indítható.'
 const REQUEST_ID = 'SYNTHETIC-REQ-0001'
 const CLIENT_IP = '203.0.113.7'
 
@@ -85,6 +88,44 @@ describe('K12: bekapcsolt számlázásnál tulajdonosi visszatérítés csak ki�
       expect(store.intents.get(f.payload)).toBeUndefined()
     },
   )
+
+  // W1B-3, W1B-7: a 'failed' szöveg nem ígérheti, hogy a számla magától
+  // elkészül, és a ténylegesen létező lépést kell megneveznie.
+  it('failed: a szöveg nem biztat várakozásra, hanem a kézi számlát és a szám rögzítését kéri', () => {
+    const message = refundInvoiceGate(
+      { invoiceStatus: 'failed', invoiceNumber: null },
+      true,
+    )?.message
+    expect(message).not.toMatch(/amíg a számla el nem készül/u)
+    expect(message).toContain('Állítsd ki a számlát kézzel a Számlázz.hu-ban')
+    expect(message).toContain('rögzítse a számla számát a rendelésen')
+  })
+
+  it('failed és leállt automatika: 409; a kézi számla számának rögzítése után a visszatérítés a kézi számlához fut le', async () => {
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')
+    const f = fixture()
+    Object.assign(f.order, {
+      invoiceStatus: 'failed',
+      invoiceNumber: null,
+      invoiceLastError: 'A számla automatikus kiállítása leállt: SYNTHETIC',
+    })
+    await expect(start(f)).rejects.toMatchObject({ status: 409 })
+    expect(provider.refund).not.toHaveBeenCalled()
+
+    const recorded = await recordManualInvoiceNumber({
+      payload: f.payload,
+      orderNumber: f.order.orderNumber!,
+      invoiceNumber: 'E-KIN-2026-42',
+      completionDate: '2026-09-05',
+      dryRun: false,
+    })
+    expect(recorded.status).toBe('recorded')
+
+    await expect(start(f)).resolves.toMatchObject({ type: 'full', orderStatus: 'refunded' })
+    expect(provider.refund).toHaveBeenCalledTimes(1)
+    expect(documents.storno).toHaveBeenCalledTimes(1)
+    expect(documents.storno.mock.calls[0]![0]).toMatchObject({ invoiceNumber: 'E-KIN-2026-42' })
+  })
 
   it('kiállított számlánál a visszatérítés lefut, és a stornó elkészül', async () => {
     vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')

@@ -2,12 +2,14 @@ import type { Payload } from 'payload'
 
 import type { Order, RefundIntent, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
+import { ALERT_CODES } from '../alerts/classify'
 import {
   BarionApiError,
   fetchPaymentState,
   refundPayment,
   type BarionPaymentStateResponse,
 } from '../barion'
+import { formatPriceHuf } from '../format-price'
 import { logger, type Logger } from '../logger'
 import { validateRefundResponseProof } from '../barion/refund-response-proof'
 import {
@@ -519,11 +521,18 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
   // a helyi refund-nyommal. Eltérésnél (például a Barion felületén indított
   // visszatérítés után) egy újabb visszatérítés dupla kifizetés lehetne, ezért
   // nem indul, és a tulajdonos riasztást kap. Pénzt a rendszer itt nem mozgat.
+  // A két összeg az üzenet szövegébe is bekerül: a riasztólevél csak a
+  // skaláris, engedélyezett mezőket viszi tovább (alerts/mail.ts), a
+  // szöveget viszont igen (W1B-10).
   if (resolved.refundedHuf !== preDecision.alreadyRefunded) {
+    const barionTotal =
+      resolved.refundedHuf === null
+        ? 'a Barion szerinti összeg nem dönthető el'
+        : `a Barion szerint ${formatPriceHuf(resolved.refundedHuf)}`
     log.error(
-      'RIASZTÁS: a Barion szerint visszatérített összeg eltér a rendelés nyilvántartásától, a tulajdonosi visszatérítés nem indult el; kézi egyeztetés szükséges',
+      `RIASZTÁS: a Barion szerint visszatérített összeg eltér a rendelés nyilvántartásától, a tulajdonosi visszatérítés nem indult el; kézi egyeztetés szükséges (${barionTotal}, a rendelés szerint ${formatPriceHuf(preDecision.alreadyRefunded)} ment vissza)`,
       {
-        alertCode: 'visszaterites-barion-elteres',
+        alertCode: ALERT_CODES.visszateritesBarionElteres,
         orderId: preOrder.id,
         orderNumber,
         barionRefundedHuf: resolved.refundedHuf,
@@ -612,13 +621,16 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
         const httpStatus = error instanceof BarionApiError ? (error.httpStatus ?? null) : null
         if (rejection) {
           // RIASZTÁS (K6, a-riasztas-5): a tulajdonos a panelen azonnal látja az
-          // okot, a riasztás a hibakóddal és a kérésazonosítóval a naplóba és a
-          // riasztás-csatornába megy, hogy a Barion-tárca vagy -fiók gondja ne
-          // csak egy kattintás mögött derüljön ki.
+          // okot. A naplósor a hibakódot, az összeget és a kérésazonosítót
+          // mezőként is hordozza, de a riasztólevél és a PostHog-esemény csak
+          // az engedélyezett skaláris mezőket viszi tovább (alerts/mail.ts
+          // SAFE_ALERT_FIELDS, tömb nélkül). Ezért a Barion-hibakód és az
+          // összeg az üzenet szövegében is áll: így a levélből is kiderül, hogy
+          // a Barion-tárca vagy -fiók a gond (W1B-10).
           log.error(
-            'RIASZTÁS: a Barion elutasította a tulajdonosi visszatérítést, pénzmozgás nem történt; a rendelés a hiba elhárítása után újra visszatéríthető',
+            `RIASZTÁS: a Barion elutasította a tulajdonosi visszatérítést, pénzmozgás nem történt; a rendelés a hiba elhárítása után újra visszatéríthető (a Barion válasza: ${rejection.codes.join(', ')}; összeg: ${formatPriceHuf(intent.requestedAmountHuf)})`,
             {
-              alertCode: 'visszaterites-barion-elutasitotta',
+              alertCode: ALERT_CODES.visszateritesBarionElutasitotta,
               orderId: order.id,
               orderNumber: order.orderNumber ?? null,
               providerErrorCodes: rejection.codes,
@@ -665,7 +677,7 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
         log.error(
           `RIASZTÁS: a Barion-válaszból nem dönthető el a visszatérítés kimenete, a kísérlet blokkol; a ${REFUND_RECOVERY_ACTION_LABEL} lekérdezi az eredményt a Barionból`,
           {
-            alertCode: 'visszaterites-kimenete-ismeretlen',
+            alertCode: ALERT_CODES.visszateritesKimeneteIsmeretlen,
             orderId: order.id,
             orderNumber: order.orderNumber ?? null,
             errorKind,
@@ -698,7 +710,7 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
         log.error(
           `RIASZTÁS: a Barion válasza nem igazolja a visszatérítést, a kísérlet blokkol; a ${REFUND_RECOVERY_ACTION_LABEL} lekérdezi az eredményt a Barionból`,
           {
-            alertCode: 'visszaterites-kimenete-ismeretlen',
+            alertCode: ALERT_CODES.visszateritesKimeneteIsmeretlen,
             orderId: order.id,
             orderNumber: order.orderNumber ?? null,
             errorKind,
@@ -749,7 +761,7 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
         log.error(
           `RIASZTÁS: a Barion visszaigazolta a visszatérítést, de a rögzítése nem fejeződött be; a ${REFUND_RECOVERY_ACTION_LABEL} a Barion adataiból befejezi`,
           {
-            alertCode: 'visszaterites-rogzitese-elakadt',
+            alertCode: ALERT_CODES.visszateritesRogziteseElakadt,
             orderId: order.id,
             orderNumber: order.orderNumber ?? null,
             amountHuf: intent.requestedAmountHuf,
@@ -784,7 +796,7 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
     log.error(
       'RIASZTÁS: a visszatérítés a Barionban megtörtént, de a helyi feldolgozása (hozzáférés, számla) nem fejeződött be; a panel mutatja a teendőt',
       {
-        alertCode: 'visszaterites-feldolgozasa-elakadt',
+        alertCode: ALERT_CODES.visszateritesFeldolgozasaElakadt,
         orderId: preOrder.id,
         orderNumber,
         requestId: options.requestId ?? null,
