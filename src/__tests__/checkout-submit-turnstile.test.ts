@@ -109,24 +109,39 @@ describe('POST /api/checkout/start — Turnstile a Payload-auth ELŐTT', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('elutasított tokennél 400 (újrapróbálható), és a kérés nem jut a Payloadig', async () => {
-    fetchMock.mockResolvedValueOnce(
-      siteverify({ success: false, 'error-codes': ['timeout-or-duplicate'] }),
-    )
-    const { POST, getPayload } = handler()
+  /**
+   * Mindhárom LÁTOGATÓI hibakód (Cloudflare, Turnstile server-side
+   * validation, „Error codes"): a hamis vagy szemét token
+   * `invalid-input-response`, az üres `missing-input-response`, a lejárt vagy
+   * már felhasznált `timeout-or-duplicate`. Ezek a vevő (vagy a bot) oldalán
+   * dőlnek el: 400, és NEM kiesés. Ha bármelyik kikerülne a látogatói kódok
+   * közül, minden hamis tokenes botkérés 503-at adna, és a tulajdonos
+   * Cloudflare-kiesésről kapna RIASZTÁS-t (a fojtás egy valódi kiesést is
+   * elfedne).
+   */
+  it.each(['timeout-or-duplicate', 'invalid-input-response', 'missing-input-response'])(
+    'elutasított tokennél (%s) 400 (újrapróbálható), RIASZTÁS nélkül, és a kérés nem jut a Payloadig',
+    async (code) => {
+      fetchMock.mockResolvedValueOnce(siteverify({ success: false, 'error-codes': [code] }))
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { POST, getPayload } = handler()
 
-    const response = await POST(request({ ...INPUT, turnstileToken: TOKEN }))
+      const response = await POST(request({ ...INPUT, turnstileToken: TOKEN }))
 
-    expect(response.status).toBe(400)
-    expect(((await response.json()) as { error: string }).error).toBe(
-      CHECKOUT_TURNSTILE_REJECTED_ERROR,
-    )
-    expect(getPayload).not.toHaveBeenCalled()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(TURNSTILE_SITEVERIFY_URL)
-    expect(new URLSearchParams(String(init.body)).get('response')).toBe(TOKEN)
-  })
+      expect(response.status).toBe(400)
+      expect(((await response.json()) as { error: string }).error).toBe(
+        CHECKOUT_TURNSTILE_REJECTED_ERROR,
+      )
+      expect(getPayload).not.toHaveBeenCalled()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(TURNSTILE_SITEVERIFY_URL)
+      expect(new URLSearchParams(String(init.body)).get('response')).toBe(TOKEN)
+      const naplo = [...logSpy.mock.calls, ...errorSpy.mock.calls].flat().map(String).join('\n')
+      expect(naplo).not.toContain('RIASZTÁS')
+    },
+  )
 
   it.each([
     ['hálózati hiba', () => Promise.reject(new TypeError('fetch failed'))],

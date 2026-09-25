@@ -12,6 +12,7 @@ import {
   CHECKOUT_ERROR_REGION_ID,
   CHECKOUT_TURNSTILE_CONTAINER_ID,
   CHECKOUT_TURNSTILE_FAILED_ERROR,
+  CHECKOUT_TURNSTILE_PENDING_ERROR,
   WAIVER_START_INPUT_ID,
   checkboxErrorId,
   checkoutErrorSummaryTitle,
@@ -381,6 +382,48 @@ describe('láthatatlan Turnstile a pénztárban (a-checkout-9)', () => {
       expect(ui.container.querySelector(`#${CHECKOUT_BLOCK_HINT_ID}`)).toBeNull()
       await ui.click('button[type="submit"]')
       expect(ui.fetchMock).toHaveBeenCalledTimes(1)
+    } finally {
+      await ui.close()
+    }
+  })
+
+  /**
+   * A bfcache-es visszatérés Turnstile-fele (breaker, ba6764c): a Barionról a
+   * böngésző Vissza gombjával visszatérő lapon a már egyszer beküldött
+   * (elhasznált) token él. Ha a widget nem kér újat, a következő nyomás ezt
+   * küldi, a Cloudflare „timeout-or-duplicate"-tel elutasítja, és a vevő
+   * „lejárt" hibát kap, mielőtt egy újrapróbálás sikerülne.
+   */
+  it('a bfcache-ből visszatérő lapon a widget új ellenőrzést kér, és az elhasznált tokent nem küldi újra', async () => {
+    const render = vi.fn((_container: unknown, options: RenderOptions) => {
+      options.callback('DUMMY-TURNSTILE-TOKEN-1')
+      return 'widget-1'
+    })
+    const reset = vi.fn()
+    const ui = await openBrowser({
+      siteKey: 'DUMMY-SITEKEY',
+      turnstile: { render, reset, remove: vi.fn() },
+    })
+    try {
+      // A kérés „repülés közben" marad, mint a Barion felé navigáló lapon.
+      ui.fetchMock.mockImplementation(() => new Promise<Response>(() => {}))
+      await fillValidForm(ui)
+      await ui.click('button[type="submit"]')
+      expect(ui.fetchMock).toHaveBeenCalledTimes(1)
+      expect(reset).not.toHaveBeenCalled()
+
+      await act(async () => {
+        const event = new ui.browser.Event('pageshow')
+        Object.defineProperty(event, 'persisted', { value: true })
+        ui.browser.dispatchEvent(event)
+      })
+
+      expect(reset).toHaveBeenCalledWith('widget-1')
+      await ui.click('button[type="submit"]')
+      expect(ui.fetchMock).toHaveBeenCalledTimes(1)
+      expect(ui.container.querySelector(`#${CHECKOUT_ERROR_REGION_ID}`)?.textContent).toBe(
+        CHECKOUT_TURNSTILE_PENDING_ERROR,
+      )
     } finally {
       await ui.close()
     }

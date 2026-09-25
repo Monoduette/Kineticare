@@ -156,9 +156,16 @@ export const GUEST_RESET_LINK_DELAY_MS = 10 * 60 * 1000
  * reset-tokent tárol). Ezért elsődleges gomb nincs: a szöveg a postaládára
  * irányít, a jelszó-beállító link kérése késleltetve, másodlagos linkként jön
  * (`GUEST_RESET_LINK_DELAY_MS`). A link felirata a célnézet gombjáéval egyezik
- * (§3.2 #21, WCAG 2.2 · 3.2.4), a mondat pedig kimondja, hogy
- * jelszó-beállító linket kap. A Belépés másodlagos (lejárt munkamenetű,
- * jelszavas vevőnek).
+ * (§3.2 #21), és a mondat UGYANAZON a néven nevezi, amit kér: „visszaállító
+ * link" (WCAG 2.2 · 3.2.4 Consistent Identification; NN/g, Consistency and
+ * Standards: ugyanaz a dolog ne kapjon két nevet,
+ * https://www.nngroup.com/articles/consistency-and-standards/). A
+ * „jelszó-beállító link" név a levélben kapott linké marad, mert a levél is így
+ * hívja (email/templates/order.ts); a mondat csak azt teszi hozzá, hogy a
+ * visszaállító linkkel a jelszó beállítható. A §3.2-es felirat átnevezése a
+ * docs/ui-sztenderdek.md szótárát és a jelszóvisszaállító lapot is érintené,
+ * ez külön döntés. A Belépés másodlagos (lejárt munkamenetű, jelszavas
+ * vevőnek).
  *
  * Forrás: NN/g, Error Message Guidelines (mondd meg, mi a következő lépés)
  * https://www.nngroup.com/articles/error-message-guidelines/ ;
@@ -194,14 +201,14 @@ export function ThankYouUnauthorized({
       </p>
       {showResetLink ? (
         <p className="kc-thankyou__later">
-          Nem jött meg a levél 10 perc alatt? Kérj új jelszó-beállító linket ugyanarra az
-          e-mail-címre, amellyel fizettél:{' '}
+          Nem jött meg a levél 10 perc alatt? A jelszavadat visszaállító linkkel is beállíthatod.
+          Kérd ugyanarra az e-mail-címre, amellyel fizettél:{' '}
           <Link href={forgotPasswordHref('/kurzusaim')}>{ctaLabel('password-reset-request')}</Link>.
         </p>
       ) : (
         <p className="kc-thankyou__later">
-          Ha a levél 10 perc alatt sem érkezik meg, ezen az oldalon kérhetsz új jelszó-beállító
-          linket. Addig ne kérj újat: az új link a levélben lévőt érvényteleníti.
+          Ha a levél 10 perc alatt sem érkezik meg, ezen az oldalon kérhetsz visszaállító linket.
+          Addig ne kérj: az új link a levélben lévő jelszó-beállító linket érvényteleníti.
         </p>
       )}
       <div className="kc-thankyou__actions">

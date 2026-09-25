@@ -260,20 +260,27 @@ describe('vendég visszatérése a Barionból — NEM állítunk sikert', () => 
     expect(html).not.toMatch(/kc-button--primary/)
     expect(html).toMatch(/kc-button--secondary[^>]*href="\/belepes/)
     expect(html).toContain('Ha a levél 10 perc alatt sem érkezik meg')
-    expect(html).toContain('az új link a levélben lévőt érvényteleníti')
+    expect(html).toContain('kérhetsz visszaállító linket')
+    expect(html).toContain('az új link a levélben lévő jelszó-beállító linket érvényteleníti')
   })
 
-  it('a késleltetés után a kérés másodlagos szöveglinkként jelenik meg, jelszó-beállító linkként megnevezve', () => {
+  /**
+   * WCAG 2.2 · 3.2.4: a mondat ugyanazon a néven nevezi a kért linket, mint a
+   * link felirata (§3.2 #21 „Kérem a visszaállító linket"); korábban a mondat
+   * „jelszó-beállító linket" kért, a link pedig „visszaállító linket".
+   */
+  it('a késleltetés után a kérés másodlagos szöveglinkként jelenik meg, a mondat és a felirat ugyanazt a nevet használja', () => {
     const html = renderToStaticMarkup(
       createElement(ThankYouUnauthorized, { orderNumber: 'KH-2026-000009', showResetLink: true }),
     )
-    expect(html).toContain('Nem jött meg a levél 10 perc alatt?')
-    expect(html).toContain('Kérj új jelszó-beállító linket')
-    expect(html).toMatch(
+    const later = /<p class="kc-thankyou__later">([\s\S]*?)<\/p>/.exec(html)?.[1] ?? ''
+    expect(later).toContain('Nem jött meg a levél 10 perc alatt?')
+    expect(later).toContain('visszaállító linkkel is beállíthatod')
+    expect(later).not.toContain('jelszó-beállító')
+    expect(later).toMatch(
       /<a href="\/elfelejtett-jelszo\?returnUrl=%2Fkurzusaim">Kérem a visszaállító linket<\/a>/,
     )
     expect(html).not.toMatch(/kc-button[^>]*href="\/elfelejtett-jelszo/)
-    expect(GUEST_RESET_LINK_DELAY_MS).toBe(10 * 60 * 1000)
   })
 })
 
@@ -603,10 +610,25 @@ describe('köszönőoldal — hiányzó vagy idegen rendelés', () => {
  * a váltás előtt és után.
  */
 describe('köszönőoldal — egyetlen, végig élő állapot-régió (WCAG 2.2 SC 4.1.3)', () => {
-  it('a poll-válasz után ugyanaz a role="status" csomópont él, csak a tartalma változik', async () => {
+  /**
+   * A vendég 401-es nézetében a jelszó-beállító kérés linkje csak
+   * `GUEST_RESET_LINK_DELAY_MS` után jelenik meg (a-ux-5): a korai kérés a
+   * levélben lévő linket érvénytelenítené. Az időzítőt a nézet a böngésző
+   * `window.setTimeout`-jával indítja; a happy-dom saját időzítőjét ezért a
+   * Vitest hamis órájára kötjük, így az idő lépésenként léptethető.
+   */
+  it('a poll-válasz után ugyanaz a role="status" csomópont él, csak a tartalma változik; a jelszó-beállító kérés linkje csak a késleltetés után jelenik meg', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const browser = new Window({
       url: 'http://localhost:3000/fizetes/koszonom?order=KH-2026-000123',
     })
+    const fakeTimers = browser as unknown as {
+      setTimeout: (callback: () => void, delay?: number) => unknown
+      clearTimeout: (id: unknown) => void
+    }
+    fakeTimers.setTimeout = (callback, delay) => globalThis.setTimeout(callback, delay)
+    fakeTimers.clearTimeout = (id) =>
+      globalThis.clearTimeout(id as ReturnType<typeof globalThis.setTimeout>)
     vi.stubGlobal('window', browser)
     vi.stubGlobal('document', browser.document)
     vi.stubGlobal('navigator', browser.navigator)
@@ -642,6 +664,19 @@ describe('köszönőoldal — egyetlen, végig élő állapot-régió (WCAG 2.2 
       expect(regioUtana?.getAttribute('aria-live')).toBe('polite')
       expect(regioUtana?.id).toBe(THANK_YOU_LIVE_REGION_ID)
       expect(container.querySelectorAll('[role="status"], [role="alert"]')).toHaveLength(1)
+
+      const resetLink = () => container.querySelector('a[href^="/elfelejtett-jelszo"]')
+      expect(resetLink()).toBeNull()
+      await act(async () => {
+        vi.advanceTimersByTime(GUEST_RESET_LINK_DELAY_MS - 1)
+      })
+      expect(resetLink()).toBeNull()
+      await act(async () => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(resetLink()?.textContent).toBe(ctaLabel('password-reset-request'))
+      // A link ugyanabban az élő régióban jelenik meg, a régió nem cserélődik.
+      expect(container.querySelector('[role="status"]')).toBe(regioElotte)
     } finally {
       await act(async () => {
         root.unmount()
@@ -649,6 +684,7 @@ describe('köszönőoldal — egyetlen, végig élő állapot-régió (WCAG 2.2 
       container.remove()
       await browser.happyDOM.close()
       vi.unstubAllGlobals()
+      vi.useRealTimers()
     }
   })
 })
@@ -1046,6 +1082,24 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
       store,
       now: NOW + THANK_YOU_STATE_CHECK_COOLDOWN_MS,
     })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  /**
+   * A hűtés az óra visszaugrására sem zárolhat (breaker, ba6764c): ha a
+   * rendszeróra (NTP-igazítás, replikák közti eltérés) a korábbi indítás elé
+   * ugrik, a negatív különbségű bejegyzés lejártnak számít, különben a
+   * PaymentId-re a hűtés az eredeti időpont + 30 s-ig „cooldown" maradna.
+   */
+  it('visszaugró óránál a hűtés nem zárja ki az ellenőrzést', async () => {
+    fetchMock.mockImplementation(async () => barionState('Started'))
+    const { payload } = fakePayload(order())
+    const { store } = memoryStore()
+    const run = (now: number) =>
+      runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now })
+
+    expect(await run(NOW)).toBe('still-pending')
+    expect(await run(NOW - 60_000)).toBe('still-pending')
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
