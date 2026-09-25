@@ -378,9 +378,12 @@ naplója sosem íródik ki. (Mérve 2026-08-21.)
     döntő.** A 2026-09-16-i és a 09-24-i éles fizetésindítás így bukott, de a
     Barion-bolt akkor még nem volt élesítve; a tulajdonos a próba után
     élesítette. Ez a két hiba tehát nem bizonyítja, hogy a kulcs rossz, de azt
-    sem, hogy jó: a hibás vagy csonka `BARION_POSKEY_PROD` ugyanezt a hibát adja
-    (`src/lib/barion/client.ts`). A döntő próba az élesítés utáni első indítás
-    (runbook 11, pénzmozgás nélkül). Ha az is 401, a kulcsot kell ellenőrizni.
+    sem, hogy jó. A formailag hibás (csonka, idézőjeles, szóközös)
+    `BARION_POSKEY_PROD` mellett az app el sem indul (`getBarionConfig`,
+    `src/lib/barion/client.ts`); a futás közbeni 401 ezért formailag jó, de
+    nem ehhez a bolthoz tartozó kulcsot vagy még nem élesített boltot jelez. A
+    döntő próba az élesítés utáni első indítás (runbook 11, pénzmozgás
+    nélkül). Ha az is 401, a kulcsot kell összevetni a Barion-fiókban lévővel.
 26. **A Payload job-queue sorrendje `createdAt` szerinti, és az újrapróbáló job
     megtartja a régi `createdAt`-jét.** Egy Számlázz.hu-kimaradás alatt ezért a
     számlajobok elfoglalták az order-maintenance queue minden helyét, és az
