@@ -7,15 +7,47 @@
  * payload-jobs enum miatt migrációt igényelne).
  *
  * A levél csak akkor megy ki, ha van teendő (lásd `src/lib/alerts/attention.ts`)
- * vagy az alanyi adómentes keret elérte a 70%-ot. Resend-idempotenciakulcs:
+ * vagy az alanyi adómentes keret elérte a 70%-ot, illetve most nem számolható
+ * (`aamNeedsAttention`). A nem számolható keret (`AamIncompleteError`) nem
+ * buktatja az összesítőt: a levél a teendők számaival kimegy, a keret-sor
+ * helyén egy „nem számolható” sor áll a teendővel és a kézikönyv fejezetével
+ * (PR #305, devin5; a riasztás-levélre nem hagyatkozik, mert az kieshet).
+ * Minden más lekérdezési hiba továbbra is a hívóé.
+ * Resend-idempotenciakulcs:
  * `digest-ÉÉÉÉ-HH-NN`. A kulcs 24 óráig él, ugyanazzal a kulccsal a második
  * kérés nem küld második levelet, eltérő tartalomnál 409-et ad
- * (https://resend.com/docs/dashboard/emails/idempotency-keys). Egy
- * újraindult folyamat így aznap nem küld második összesítőt.
+ * (https://resend.com/docs/dashboard/emails/idempotency-keys).
  *
- * Az állapot (küldött-e ma) folyamaton belüli; naponta legfeljebb
- * `MAX_DIGEST_ATTEMPTS_PER_DAY` próbálkozás, hogy egy tartós levélhiba ne
- * hívja a Resendet 5 percenként egész nap.
+ * TARTÓS NAPI NYOM (PR #305, Codex P2): az SMTP-tartaléknak nincs
+ * idempotenciája, ezért a sikeres küldés után egy napi „elküldve” bejegyzés
+ * kerül az audit-logs-ba (`src/lib/alerts/digest-claim.ts`). Küldés előtt ezt
+ * olvassuk, így egy 07:00 utáni újraindulás vagy deploy sem küld második
+ * összesítőt. Ha a bejegyzés írása a küldés után elbukik, a futó folyamat a
+ * nap további futásain pótolja. A „megnézem, elküldöm, beírom” lépés napi
+ * kulcsú Postgres advisory-zár alatt fut, így két átfedő példány közül csak
+ * az egyik küld.
+ * A zárra nem várunk: ha foglalt, a másik példány épp küld, és ez a kör
+ * `folyamatban` kimenettel, riasztás nélkül kimarad. Nyom csak valódi
+ * kézbesítés után kerül be: a noop-szolgáltató (nincs RESEND_API_KEY és
+ * SMTP_HOST) „sikere” nem zárja le a napot, így a szolgáltató aznapi
+ * beállítása és a deploy után még kimegy a levél.
+ *
+ * A folyamaton belüli állapot (`DigestState`) csak a napon belüli
+ * ütemezést tartja:
+ *  - naponta legfeljebb `MAX_DIGEST_ATTEMPTS_PER_DAY` valódi küldési
+ *    kísérlet (a `sendMail` hívása számít, a lekérdezés nem), hogy egy tartós
+ *    levélhiba ne hívja a szolgáltatót 5 percenként egész nap (Codex P2: a
+ *    lekérdezési hiba eddig ebből a keretből fogyasztott);
+ *  - a lekérdezési (adatbázis-) hiba után növekvő várakozás
+ *    (`assemblyRetryDelayMs`), hogy egy leállt adatbázis ne kapjon 5
+ *    percenként lekérdezést és riasztást, de a helyreállás után aznap még
+ *    kimenjen a levél;
+ *  - címzett nélkül (üres OWNER_ALERT_EMAILS) nincs lekérdezés, és a nap
+ *    nem zárul le: ha a címzettet aznap később beállítják, a következő futás
+ *    küld (Devin). A hiányt naponta egyszer jelezzük;
+ *  - e-mail-szolgáltató nélkül (noop) a nap a folyamaton belül sem zárul le
+ *    (Codex): a kimenet `nincs-szolgaltato`, a próbálkozásokat a napi küldési
+ *    keret korlátozza, és a hiányt naponta egyszer jelezzük.
  */
 
 import type { Payload } from 'payload'
@@ -24,7 +56,15 @@ import { budapestDateString, budapestDateTimeString } from '../date/budapest'
 import type { SendMailInput } from '../email'
 import type { SendResult } from '../email/types'
 import type { Logger } from '../logger'
-import { formatAamLine, payloadAamFind, queryAamStatus, type AamStatus } from './aam'
+import {
+  aamNeedsAttention,
+  formatAamLine,
+  formatAamUnavailableLine,
+  payloadAamFind,
+  readAamForDisplay,
+  type AamReading,
+  type AamStatus,
+} from './aam'
 import { aamEstimateApplies } from './aam-mode'
 import {
   attentionListHref,
@@ -34,12 +74,29 @@ import {
   type AttentionCounts,
   type AttentionDefinition,
 } from './attention'
+import {
+  asDigestClaimPayload,
+  digestSentOn,
+  recordDigestSent,
+  withDigestTryLock,
+  type DigestClaimAfter,
+  type DigestClaimPayload,
+  type DigestLockResult,
+} from './digest-claim'
 
 /** Budapest szerinti óra, amelytől az összesítő esedékes. */
 export const DIGEST_HOUR_BUDAPEST = 7
 
-/** Naponta legfeljebb ennyiszer próbáljuk elküldeni. */
+/** Naponta legfeljebb ennyiszer hívjuk a levélküldést (valódi küldési kísérlet). */
 export const MAX_DIGEST_ATTEMPTS_PER_DAY = 3
+
+const MINUTE_MS = 60 * 1000
+
+/** Az első lekérdezési hiba utáni várakozás; hibánként duplázódik. */
+export const DIGEST_ASSEMBLY_RETRY_BASE_MS = 10 * MINUTE_MS
+
+/** A lekérdezési hibák utáni várakozás felső korlátja. */
+export const DIGEST_ASSEMBLY_RETRY_MAX_MS = 60 * MINUTE_MS
 
 /** A napi teendők runbookja (a levél erre mutat). */
 export const DAILY_RUNBOOK_PATH = 'docs/uzemeltetes/01-napi-ellenorzes.md'
@@ -47,24 +104,88 @@ export const DAILY_RUNBOOK_PATH = 'docs/uzemeltetes/01-napi-ellenorzes.md'
 /** Az AAM-átállás runbookja. */
 export const AAM_RUNBOOK_PATH = 'docs/uzemeltetes/14-alanyi-adomentes-keret.md'
 
+/** A folyamaton belüli, napra szóló állapot (Budapest-nap). */
 export interface DigestState {
-  doneDate: string | null
-  attemptDate: string | null
-  attempts: number
+  /** A nap (ÉÉÉÉ-HH-NN), amelyre a többi mező vonatkozik. */
+  day: string | null
+  /** Aznapra lezárva (elküldve, nincs teendő, vagy feladva). */
+  done: boolean
+  /** Valódi küldési kísérletek (a `sendMail` hívásai) aznap. */
+  sendAttempts: number
+  /** Egymást követő lekérdezési hibák aznap. */
+  assemblyFailures: number
+  /** A következő lekérdezés legkorábbi ideje (ms); 0, ha nincs várakozás. */
+  retryNotBeforeMs: number
+  /** Aznap szóltunk-e már a hiányzó e-mail-szolgáltatóról (noop). */
+  providerWarned: boolean
+  /** Aznap szóltunk-e már a hiányzó címzettről. */
+  recipientWarned: boolean
+  /**
+   * A kiment levél napi nyoma, ha a küldés után nem íródott be: a nap további
+   * futásai pótolják (`retryPendingClaim`). A nap a nyomban van, nem csak a
+   * `day` mezőben: így egy későbbi napra sem íródhat be (az a másnapi levelet
+   * némítaná el), akkor sem, ha a `startDay` egyszer nem törölné.
+   */
+  pendingClaim: PendingDigestClaim | null
+}
+
+/** A kiment, de be nem írt napi nyom: melyik napra és mit kell beírni. */
+export interface PendingDigestClaim {
+  readonly day: string
+  readonly after: DigestClaimAfter
 }
 
 export function createDigestState(): DigestState {
-  return { doneDate: null, attemptDate: null, attempts: 0 }
+  return {
+    day: null,
+    done: false,
+    sendAttempts: 0,
+    assemblyFailures: 0,
+    retryNotBeforeMs: 0,
+    providerWarned: false,
+    recipientWarned: false,
+    pendingClaim: null,
+  }
+}
+
+/** Új napon a számlálók nulláról indulnak. */
+function startDay(state: DigestState, today: string): void {
+  if (state.day !== today) {
+    Object.assign(state, createDigestState(), { day: today })
+  }
+}
+
+/** A `failures`-edik egymást követő lekérdezési hiba utáni várakozás. */
+export function assemblyRetryDelayMs(failures: number): number {
+  const exponent = Math.max(0, Math.min(failures - 1, 10))
+  return Math.min(DIGEST_ASSEMBLY_RETRY_BASE_MS * 2 ** exponent, DIGEST_ASSEMBLY_RETRY_MAX_MS)
+}
+
+function recordAssemblyFailure(state: DigestState, nowMs: number): void {
+  state.assemblyFailures += 1
+  state.retryNotBeforeMs = nowMs + assemblyRetryDelayMs(state.assemblyFailures)
 }
 
 /** A folyamat saját összesítő-állapota (a teszt sajátot ad). */
 const processDigestState = createDigestState()
 
 export type DigestOutcome =
-  'nem-esedekes' | 'nincs-teendo' | 'nincs-cimzett' | 'elkuldve' | 'hiba' | 'feladva'
+  | 'nem-esedekes'
+  | 'nincs-teendo'
+  | 'nincs-cimzett'
+  | 'nincs-szolgaltato'
+  | 'elkuldve'
+  | 'mar-elkuldve'
+  | 'folyamatban'
+  | 'hiba'
+  | 'feladva'
 
 export interface DigestDeps {
-  readonly payload: Pick<Payload, 'count' | 'find'>
+  /**
+   * Az éles Payload-példány. Olvasás a számokhoz; a napi nyom írásához a
+   * `create`, a zárhoz a `db` is kell (az order-poll a teljes példányt adja).
+   */
+  readonly payload: Pick<Payload, 'count' | 'find'> & Partial<Pick<Payload, 'create' | 'db'>>
   readonly sendMail: (input: SendMailInput) => Promise<SendResult>
   readonly recipients: () => readonly string[]
   readonly logger: Logger
@@ -92,10 +213,14 @@ export function isDigestDue(nowMs: number, state: DigestState): boolean {
     return false
   }
   const today = budapestDateString(new Date(nowMs))
-  if (state.doneDate === today) {
-    return false
+  if (state.day !== today) {
+    return true
   }
-  return !(state.attemptDate === today && state.attempts >= MAX_DIGEST_ATTEMPTS_PER_DAY)
+  return (
+    !state.done &&
+    state.sendAttempts < MAX_DIGEST_ATTEMPTS_PER_DAY &&
+    nowMs >= state.retryNotBeforeMs
+  )
 }
 
 export interface DigestMail {
@@ -110,10 +235,6 @@ function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-}
-
-function aamNeedsAttention(aam: AamStatus | null): boolean {
-  return aam !== null && aam.level !== 'rendben'
 }
 
 function aamWarning(aam: AamStatus): string {
@@ -138,7 +259,7 @@ function aamWarning(aam: AamStatus): string {
 export function buildDigestMail(input: {
   readonly counts: AttentionCounts
   readonly definitions: readonly AttentionDefinition[]
-  readonly aam: AamStatus | null
+  readonly aam: AamReading | null
   readonly nowMs: number
   readonly serverUrl: string
 }): DigestMail {
@@ -191,25 +312,37 @@ export function buildDigestMail(input: {
     htmlParts.push('<p>Fizetési, számlázási és visszatérítési teendő nincs.</p>')
   }
 
-  if (aam !== null) {
-    const line = `Alanyi adómentes keret, ${formatAamLine(aam)}.`
+  if (aam?.kind === 'nem-szamolhato') {
+    // Szám helyett a helyzet és a teendő: a hiányzó érték sem 0, sem „rendben”
+    // (devin5), és a teendő a riasztás-levél nélkül is itt áll (rev1, BRK-1).
+    const line = formatAamUnavailableLine(aam.year)
+    textLines.push(`${line.allapot} ${line.teendo}`, '')
+    htmlParts.push(`<p><strong>${escapeHtml(line.allapot)}</strong> ${escapeHtml(line.teendo)}</p>`)
+  } else if (aam?.kind === 'szamolt') {
+    const status = aam.status
+    const line = `Alanyi adómentes keret, ${formatAamLine(status)}.`
     const note =
       'A keretbe a vállalkozás minden belföldi bevétele beleszámít, ez a szám csak a webshop számláit látja.'
     textLines.push(line)
     htmlParts.push(`<p>${escapeHtml(line)}`)
     if (aamNeedsAttention(aam)) {
-      textLines.push(`${aamWarning(aam)} Útmutató: ${AAM_RUNBOOK_PATH}`)
+      textLines.push(`${aamWarning(status)} Útmutató: ${AAM_RUNBOOK_PATH}`)
       htmlParts.push(
-        `<br><strong>${escapeHtml(aamWarning(aam))}</strong> Útmutató: ${escapeHtml(AAM_RUNBOOK_PATH)}`,
+        `<br><strong>${escapeHtml(aamWarning(status))}</strong> Útmutató: ${escapeHtml(AAM_RUNBOOK_PATH)}`,
       )
     }
     textLines.push(note, '')
     htmlParts.push(`<br>${escapeHtml(note)}</p>`)
   }
 
+  // AAM mellett a levél teendő nélkül is jön, ha a keret figyelmet kér
+  // (`aamNeedsAttention`): a lábléc ezt is kimondja, különben ellentmondana a
+  // levél „teendő nincs” sorának (devin5 rev1).
   const footer = [
     `A napi ellenőrzés lépései: ${DAILY_RUNBOOK_PATH}`,
-    'Ugyanezek a számok az admin Irányítópultján, a Figyelmet igényel blokkban is látszanak. Ez a levél csak akkor jön, ha van teendő.',
+    aam === null
+      ? 'Ugyanezek a számok az admin Irányítópultján, a Figyelmet igényel blokkban is látszanak. Ez a levél csak akkor jön, ha van teendő.'
+      : 'Ugyanezek a számok az admin Irányítópultján, a Figyelmet igényel blokkban is látszanak. Ez a levél csak akkor jön, ha van teendő, vagy ha az alanyi adómentes keret figyelmet kér.',
   ]
   textLines.push(...footer)
   htmlParts.push(`<p>${footer.map(escapeHtml).join('<br>')}</p>`)
@@ -217,51 +350,115 @@ export function buildDigestMail(input: {
   return { subject, text: textLines.join('\n'), html: htmlParts.join('\n') }
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** A napi nyom tárolója; ha a példány nem tud írni, a küldés nem biztonságos. */
+function claimPayload(deps: DigestDeps): DigestClaimPayload {
+  const payload = asDigestClaimPayload(deps.payload)
+  if (payload === null) {
+    throw new Error('a napi összesítő nyoma nem írható: a Payload-példányon nincs create')
+  }
+  return payload
+}
+
 /**
- * Az összesítő, ha esedékes. Soha nem dob: minden hiba warn/riasztás és
- * `hiba` kimenet, a poll-futás ettől zavartalan.
+ * A kiment levél be nem írt napi nyomának pótlása (breaker, PR #305 rev2).
+ * Minden futás elején, az esedékesség vizsgálata előtt fut, mert a küldés után
+ * a nap már le van zárva. A nyom arra a napra kerül, amelyen a levél kiment,
+ * és csak azon a napon pótoljuk. Nem dob: a `writeAuditLog` best-effort, a
+ * sikertelen pótlást maga naplózza, és a következő futás újra próbálja.
+ */
+async function retryPendingClaim(deps: DigestDeps, state: DigestState): Promise<void> {
+  const pending = state.pendingClaim
+  if (pending === null) {
+    return
+  }
+  if (pending.day !== budapestDateString(new Date(deps.nowMs))) {
+    // Egy elmúlt nap nyoma már semmit nem véd, más napra beírni pedig tilos.
+    state.pendingClaim = null
+    return
+  }
+  const claims = asDigestClaimPayload(deps.payload)
+  if (claims !== null && (await recordDigestSent(claims, pending.day, pending.after))) {
+    state.pendingClaim = null
+    deps.logger.info('napi összesítő: a napi nyom utólag beíródott')
+  }
+}
+
+/**
+ * Az összesítő, ha esedékes. A lekérdezési (a nem számolható AAM-keret
+ * kivételével, lásd `readAamForDisplay`), a nyom-olvasási és a zár-hibát
+ * a hívóra dobja (az order-poll riaszt, lásd poll-watch.ts), és a következő
+ * próbát növekvő várakozás után engedi; a levélküldés hibája `hiba` vagy
+ * `feladva` kimenet, nem dobás. Ha a napi zárat épp egy másik példány tartja,
+ * a kimenet `folyamatban`: nem hiba, a nap nyitva marad.
  */
 export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutcome> {
   const state = deps.state ?? processDigestState
   const log = deps.logger
+  await retryPendingClaim(deps, state)
   if (!isDigestDue(deps.nowMs, state)) {
     return 'nem-esedekes'
   }
   const today = budapestDateString(new Date(deps.nowMs))
-  if (state.attemptDate !== today) {
-    state.attemptDate = today
-    state.attempts = 0
-  }
-  state.attempts += 1
+  startDay(state, today)
 
-  // Rendszer-szintű számolás (job-kontextus, nincs felhasználó).
-  const { counts, definitions } = await resolveAttention(
-    payloadAttentionSources(deps.payload, { overrideAccess: true }),
-    deps.nowMs,
-  )
-  const aam = aamEstimateApplies(deps.vatMode)
-    ? await queryAamStatus(payloadAamFind(deps.payload, { overrideAccess: true }), deps.nowMs)
-    : null
+  // Címzett nélkül nincs kinek küldeni: se lekérdezés, se napi lezárás, hogy
+  // a később beállított címzett még aznap megkapja a levelet.
+  const recipients = deps.recipients()
+  if (recipients.length === 0) {
+    if (!state.recipientWarned) {
+      state.recipientWarned = true
+      log.warn(
+        'napi összesítő: az OWNER_ALERT_EMAILS nincs beállítva, a levél nem megy ki, amíg nincs címzett',
+      )
+    }
+    return 'nincs-cimzett'
+  }
+
+  let claims: DigestClaimPayload
+  let snapshot: Awaited<ReturnType<typeof resolveAttention>>
+  let aam: AamReading | null
+  try {
+    claims = claimPayload(deps)
+    if (await digestSentOn(claims, today)) {
+      state.done = true
+      log.info('napi összesítő: ma már elküldte egy korábbi vagy párhuzamos futás')
+      return 'mar-elkuldve'
+    }
+    // Rendszer-szintű számolás (job-kontextus, nincs felhasználó).
+    snapshot = await resolveAttention(
+      payloadAttentionSources(deps.payload, { overrideAccess: true }),
+      deps.nowMs,
+    )
+    // A nem számolható keret nem hiba itt (readAamForDisplay): a levél a
+    // teendőkkel kimegy, a riasztást az aam.ts egyszer, fojtva írja meg.
+    aam = aamEstimateApplies(deps.vatMode)
+      ? await readAamForDisplay(payloadAamFind(deps.payload, { overrideAccess: true }), deps.nowMs)
+      : null
+  } catch (error) {
+    recordAssemblyFailure(state, deps.nowMs)
+    throw error
+  }
+  state.assemblyFailures = 0
+  state.retryNotBeforeMs = 0
+
+  const { counts, definitions } = snapshot
   const total = attentionTotal(counts)
   log.info('napi összesítő: számok', {
     ...counts,
     teendo: total,
-    ...(aam ? { aamNetHuf: aam.netHuf, aamLevel: aam.level } : {}),
+    ...(aam?.kind === 'szamolt'
+      ? { aamNetHuf: aam.status.netHuf, aamLevel: aam.status.level }
+      : {}),
+    ...(aam?.kind === 'nem-szamolhato' ? { aamLevel: aam.kind } : {}),
   })
 
   if (total === 0 && !aamNeedsAttention(aam)) {
-    state.doneDate = today
+    state.done = true
     return 'nincs-teendo'
-  }
-
-  const recipients = deps.recipients()
-  if (recipients.length === 0) {
-    state.doneDate = today
-    log.warn(
-      'napi összesítő: van teendő, de az OWNER_ALERT_EMAILS nincs beállítva, a levél nem megy ki',
-      { teendo: total },
-    )
-    return 'nincs-cimzett'
   }
 
   const mail = buildDigestMail({
@@ -271,9 +468,139 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
     nowMs: deps.nowMs,
     serverUrl: deps.serverUrl,
   })
-  let result: SendResult
+
+  // A nyom ellenőrzése, a küldés és a nyom beírása egy napi zár alatt. A zárra
+  // nem várunk (a várakozás a pool 30 s-os statement_timeoutjába futna, és
+  // hamis riasztást adna, miközben a másik példány küld): foglalt zárnál ez a
+  // kör kimarad, a következő futás a nyomot látva már nem küld. A zár
+  // session-szintű, tranzakció nélkül: a hosszú SMTP-küldést az
+  // idle_in_transaction_session_timeout nem szakítja meg, és a zár
+  // kapcsolatának hibája csak figyelmeztetés, nem uncaughtException.
+  //
+  // Ismert rések. Az 1–3. esetben második levél csak SMTP-n mehet ki, mert a
+  // Resend idempotenciakulcsa ezt kivédi:
+  //  1. Ha a folyamat a küldés és a nyom beírása között leáll, nyom nem lesz,
+  //     és egy később induló példány aznap még egyszer küldhet.
+  //  2. Ha a nyom írása a küldés után elbukik, ez a folyamat a következő
+  //     futásán pótolja (`retryPendingClaim`). Addig, jellemzően 5 percig,
+  //     egy közben induló vagy párhuzamosan futó példány még egyszer küldhet.
+  //     Ugyanennek a folyamatnak egy átfedő futása (kézi job-indítás) nem
+  //     küldhet: a zár alatt a függő nyomot is nézzük.
+  //  3. Ha a zár kapcsolata a küldés közben megszakad (pl.
+  //     Postgres-újraindulás), a zár felszabadul, és egy közben induló vagy
+  //     párhuzamosan futó példány a nyom beírása előtt küldhet még egyet.
+  //  4. Ha a zárat tartó kliens FIN nélkül tűnik el (hálózati szakadás,
+  //     gépleállás), a Postgres a session zárját csak akkor engedi el, amikor
+  //     a szerver TCP keepalive-ja észleli a halott kapcsolatot. Ez a Linux
+  //     alapértékeivel kb. két óra, ha a szerveren a tcp_keepalives_* nincs
+  //     beállítva. Addig minden példány riasztás nélkül `folyamatban`-t kap:
+  //     a levél késik, és ha a küldés késő este volt, aznapra el is maradhat.
+  //
+  // Ha a zár a küldés UTÁN hibázik, a küldés eredménye itt marad meg.
+  const attempt: { result?: SendResult } = {}
+  let locked: DigestLockResult<'mar-elkuldve' | 'kuldve' | 'keret-elfogyott'> = { acquired: false }
   try {
-    result = await deps.sendMail({
+    locked = await withDigestTryLock(
+      deps.payload,
+      `alerts:daily-digest:${today}`,
+      async () => {
+        // A függő nyom azt jelenti, hogy ez a folyamat ma már elküldte a levelet
+        // (breaker, PR #305 rev4): egy átfedő futás nem küldheti újra.
+        if (state.pendingClaim?.day === today || (await digestSentOn(claims, today))) {
+          return 'mar-elkuldve'
+        }
+        // Az esedékesség a zár előtt dőlt el. Egy átfedő futás (kézi
+        // job-indítás az ütemezés mellett) közben elfogyaszthatta a napi
+        // küldési keretet, vagy lezárhatta a napot (Devin, PR #306): a zár
+        // alatt újra megnézzük, mielőtt a kísérlet számít.
+        if (state.done || state.sendAttempts >= MAX_DIGEST_ATTEMPTS_PER_DAY) {
+          return 'keret-elfogyott'
+        }
+        state.sendAttempts += 1
+        const result = await sendDigest(deps, recipients, mail, today)
+        attempt.result = result
+        if (result.ok && result.provider === 'noop') {
+          // Nincs levélszolgáltató: semmi nem ment ki, ezért nyom sem kerül be,
+          // hogy a szolgáltató beállítása és a deploy után még aznap kimenjen.
+          // A hiányról naponta egyszer szólunk.
+          if (state.providerWarned) {
+            return 'kuldve'
+          }
+          state.providerWarned = true
+          log.warn(
+            'napi összesítő: nincs levélszolgáltató beállítva (noop), a levél nem ment ki; a napi nyom nem íródik be',
+          )
+        } else if (result.ok) {
+          const claim: DigestClaimAfter = { teendo: total, provider: result.provider }
+          if (!(await recordDigestSent(claims, today, claim))) {
+            // A levél kiment: a nyomot a következő futások pótolják.
+            state.pendingClaim = { day: today, after: claim }
+            log.warn(
+              'napi összesítő: a levél kiment, de a napi nyom nem íródott be; a következő futás pótolja, addig egy közben induló vagy párhuzamosan futó példány ma még egyszer elküldheti',
+            )
+          }
+        }
+        return 'kuldve'
+      },
+      log,
+    )
+  } catch (error) {
+    if (attempt.result === undefined) {
+      recordAssemblyFailure(state, deps.nowMs)
+      throw error
+    }
+    // A küldés már lefutott: a zár lezárásának hibája ezt nem teszi semmissé.
+    log.warn('napi összesítő: a zár a küldés után hibával zárult', { error: errorText(error) })
+  }
+
+  if (attempt.result === undefined && !locked.acquired) {
+    // Egy másik példány épp a zár alatt van (küld). Nem hiba, nem riasztunk,
+    // és a napot sem zárjuk: ha az a küldés elbukna, itt még pótolható.
+    log.info('napi összesítő: egy párhuzamos futás épp küldi, ez a kör kimarad')
+    return 'folyamatban'
+  }
+  if (locked.acquired && locked.value === 'keret-elfogyott') {
+    return 'nem-esedekes'
+  }
+  if (locked.acquired && locked.value === 'mar-elkuldve') {
+    state.done = true
+    log.info('napi összesítő: ma már elküldte egy korábbi vagy párhuzamos futás')
+    return 'mar-elkuldve'
+  }
+  const sent: SendResult = attempt.result ?? { ok: false, provider: 'noop', retryable: true }
+  if (sent.ok && sent.provider === 'noop') {
+    // Semmi nem ment ki: a nap nyitva marad (Codex, PR #305). Az újabb
+    // próbálkozásokat a napi küldési keret korlátozza, a noop is abból fogy.
+    return 'nincs-szolgaltato'
+  }
+  if (sent.ok) {
+    state.done = true
+    log.info('napi összesítő: levél elküldve', { teendo: total })
+    return 'elkuldve'
+  }
+  if (sent.retryable !== true) {
+    // Nem újrapróbálható (pl. a Resend 409-cel jelzi, hogy ma már ment
+    // összesítő ezzel a kulccsal): aznapra lezárjuk.
+    state.done = true
+    log.warn('napi összesítő: a levél nem ment ki, ma már nem próbáljuk újra', { teendo: total })
+    return 'feladva'
+  }
+  log.warn('napi összesítő: a levél nem ment ki, a következő futás újrapróbálja', {
+    teendo: total,
+    probalkozas: state.sendAttempts,
+  })
+  return 'hiba'
+}
+
+/** A levélküldés; a szolgáltató dobását is `SendResult`-tá alakítja. */
+async function sendDigest(
+  deps: DigestDeps,
+  recipients: readonly string[],
+  mail: DigestMail,
+  today: string,
+): Promise<SendResult> {
+  try {
+    return await deps.sendMail({
       to: [...recipients],
       subject: mail.subject,
       html: mail.html,
@@ -281,29 +608,6 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
       idempotencyKey: `digest-${today}`,
     })
   } catch (error) {
-    result = {
-      ok: false,
-      provider: 'noop',
-      retryable: true,
-      error: error instanceof Error ? error.message : String(error),
-    }
+    return { ok: false, provider: 'noop', retryable: true, error: errorText(error) }
   }
-
-  if (result.ok) {
-    state.doneDate = today
-    log.info('napi összesítő: levél elküldve', { teendo: total })
-    return 'elkuldve'
-  }
-  if (result.retryable !== true) {
-    // Nem újrapróbálható (pl. a Resend 409-cel jelzi, hogy ma már ment
-    // összesítő ezzel a kulccsal): aznapra lezárjuk.
-    state.doneDate = today
-    log.warn('napi összesítő: a levél nem ment ki, ma már nem próbáljuk újra', { teendo: total })
-    return 'feladva'
-  }
-  log.warn('napi összesítő: a levél nem ment ki, a következő futás újrapróbálja', {
-    teendo: total,
-    probalkozas: state.attempts,
-  })
-  return 'hiba'
 }

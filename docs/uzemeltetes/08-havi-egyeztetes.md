@@ -134,12 +134,24 @@ ORDER BY created_at;
 **B) Számla nem fizetett rendelésen, vagy visszatérített rendelés stornó
 nélkül; és elveszett válaszú számla gyanúja:**
 
+Stornót csak az a visszatérített rendelés kap, amelynek az első
+visszatérítése a teljes összeg volt. Ha előbb részleges visszatérítés volt, és
+a maradékot később utaltuk vissza, a rendelést lezáró visszatérítés
+helyesbítőt kap, nem stornót (a rendszerben is ez a szabály dönt,
+`src/lib/refund/refund-recovery.ts`). Az ilyen rendelést az első lekérdezés
+ezért nem listázza, a lezáró helyesbítőjét a C) lekérdezés nézi. Ha a
+rendelésnek nincs olvasható visszatérítési nyoma (például egy régi
+rendelésnél), a lekérdezés a biztonság kedvéért listázza: nézd meg a
+Számlázz.hu-ban, van-e stornója.
+
 ```sql
 SELECT order_number, status, invoice_number, storno_number, storno_status
 FROM orders
 WHERE invoice_number IS NOT NULL
   AND (status NOT IN ('paid', 'refunded')
-       OR (status = 'refunded' AND storno_number IS NULL));
+       OR (status = 'refunded' AND storno_number IS NULL
+           AND NOT coalesce(jsonb_typeof(refunds) = 'array'
+                            AND refunds -> 0 ->> 'type' = 'partial', false)));
 
 SELECT order_number, status, invoice_status, invoice_attempts
 FROM orders

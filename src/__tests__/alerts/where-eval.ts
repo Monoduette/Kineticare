@@ -64,15 +64,35 @@ export function matchesWhere(doc: Doc, where: Where): boolean {
   return true
 }
 
-/** Payload-szerű `count`/`find` memóriabeli gyűjteményekre. */
-export function createMemoryPayload(collections: Readonly<Record<string, readonly Doc[]>>) {
+/**
+ * Payload-szerű `count`/`find`/`create` memóriabeli gyűjteményekre. A
+ * `create` a gyűjteménybe ír, így egy későbbi `find` látja (például a napi
+ * összesítő audit-logs nyomát).
+ */
+export function createMemoryPayload(initial: Readonly<Record<string, readonly Doc[]>>) {
+  const collections: Record<string, Doc[]> = Object.fromEntries(
+    Object.entries(initial).map(([slug, docs]) => [slug, [...docs]]),
+  )
   const countCalls: Array<{ collection: string; where?: Where; overrideAccess?: boolean }> = []
   const findCalls: Array<Record<string, unknown>> = []
+  const createCalls: Array<{ collection: string; data: Record<string, unknown> }> = []
   const payload = {
     count: async (args: { collection: string; where?: Where; overrideAccess?: boolean }) => {
       countCalls.push(args)
       const docs = collections[args.collection] ?? []
       return { totalDocs: docs.filter((doc) => matchesWhere(doc, args.where ?? {})).length }
+    },
+    create: async (args: {
+      collection: string
+      data: Record<string, unknown>
+      overrideAccess?: boolean
+    }) => {
+      createCalls.push(args)
+      const docs = collections[args.collection] ?? []
+      collections[args.collection] = docs
+      const doc = { id: docs.length + 1, ...args.data, createdAt: new Date().toISOString() }
+      docs.push(doc)
+      return doc
     },
     find: async (args: {
       collection: string
@@ -91,7 +111,7 @@ export function createMemoryPayload(collections: Readonly<Record<string, readonl
       return { docs: slice, hasNextPage: page * limit < docs.length, totalDocs: docs.length }
     },
   }
-  return { payload, countCalls, findCalls }
+  return { payload, countCalls, findCalls, createCalls }
 }
 
 /**

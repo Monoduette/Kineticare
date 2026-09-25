@@ -3,7 +3,9 @@
 **Mikor:** a napi összesítő vagy a Figyelmet igényel blokk azt jelzi, hogy az
 alanyi adómentes keret 70%-a vagy 90%-a elfogyott. Csak akkor érvényes, ha a
 cég alanyi adómentes (a számlákon „AAM” áll); 27%-os áfakulcs mellett a sor
-meg sem jelenik.
+meg sem jelenik. Ha a sor azt írja, hogy a keret **most nem számolható**, a
+teendő a [11](11-riasztas-es-ugyelet.md) `aam-keret-nem-teljes` kódjánál van:
+addig a keret állását a könyvelőtől kérd el.
 
 ## A szabály (Áfa tv., hatályos szöveg)
 

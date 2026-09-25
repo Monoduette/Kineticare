@@ -1,5 +1,12 @@
 import { sql, type SQL } from '@payloadcms/db-postgres/drizzle'
-import { getPayload, type Payload } from 'payload'
+import {
+  APIError,
+  createLocalReq,
+  getPayload,
+  handleEndpoints,
+  NotFound,
+  type Payload,
+} from 'payload'
 import type { Client as PgClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -159,22 +166,13 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
    */
   type UnpublishFlag = { unpublishAllLocales?: boolean | 'true' }
 
-  /** A mentés eredménye: 'OK', vagy a Payload ValidationError mezőhibái. */
-  async function save(
-    id: number,
-    user: Doc,
-    data: Record<string, unknown>,
-    extra: UnpublishFlag = {},
-  ): Promise<'OK' | ErrorEntry[]> {
+  /**
+   * Egy mentés vagy verzió-visszaállítás kimenete: 'OK', vagy a Payload
+   * ValidationError mezőhibái. Más hibát továbbdob.
+   */
+  async function validationOutcome(run: Promise<unknown>): Promise<'OK' | ErrorEntry[]> {
     try {
-      await payload.update({
-        collection: 'products',
-        id,
-        data,
-        overrideAccess: false,
-        user: asUser(user),
-        ...(extra as { unpublishAllLocales?: boolean }),
-      })
+      await run
       return 'OK'
     } catch (error) {
       const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
@@ -183,19 +181,44 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     }
   }
 
+  /** A mentés eredménye: 'OK', vagy a Payload ValidationError mezőhibái. */
+  function save(
+    id: number,
+    user: Doc,
+    data: Record<string, unknown>,
+    extra: UnpublishFlag = {},
+  ): Promise<'OK' | ErrorEntry[]> {
+    return validationOutcome(
+      payload.update({
+        collection: 'products',
+        id,
+        data,
+        overrideAccess: false,
+        user: asUser(user),
+        ...(extra as { unpublishAllLocales?: boolean }),
+      }),
+    )
+  }
+
   /**
    * Tömeges (where-es) mentés, ahogy a REST `PATCH /api/products?where…` és az
    * admin „visszaállítás” gombja küldi (@payloadcms/ui RestoreButton:
-   * `?trash=true`, a `deletedAt exists` szűrővel). A tömeges mentés nem dob:
-   * a dokumentumonkénti hibát az `errors` tömbben adja.
+   * `?trash=true`, a `deletedAt exists` szűrővel). Az admin tömeges
+   * Közzététele `?draft=true`-val megy (PublishMany), a tömeges Visszavonás és
+   * lomtár `draft` nélkül (UnpublishMany, DeleteMany). A tömeges mentés nem
+   * dob: a dokumentumonkénti hibát az `errors` tömbben adja.
    */
   async function saveWhere(
     id: number,
     user: Doc,
     data: Record<string, unknown>,
-    options: UnpublishFlag & { trashed?: boolean } = {},
+    options: UnpublishFlag & {
+      trashed?: boolean
+      draft?: boolean
+      context?: Record<string, unknown>
+    } = {},
   ): Promise<'OK' | string[]> {
-    const { trashed = false, ...flag } = options
+    const { trashed = false, draft = false, context, ...flag } = options
     const result = await payload.update({
       collection: 'products',
       where: trashed
@@ -203,8 +226,10 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         : { id: { equals: id } },
       data,
       trash: trashed,
+      draft,
       overrideAccess: false,
       user: asUser(user),
+      ...(context === undefined ? {} : { context }),
       ...(flag as { unpublishAllLocales?: boolean }),
     })
     const errors = result.errors.map((entry) => String(entry.message))
@@ -257,13 +282,120 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })
   }
 
-  async function createUser(role: 'owner' | 'staff'): Promise<Doc> {
+  /**
+   * A kurzus fő sora a lomtárban állóval együtt, vagy `null`, ha a kurzust
+   * véglegesen törölték.
+   */
+  async function mainRowOrNull(id: number): Promise<Doc | null> {
+    const { docs } = await payload.find({
+      collection: 'products',
+      where: { id: { equals: id } },
+      depth: 0,
+      draft: false,
+      trash: true,
+      overrideAccess: true,
+      pagination: false,
+    })
+    return (docs[0] as unknown as Doc | undefined) ?? null
+  }
+
+  /** A kurzus-írás adapter-hívásai, amelyeknél a verseny első kérése feltartható. */
+  type HeldCall = 'createVersion' | 'deleteOne' | 'updateOne'
+
+  /** Az adapter-hívás argumentumaiból az, amit a feltartás vizsgál. */
+  interface AdapterCallArgs {
+    /** A `updateOne` és a `deleteOne` kollekciója. */
+    collection?: string
+    /** A `createVersion` kollekciója. */
+    collectionSlug?: string
+    req?: { context?: Record<string, unknown>; transactionID?: unknown }
+  }
+
+  type AdapterCall = (args: AdapterCallArgs) => Promise<unknown>
+
+  /** A feltartott kurzus-írás (holdAdapterCall). */
+  interface HeldWrite {
+    /** A feltartott kérés kapcsolatának azonosítója (pg_backend_pid), amint a hívásig ér. */
+    pid: Promise<number>
+    /** Továbbengedi a feltartott kérést. */
+    release: () => void
+    /** Visszaállítja az eredeti adapter-hívást. */
+    restore: () => void
+  }
+
+  /**
+   * Az első, `holds`-nak megfelelő kurzus-hívást (`method`: a fő sor írása, a
+   * végleges törlés vagy a verzió beszúrása) feltartja, amíg a teszt el nem
+   * engedi: alapból a hívás előtt, `after` mellett a valódi hívás lefutása
+   * után. A kérés ekkor zárolja a kurzus fő sorát (a mentés a
+   * productUpdateLocksRow sorzárját, a végleges törlés a törölt sorét tartja),
+   * és a tranzakciója nyitva van, így a mögé érkező mentés csak erre a zárra
+   * várhat. A többi kurzus-hívás előtt a `beforeOtherCall` fut. A spy csak a
+   * sorrendet állítja be, az írást a valódi adapter végzi.
+   */
+  function holdAdapterCall(
+    method: HeldCall,
+    holds: (args: AdapterCallArgs) => boolean,
+    {
+      after = false,
+      beforeOtherCall = async () => undefined,
+    }: { after?: boolean; beforeOtherCall?: (args: AdapterCallArgs) => Promise<void> } = {},
+  ): HeldWrite {
+    const adapter = payload.db as unknown as SqlAdapter & Record<HeldCall, AdapterCall>
+    const original = adapter[method]
+    let release: () => void = () => undefined
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let reportPid: (pid: number) => void = () => undefined
+    const pid = new Promise<number>((resolve) => {
+      reportPid = resolve
+    })
+    const holdHere = async (args: AdapterCallArgs) => {
+      const session = adapter.sessions[String(await args.req?.transactionID)]
+      const { rows } = await adapter.execute({
+        db: session?.db,
+        sql: sql`SELECT pg_backend_pid() AS pid`,
+      })
+      reportPid(Number(rows[0]?.pid))
+      await released
+    }
+    let held = false
+    const spy = vi.spyOn(adapter, method).mockImplementation(async (args) => {
+      const product = (args.collection ?? args.collectionSlug) === 'products'
+      if (product && !held && holds(args)) {
+        held = true
+        if (!after) await holdHere(args)
+        const result = await original.call(payload.db, args)
+        if (after) await holdHere(args)
+        return result
+      }
+      if (product) await beforeOtherCall(args)
+      return original.call(payload.db, args)
+    })
+    return { pid, release, restore: () => spy.mockRestore() }
+  }
+
+  const userNames = {
+    owner: 'Teszt Tulajdonos',
+    staff: 'Teszt Munkatárs',
+    customer: 'Teszt Vásárló',
+  } as const
+
+  /**
+   * Helyi, kifejezetten DUMMY-jelölt tesztjelszó (AGENTS.md, TILOS ZÓNÁK 1.):
+   * a createUser és a munkatárs REST-bejelentkezése ugyanezt használja.
+   */
+  const dummyPassword = (role: keyof typeof userNames): string =>
+    `DUMMY-helyi-teszt-${stamp}-${role}`
+
+  async function createUser(role: keyof typeof userNames): Promise<Doc> {
     const user = (await payload.create({
       collection: 'users',
       data: {
         email: `db-guard-${role}-${stamp}@example.test`,
-        password: `Helyi-teszt-${stamp}-${role}`,
-        name: role === 'owner' ? 'Teszt Tulajdonos' : 'Teszt Munkatárs',
+        password: dummyPassword(role),
+        name: userNames[role],
         role,
       },
       overrideAccess: true,
@@ -789,28 +921,10 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     const pg = await import('pg')
     const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
     await observer.connect()
-    const adapter = payload.db as unknown as SqlAdapter
-    const updateOne = payload.db.updateOne
-    let releaseRestore: () => void = () => undefined
-    const restoreMayWrite = new Promise<void>((resolve) => {
-      releaseRestore = resolve
-    })
-    let reportRestorePid: (pid: number) => void = () => undefined
-    const restorePid = new Promise<number>((resolve) => {
-      reportRestorePid = resolve
-    })
-    const spy = vi.spyOn(payload.db, 'updateOne').mockImplementation(async (args) => {
-      if (args.collection === 'products' && args.req?.context?.isRestoringVersion === true) {
-        const session = adapter.sessions[String(await args.req.transactionID)]
-        const { rows } = await adapter.execute({
-          db: session?.db,
-          sql: sql`SELECT pg_backend_pid() AS pid`,
-        })
-        reportRestorePid(Number(rows[0]?.pid))
-        await restoreMayWrite
-      }
-      return updateOne.call(payload.db, args)
-    })
+    const held = holdAdapterCall(
+      'updateOne',
+      (args) => args.req?.context?.isRestoringVersion === true,
+    )
     let restore: Promise<string> | undefined
     let unpublish: Promise<'OK' | ErrorEntry[] | string> | undefined
     try {
@@ -823,7 +937,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         (error: unknown) => String(error),
       )
       const holderPid = await Promise.race([
-        restorePid,
+        held.pid,
         restore.then((outcome) => {
           throw new Error(`A visszaállítás a fő sor írása előtt véget ért: ${outcome}`)
         }),
@@ -841,20 +955,24 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         'a tulajdonos visszavonása nem várta meg a visszaállítás sorzárját',
       ).toBe(true)
 
-      releaseRestore()
+      held.release()
       expect(await restore).toBe('OK')
       expect(await unpublish).toBe('OK')
       const row = await mainRow(id)
+      // A visszavonás alapja a zár előtt a tulajdonos piszkozata (kivett pipa)
+      // volt; a zár után a tulajdonosi mező a visszaállítás commitolt
+      // verziójából frissül (bent a pipa), ahogy a két mentés egymás után is
+      // adná (codex4 rev1, productUpdateLocksRow). Ingyenes, élő sor így sincs.
       expect({ _status: row._status, priceInHUFEnabled: row.priceInHUFEnabled }).toEqual({
         _status: 'draft',
-        priceInHUFEnabled: false,
+        priceInHUFEnabled: true,
       })
       expect((await claimAsStranger(id, 'race-reverse')).status).toBe('course-not-available')
     } finally {
-      releaseRestore()
+      held.release()
       await restore
       await unpublish
-      spy.mockRestore()
+      held.restore()
       await observer.end()
     }
   }, 120_000)
@@ -1466,6 +1584,1253 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     expect(await save(id, staff, { _status: 'published' })).toBe('OK')
     expect((await mainRow(id))._status).toBe('published')
   }, 120_000)
+
+  /** A párhuzamos mentések versenyében az egyes kérések jelölője (`req.context`). */
+  const RACE_CONTEXT_KEY = 'arOrVerseny'
+
+  /** Egy versenyző mentés kimenete (a tömeges mentésé a hibaszövegek listája). */
+  type SaveOutcome = 'OK' | ErrorEntry[] | string[]
+
+  /** A versenyben álló kérés; a jelölőt a kérés `context`-jébe teszi. */
+  type RaceRequest = (context: Record<string, unknown>) => Promise<SaveOutcome>
+
+  /**
+   * Két egymást átfedő kérés ugyanazon a kurzuson. Az első alapból a fő sor
+   * írása előtt áll (holdAdapterCall), a sorzárat tartva; a végleges törlés a
+   * törlés után (`{ method: 'deleteOne', after: true }`), az autosave a verzió
+   * beszúrása előtt (`{ method: 'createVersion' }`). A második ekkor indul,
+   * így a Payload a mentés alapját (originalDoc) az első commitja előtt
+   * olvassa. A második kérést a feltartott hívásnál is visszatartjuk az első
+   * commitjáig: zár nélkül így áll elő a veszélyes sorrend (a második commitol
+   * később). A `secondWaited` igaz, ha a második a zár mögött várt, mielőtt
+   * lefutott vagy a hívásig ért. A második kérés nem validációs hibája
+   * szövegként jön vissza (például `NotFound: …`).
+   */
+  async function race(
+    first: RaceRequest,
+    second: RaceRequest,
+    { method = 'updateOne', after = false }: { method?: HeldCall; after?: boolean } = {},
+  ): Promise<{ first: SaveOutcome; second: SaveOutcome | string; secondWaited: boolean }> {
+    const pg = await import('pg')
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await observer.connect()
+    let firstOutcome: Promise<SaveOutcome> | undefined
+    let secondOutcome: Promise<SaveOutcome | string> | undefined
+    let secondAtWrite = false
+    const held = holdAdapterCall(
+      method,
+      (args) => args.req?.context?.[RACE_CONTEXT_KEY] === 'elso',
+      {
+        after,
+        beforeOtherCall: async (args) => {
+          if (args.req?.context?.[RACE_CONTEXT_KEY] !== 'masodik') return
+          secondAtWrite = true
+          await firstOutcome?.catch(() => undefined)
+        },
+      },
+    )
+    try {
+      const running = first({ [RACE_CONTEXT_KEY]: 'elso' })
+      firstOutcome = running
+      const holderPid = await Promise.race([
+        held.pid,
+        running.then((outcome) => {
+          throw new Error(
+            `Az első mentés a fő sor írása előtt véget ért: ${JSON.stringify(outcome)}`,
+          )
+        }),
+      ])
+      let secondSettled = false
+      const waiting = second({ [RACE_CONTEXT_KEY]: 'masodik' }).then(
+        (outcome) => outcome,
+        (error: unknown) => String(error),
+      )
+      secondOutcome = waiting
+      void waiting.then(() => {
+        secondSettled = true
+      })
+      const secondWaited = await untilWaitersBehind(
+        observer,
+        holderPid,
+        1,
+        () => secondAtWrite || secondSettled,
+      )
+      held.release()
+      return { first: await running, second: await waiting, secondWaited }
+    } finally {
+      held.release()
+      await firstOutcome?.catch(() => undefined)
+      await secondOutcome
+      held.restore()
+      await observer.end()
+    }
+  }
+
+  /** A tulajdonos Közzététel gombja (Local API). */
+  function ownerPublishes(
+    id: number,
+    data: Record<string, unknown>,
+    extraContext: Record<string, unknown> = {},
+  ): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { ...data, _status: 'published' },
+          overrideAccess: false,
+          user: asUser(owner),
+          context: { ...extraContext, ...context },
+        }),
+      )
+  }
+
+  /** Rendszer-mentés felhasználó nélkül, `overrideAccess`-szel (például egy tartalom-szkript). */
+  function systemPublishes(id: number, data: Record<string, unknown>): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { ...data, _status: 'published' },
+          overrideAccess: true,
+          context,
+        }),
+      )
+  }
+
+  /**
+   * Az admin „Visszaállítás” gombja a kurzus első közzétett verziójára,
+   * közzétettként (`POST /api/products/versions/<id>?draft=false`).
+   */
+  function restoresPublishedVersion(id: number, user: Doc): RaceRequest {
+    return async (context) =>
+      validationOutcome(
+        payload.restoreVersion({
+          collection: 'products',
+          id: (await publishedVersionId(id)) as never,
+          draft: false,
+          overrideAccess: false,
+          user: asUser(user),
+          context,
+        }),
+      )
+  }
+
+  /** Az admin autosave-je (`?draft=true&autosave=true`), a verseny jelölőjével. */
+  function autosaves(id: number, user: Doc, data: Record<string, unknown>): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { ...data, _status: 'draft' },
+          draft: true,
+          autosave: true,
+          overrideAccess: false,
+          user: asUser(user),
+          context,
+        }),
+      )
+  }
+
+  /**
+   * PR #305 (Codex P2, discussion_r4100959710): két egymást átfedő mentés
+   * ugyanazon a kurzuson. Az első (a tulajdonos 200 000 Ft-os közzététele) már
+   * validált, és a fő sor írása előtt áll; a második ekkor indul. Ha a második
+   * az ár-őr mércéjét (productReference) az első commitja előtt olvasná, a még
+   * látható 79 500 Ft-hoz mérne, átengedné a 70 000 Ft-ot (79 500 felénél
+   * több), és az első után írva a legutóbb közzétett 200 000 Ft-ról 65%-os
+   * csökkenést élesítene megerősítés nélkül. A fő sor zárja
+   * (productUpdateLocksRow) a validálás előtt, a kérés tranzakciójában
+   * fogja meg a második kérést, így az a már commitolt 200 000 Ft-hoz mér.
+   *
+   * Minden sor egy írási út, amelyen a második kérés maga ír árat, és azt az
+   * ár-őr méri: a tulajdonos mentése, a visszavont kurzus újbóli közzététele
+   * (a mérce ott a napló pillanatképe) és a tulajdonos verzió-visszaállítása
+   * (külön Payload-művelet, restoreVersion.js). Ahol a második kérés az árat
+   * nem írja (a munkatárs közzététele, autosave-je és visszavonása, a
+   * tulajdonos Visszavonás gombja, a tömeges közzététel), ott a zár előtt
+   * olvasott érték volt elavult, a mérce nem; azt a lenti, „elavult
+   * visszaírás” táblázat méri, minden tulajdonosi mezőre.
+   */
+  it.each<{
+    path: string
+    initialPrice?: number
+    setup: (id: number) => Promise<void>
+    second: (id: number) => RaceRequest
+  }>([
+    {
+      path: 'a tulajdonos mentése',
+      setup: async () => undefined,
+      second: (id) => ownerPublishes(id, { priceInHUF: 70_000 }),
+    },
+    {
+      path: 'a visszavont kurzus újbóli közzététele',
+      setup: async (id) => {
+        expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe(
+          'OK',
+        )
+      },
+      second: (id) => ownerPublishes(id, { priceInHUF: 70_000 }),
+    },
+    {
+      path: 'a tulajdonos verzió-visszaállítása',
+      initialPrice: 70_000,
+      setup: async (id) => {
+        expect(await save(id, owner, { priceInHUF: 79_500, _status: 'published' })).toBe('OK')
+      },
+      second: (id) => restoresPublishedVersion(id, owner),
+    },
+  ])(
+    'PR #305 (Codex P2): párhuzamos 200 000 Ft-os közzététel mellett $path a commitolt 200 000 Ft-hoz mér',
+    async ({ path, initialPrice, setup, second }) => {
+      const id = await createPublished(`codex-p2 ${path}`, {
+        priceInHUF: initialPrice ?? 79_500,
+      })
+      await setup(id)
+      const result = await race(ownerPublishes(id, { priceInHUF: 200_000 }), second(id))
+      expect(result.first).toBe('OK')
+      // A várakozás bizonyítéka az üzenet: a commitolt 200 000 Ft-ot a második
+      // kérés csak a zár mögött olvashatta. A `secondWaited` ezért nincs
+      // állítva: zár nélkül az ellenpróba azon bukna, nem az elmaradt elutasításon.
+      expect(result.second).toContainEqual({
+        path: 'priceInHUF',
+        message: priceDropMessage('rendes', 70_000, 200_000),
+      })
+      const row = await mainRow(id)
+      expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+        _status: 'published',
+        priceInHUF: 200_000,
+      })
+    },
+    120_000,
+  )
+
+  /**
+   * A munkatárs elírás-javítása és közzététele. A tulajdonosi mezőket nem
+   * írhatja; az admin űrlapja ezeket is elküldi (`formValues`, az űrlapon
+   * látott érték), a Payload a beküldött értéket elveti.
+   */
+  function staffFixesTypo(id: number, formValues: Record<string, unknown> = {}): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { shortDescription: 'Elírás javítva.', ...formValues, _status: 'published' },
+          overrideAccess: false,
+          user: asUser(staff),
+          context,
+        }),
+      )
+  }
+
+  /** Az admin Visszavonás gombja: `?unpublishAllLocales=true`, `{ _status: 'draft' }`. */
+  function unpublishes(id: number, user: Doc): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { _status: 'draft' },
+          unpublishAllLocales: true,
+          overrideAccess: false,
+          user: asUser(user),
+          context,
+        }),
+      )
+  }
+
+  /** Élő akció, vég dátummal: az akció-mezők sorainak kiinduló állapota. */
+  const activePromo = {
+    promoEnabled: true,
+    promoPriceHuf: 39_500,
+    promoEnd: '2099-12-31T12:00:00.000Z',
+  }
+
+  /** Az „elavult visszaírás” táblázat egy sora. */
+  interface StaleWriteBackRow {
+    tag: string
+    /** A zár mögött várakozó, második kérés. */
+    who: string
+    /** A tulajdonos közben commitolt döntése (az első kérés). */
+    decision: string
+    initial?: Record<string, unknown>
+    ownerData: Record<string, unknown>
+    ownerContext?: Record<string, unknown>
+    second: (id: number) => RaceRequest
+    afterwards?: (id: number) => Promise<void>
+    expected: Record<string, unknown>
+  }
+
+  /**
+   * PR #305 (codex4 rev1–rev2, breaker BRK-A/B/C/E/F, T2): a zár mögött
+   * várakozó mentés nem írhatja vissza a tulajdonos közben commitolt döntését.
+   * A Payload a mentés alapját a zár előtt olvassa, és a kérésből hiányzó,
+   * valamint a munkatárs által nem írható tulajdonosi mezőket ebből tölti.
+   * Mérve 7de84d1-en (a zár már megvolt, a frissítés még nem): a munkatárs
+   * párhuzamos közzététele visszaírta a régi árat (emelésnél és csökkentésnél
+   * is), a fizetős állapotot, a közzétett megjelenést, a bekapcsolt akciót, a
+   * hozzáférés hosszát, a rejtettséget, az akciós árat és az akció két dátumát;
+   * a munkatárs autosave-je az elavult árat a legutóbbi verzióba tette, és a
+   * később, verseny nélkül közzétett változat élesítette; a munkatárs és a
+   * tulajdonos (másik lapon) visszavonása az elavult árat írta a legutóbbi
+   * verzióba, és az újbóli közzététel élesítette; a `draft` nélküli tömeges
+   * közzététel közvetlenül élesítette. Az ár-őr ebből csak a felénél nagyobb
+   * csökkenést látja.
+   *
+   * Minden soron az első kérés a tulajdonos közzététele, a második a zárra
+   * vár, mindkettő sikeres, és a végén a tulajdonos döntése él, ahogy a két
+   * mentés egymás utáni futtatása is adná (productUpdateLocksRow). A sorok
+   * együtt minden írás-korlátozott kurzusmezőt lefednek (lásd a lenti
+   * kontrollt).
+   */
+  const staleWriteBackRows: StaleWriteBackRow[] = [
+    {
+      tag: 'BRK-A1',
+      who: 'munkatárs közzététele',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: staffFixesTypo,
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-A2',
+      who: 'munkatárs közzététele',
+      decision: '150 000 Ft-ra csökkentését',
+      initial: { priceInHUF: 200_000 },
+      ownerData: { priceInHUF: 150_000 },
+      second: staffFixesTypo,
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-A3',
+      who: 'munkatárs közzététele',
+      decision: 'megerősített ingyenessé tételét',
+      ownerData: { priceInHUFEnabled: false },
+      ownerContext: { [PRODUCT_CONFIRMATIONS_KEY]: { freeCourse: true } },
+      second: staffFixesTypo,
+      expected: { priceInHUFEnabled: false },
+    },
+    {
+      tag: 'BRK-A4',
+      who: 'munkatárs közzététele',
+      decision: 'archiválását',
+      ownerData: { status: 'archived' },
+      second: staffFixesTypo,
+      expected: { status: 'archived' },
+    },
+    {
+      tag: 'BRK-A5',
+      who: 'munkatárs közzététele',
+      decision: 'akció-kikapcsolását',
+      initial: activePromo,
+      ownerData: { promoEnabled: false },
+      second: staffFixesTypo,
+      expected: { promoEnabled: false },
+    },
+    {
+      tag: 'BRK-A6',
+      who: 'munkatárs teljes űrlappal küldött közzététele',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => staffFixesTypo(id, { priceInHUF: 79_500 }),
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'T2-a',
+      who: 'munkatárs közzététele',
+      decision: '365 napos hozzáférés-hosszát',
+      ownerData: { accessDurationDays: 365 },
+      second: staffFixesTypo,
+      expected: { accessDurationDays: 365 },
+    },
+    {
+      tag: 'T2-b',
+      who: 'munkatárs közzététele',
+      decision: 'rejtetté tételét',
+      ownerData: { unlisted: true },
+      second: staffFixesTypo,
+      expected: { unlisted: true },
+    },
+    {
+      tag: 'T2-c',
+      who: 'munkatárs közzététele',
+      decision: '49 500 Ft-os akciós árát',
+      initial: activePromo,
+      ownerData: { promoPriceHuf: 49_500 },
+      second: staffFixesTypo,
+      expected: { promoPriceHuf: 49_500 },
+    },
+    {
+      tag: 'T2-d',
+      who: 'munkatárs közzététele',
+      decision: 'korábbra hozott akció-végét',
+      initial: activePromo,
+      ownerData: { promoEnd: '2099-06-30T12:00:00.000Z' },
+      second: staffFixesTypo,
+      expected: { promoEnd: '2099-06-30T12:00:00.000Z' },
+    },
+    {
+      tag: 'T2-e',
+      who: 'munkatárs közzététele',
+      decision: 'beállított akció-kezdetét',
+      initial: activePromo,
+      ownerData: { promoStart: '2099-01-15T12:00:00.000Z' },
+      second: staffFixesTypo,
+      expected: { promoStart: '2099-01-15T12:00:00.000Z' },
+    },
+    {
+      tag: 'BRK-B',
+      who: 'munkatárs autosave-je',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => autosaves(id, staff, { shortDescription: 'Gépel…' }),
+      afterwards: async (id) => {
+        expect(await save(id, staff, { shortDescription: 'Kész.', _status: 'published' })).toBe(
+          'OK',
+        )
+      },
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-C',
+      who: 'munkatárs visszavonása',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => unpublishes(id, staff),
+      afterwards: async (id) => {
+        expect(await save(id, staff, { _status: 'published' })).toBe('OK')
+      },
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-E',
+      who: 'tulajdonos Visszavonása másik lapon',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => unpublishes(id, owner),
+      afterwards: async (id) => {
+        // Az admin űrlapja a legutóbbi verziót tölti be; a tulajdonos ezt teszi közzé.
+        const form = (await payload.findByID({
+          collection: 'products',
+          id,
+          draft: true,
+          depth: 0,
+          overrideAccess: true,
+        })) as unknown as Doc
+        expect(await save(id, owner, { priceInHUF: form.priceInHUF, _status: 'published' })).toBe(
+          'OK',
+        )
+      },
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-F',
+      who: 'draft nélküli tömeges közzététel',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => (context) => saveWhere(id, owner, { _status: 'published' }, { context }),
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      // Egy szkript az opcionális mezőt `undefined`-dal adja át: a Payload ezt
+      // hiányzónak veszi, és az alapból tölti, tehát nem a kérés döntése.
+      tag: 'BRK-G',
+      who: 'rendszer-mentés `undefined` árral',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => systemPublishes(id, { shortDescription: 'Szkript.', priceInHUF: undefined }),
+      expected: { priceInHUF: 150_000 },
+    },
+  ]
+
+  it.each(staleWriteBackRows)(
+    'PR #305 (codex4, $tag): a párhuzamos $who nem írja vissza a tulajdonos $decision',
+    async ({ tag, initial, ownerData, ownerContext, second, afterwards, expected }) => {
+      const id = await createPublished(`elavult ${tag}`, initial)
+      const result = await race(ownerPublishes(id, ownerData, ownerContext), second(id))
+      expect(result).toEqual({ first: 'OK', second: 'OK', secondWaited: true })
+      await afterwards?.(id)
+      const row = await mainRow(id)
+      const fields = ['_status', ...Object.keys(expected)]
+      expect(Object.fromEntries(fields.map((field) => [field, row[field]]))).toEqual({
+        _status: 'published',
+        ...expected,
+      })
+    },
+    120_000,
+  )
+
+  /**
+   * Kontroll (codex4 rev2, breaker M-A): a productUpdateLocksRow minden olyan
+   * legfelső szintű kurzusmezőt frissít, amelynek az írását mező-szintű
+   * `access.update` korlátozza (ma a kilenc tulajdonosi mező, T-011). A fenti
+   * táblázat mindegyikre mér egy versenyt; ha új ilyen mező jön, vagy egy mező
+   * elveszti a korlátját, ez a kontroll bukik, amíg a táblázat nem követi.
+   */
+  it('kontroll (codex4 rev2): az elavult visszaírás táblázata minden írás-korlátozott kurzusmezőt lefed', () => {
+    const restricted = payload.collections.products.config.flattenedFields
+      .filter((field) => 'access' in field && typeof field.access?.update === 'function')
+      .map((field) => field.name)
+    const covered = new Set(staleWriteBackRows.flatMap((row) => Object.keys(row.expected)))
+    expect([...restricted].sort()).toEqual([...covered].sort())
+  })
+
+  /**
+   * Kontroll (codex4 rev1–rev2, breaker M-C, M-D): verseny nélkül a frissítés
+   * semmit nem változtat, mert ugyanonnan olvas, ahonnan a Payload a mentés
+   * alapját vette (productUpdateRemembersSource). Minden sor egy tömeges
+   * kérés-alak a tulajdonos függő autosave-piszkozata mellett. A `draft`
+   * nélküli tömeges mentés a fő sorból dolgozik, így a piszkozat ára nem kerül
+   * a közzétett sorba. Az admin tömeges Közzététele (`?draft=true`,
+   * PublishMany) és a tömeges lomtár (DeleteMany) a legutóbbi verzióból: a
+   * tulajdonosé a piszkozat 150 000 Ft-ját élesíti, illetve a lomtárba írja; a
+   * munkatársé a tulajdonos 7 950 Ft-os elütésén elakad (a felénél nagyobb
+   * csökkenést csak a tulajdonos erősítheti meg, H2). Ha a frissítés más
+   * forrásból olvasna, a fő sor és a piszkozat értékei keverednének.
+   */
+  it.each<{
+    shape: string
+    pendingPrice: number
+    user: () => Doc
+    data: () => Record<string, unknown>
+    draft?: boolean
+    outcome: unknown
+    expected: { _status: string; priceInHUF: number; trashed: boolean }
+  }>([
+    {
+      shape: 'a munkatárs `draft` nélküli tömeges közzététele',
+      pendingPrice: 150_000,
+      user: () => staff,
+      data: () => ({ _status: 'published' }),
+      outcome: 'OK',
+      expected: { _status: 'published', priceInHUF: 79_500, trashed: false },
+    },
+    {
+      shape: 'a tulajdonos tömeges Közzététele (`?draft=true`)',
+      pendingPrice: 150_000,
+      user: () => owner,
+      data: () => ({ _status: 'published' }),
+      draft: true,
+      outcome: 'OK',
+      expected: { _status: 'published', priceInHUF: 150_000, trashed: false },
+    },
+    {
+      shape: 'a munkatárs tömeges Közzététele (`?draft=true`)',
+      pendingPrice: 7_950,
+      user: () => staff,
+      data: () => ({ _status: 'published' }),
+      draft: true,
+      outcome: [expect.stringContaining('Ár (Ft)')],
+      expected: { _status: 'published', priceInHUF: 79_500, trashed: false },
+    },
+    {
+      shape: 'a tulajdonos tömeges lomtára',
+      pendingPrice: 150_000,
+      user: () => owner,
+      data: () => ({ deletedAt: new Date().toISOString() }),
+      outcome: 'OK',
+      expected: { _status: 'draft', priceInHUF: 150_000, trashed: true },
+    },
+  ])(
+    'kontroll (codex4): verseny nélkül $shape a Payload alapját viszi tovább',
+    async ({ shape, pendingPrice, user, data, draft, outcome, expected }) => {
+      const id = await createPublished(`tomeges ${shape}`)
+      await autosave(id, owner, { priceInHUF: pendingPrice })
+      const result = await saveWhere(id, user(), data(), { draft })
+      const row = await mainRow(id)
+      expect({
+        result,
+        _status: row._status,
+        priceInHUF: row.priceInHUF,
+        trashed: Boolean(row.deletedAt),
+      }).toEqual({ result: outcome, ...expected })
+    },
+    120_000,
+  )
+
+  /**
+   * PR #305 (codex4 rev2, breaker T3): verseny nélkül a frissítés a Payload
+   * lomtár-szűrőjével olvas. A munkatárs `?draft=true`-s lomtár-kérése csak
+   * verziót ír, így a legutóbbi verzió lomtárban van, a fő sor él. A Payload a
+   * következő mentés alapját ilyenkor a lomtáron kívüli fő sorból veszi (a
+   * lomtárban álló verziót a getLatestCollectionVersion kihagyja). A szűrő
+   * nélküli frissítés a lomtárban álló verzióból olvasott, és a munkatárs
+   * elírás-javítása a tulajdonos függő piszkozatának 30 napos
+   * hozzáférés-hosszát, rejtettségét és 150 000 Ft-ját élesítette.
+   */
+  it('PR #305 (codex4 rev2, T3): verseny nélkül a munkatárs közzététele a lomtáron kívüli fő sort viszi tovább, ha a legutóbbi verzió lomtárban van', async () => {
+    const id = await createPublished('lomtaras-verzio')
+    await autosave(id, owner, { accessDurationDays: 30, unlisted: true, priceInHUF: 150_000 })
+    await payload.update({
+      collection: 'products',
+      id,
+      data: { deletedAt: new Date().toISOString() },
+      draft: true,
+      overrideAccess: false,
+      user: asUser(staff),
+    })
+    const before = await mainRow(id)
+    expect({ _status: before._status, deletedAt: before.deletedAt ?? null }).toEqual({
+      _status: 'published',
+      deletedAt: null,
+    })
+
+    expect(
+      await save(id, staff, { shortDescription: 'Elírás javítva.', _status: 'published' }),
+    ).toBe('OK')
+    const row = await mainRow(id)
+    expect({
+      accessDurationDays: row.accessDurationDays ?? null,
+      unlisted: row.unlisted,
+      priceInHUF: row.priceInHUF,
+    }).toEqual({ accessDurationDays: null, unlisted: false, priceInHUF: 79_500 })
+  }, 120_000)
+
+  /**
+   * PR #305 (codex4 rev2, breaker T4): a kérés által írható, kifejezetten
+   * küldött érték a kérés döntése. A tulajdonos egyik lapján az autosave
+   * 45 000 Ft-ot ment (a zárat tartva, a verzió beszúrása előtt), a másik lapon
+   * kifejezetten 79 500 Ft-tal tesz közzé. Soros futtatásnál a 79 500 Ft él;
+   * a zár előtti alappal egyező értéket érintetlennek vevő frissítés a
+   * 45 000 Ft-os, meg nem erősített piszkozat-árat élesítette (43%-os
+   * csökkenés, az ár-őr küszöbe alatt). A rendszer (`overrideAccess`, például
+   * egy tartalom-szkript) kifejezett értéke ugyanígy a kérés döntése.
+   */
+  it.each<{ writer: string; publish: (id: number) => RaceRequest }>([
+    { writer: 'a tulajdonos', publish: (id) => ownerPublishes(id, { priceInHUF: 79_500 }) },
+    {
+      writer: 'a rendszer (overrideAccess)',
+      publish: (id) => systemPublishes(id, { priceInHUF: 79_500 }),
+    },
+  ])(
+    'PR #305 (codex4 rev2, T4): $writer kifejezetten küldött 79 500 Ft-ja él, nem a másik lapon közben mentett 45 000 Ft-os autosave',
+    async ({ writer, publish }) => {
+      const id = await createPublished(`kifejezett ${writer}`)
+      const result = await race(autosaves(id, owner, { priceInHUF: 45_000 }), publish(id), {
+        method: 'createVersion',
+      })
+      expect({ ...result, priceInHUF: (await mainRow(id)).priceInHUF }).toEqual({
+        first: 'OK',
+        second: 'OK',
+        secondWaited: true,
+        priceInHUF: 79_500,
+      })
+    },
+    120_000,
+  )
+
+  /**
+   * Kontroll (codex4 rev2, breaker M-E): a verzió-visszaállítás kimarad a
+   * frissítésből, mert a visszaállított verzió értéke a kérés szándéka. A
+   * tulajdonos a 79 500 Ft-os közzétett verziót állítja vissza, miközben a
+   * zárat egy 150 000 Ft-os közzététele tartja. Soros futtatásnál a
+   * visszaállítás él (a 47%-os csökkenés az ár-őr küszöbe alatt van); ha a
+   * frissítés a visszaállításra is futna, a commitolt 150 000 Ft maradna.
+   */
+  it('kontroll (codex4 rev2, ME): a tulajdonos verzió-visszaállítása a párhuzamos 150 000 Ft-os közzététel után is a visszaállított 79 500 Ft-ot írja', async () => {
+    const id = await createPublished('visszaallitas-verseny')
+    const result = await race(
+      ownerPublishes(id, { priceInHUF: 150_000 }),
+      restoresPublishedVersion(id, owner),
+    )
+    expect({ ...result, priceInHUF: (await mainRow(id)).priceInHUF }).toEqual({
+      first: 'OK',
+      second: 'OK',
+      secondWaited: true,
+      priceInHUF: 79_500,
+    })
+  }, 120_000)
+
+  /** Az admin törlő ablaka „Végleges törlés” jelölővel: `DELETE /api/products/:id`. */
+  function hardDeletes(id: number, user: Doc): RaceRequest {
+    return async (context) => {
+      await payload.delete({
+        collection: 'products',
+        id,
+        overrideAccess: false,
+        user: asUser(user),
+        context,
+      })
+      return 'OK'
+    }
+  }
+
+  /**
+   * A Payload NotFound-hibájának szövege a Local API kérés nyelvén, ahogy a
+   * versenyző kérés kimenete (`NotFound: …`) és a tömeges mentés hibalistája
+   * mutatja.
+   */
+  async function notFoundMessage(): Promise<string> {
+    return new NotFound((await createLocalReq({}, payload)).t).message
+  }
+
+  /**
+   * PR #305 (codex4 rev2, breaker BRK-R): a zár mögött várakozó kérés alatt a
+   * kurzust véglegesen törlik (az admin törlő ablakának „Végleges törlés”
+   * jelölője a munkatársnak és a tulajdonosnak is elérhető). Soros futtatásnál
+   * a második kérés NotFound, a kurzus törölve marad. a377baf-en a zároló
+   * `SELECT` üres eredménye után a mentés továbbment, és a Payload fő
+   * sor-írása (upsert) a kurzust közzétett, 79 500 Ft-os, megvásárolható
+   * állapotban szúrta vissza, a verzió-visszaállítás is; az autosave
+   * verzió-beszúrása nyers idegenkulcs-hibával állt le.
+   */
+  it.each<{
+    tag: string
+    deleter: string
+    who: string
+    deletes: (id: number) => RaceRequest
+    second: (id: number) => RaceRequest
+  }>([
+    {
+      tag: 'R1',
+      deleter: 'a tulajdonos',
+      who: 'munkatársi közzététel',
+      deletes: (id) => hardDeletes(id, owner),
+      second: staffFixesTypo,
+    },
+    {
+      tag: 'R2',
+      deleter: 'a munkatárs',
+      who: 'tulajdonosi közzététel',
+      deletes: (id) => hardDeletes(id, staff),
+      second: (id) => ownerPublishes(id, { shortDescription: 'Tulajdonosi javítás.' }),
+    },
+    {
+      tag: 'R3',
+      deleter: 'a munkatárs',
+      who: 'tulajdonosi verzió-visszaállítás',
+      deletes: (id) => hardDeletes(id, staff),
+      second: (id) => restoresPublishedVersion(id, owner),
+    },
+    {
+      tag: 'R4',
+      deleter: 'a tulajdonos',
+      who: 'munkatársi autosave',
+      deletes: (id) => hardDeletes(id, owner),
+      second: (id) => autosaves(id, staff, { shortDescription: 'Gépel…' }),
+    },
+  ])(
+    'PR #305 (codex4 rev2, BRK-$tag): ha $deleter véglegesen törli a kurzust, a zár mögött várakozó $who NotFound, a kurzus nem támad fel',
+    async ({ tag, deletes, second }) => {
+      const id = await createPublished(`torolt ${tag}`)
+      const result = await race(deletes(id), second(id), { method: 'deleteOne', after: true })
+      const row = await mainRowOrNull(id)
+      // A törölt kurzus nem kerül a takarítás listájára (a törlése NotFound lenne).
+      if (row === null) productIds.splice(productIds.indexOf(id), 1)
+      expect({ ...result, exists: row !== null }).toEqual({
+        first: 'OK',
+        second: `NotFound: ${await notFoundMessage()}`,
+        secondWaited: true,
+        exists: false,
+      })
+    },
+    120_000,
+  )
+
+  /** Az admin lomtár-gombja (DeleteDocument): `PATCH /api/products/:id` `{ deletedAt }`. */
+  function trashes(id: number, user: Doc): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { deletedAt: new Date().toISOString() },
+          overrideAccess: false,
+          user: asUser(user),
+          context,
+        }),
+      )
+  }
+
+  /** A munkatárs `trash: true`-s API-mentése (a lomtárban álló sort is alapnak veszi). */
+  function staffPublishesWithTrashFlag(id: number): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { shortDescription: 'Elírás javítva.', _status: 'published' },
+          trash: true,
+          overrideAccess: false,
+          user: asUser(staff),
+          context,
+        }),
+      )
+  }
+
+  /**
+   * PR #305 (codex4 rev2, breaker BRK-T, vezetői átnézés): a tulajdonos lomtárba
+   * teszi az élő kurzust (az admin lomtár-gombja vagy tömeges lomtára), közben
+   * egy másik kérés a zárra vár. Soros futtatásnál a második kérés a lomtárban
+   * álló kurzust nem találja (NotFound; a tömeges kérés hibalistájában), és a
+   * kurzus a lomtárban marad, piszkozatként. a377baf-en a zár előtti alap
+   * `deletedAt: null`-ja a kurzust kihozta a lomtárból: a munkatárs
+   * közzététele, a `trash: true`-s API-mentés és az admin tömeges Közzététele
+   * élőként, a tömeges Visszavonás piszkozatként; a tulajdonos
+   * verzió-visszaállítása a verzió értékeivel.
+   */
+  it.each<{
+    tag: string
+    how: string
+    who: string
+    first: (id: number) => RaceRequest
+    second: (id: number) => RaceRequest
+    /** Tömeges kérés: a NotFound a hibalistában jön vissza. */
+    bulk?: boolean
+  }>([
+    {
+      tag: 'T-a',
+      how: 'lomtár-gombja',
+      who: 'munkatársi közzététel',
+      first: (id) => trashes(id, owner),
+      second: staffFixesTypo,
+    },
+    {
+      tag: 'T-b',
+      how: 'tömeges lomtára',
+      who: 'munkatársi közzététel',
+      first: (id) => (context) =>
+        saveWhere(id, owner, { deletedAt: new Date().toISOString() }, { context }),
+      second: staffFixesTypo,
+    },
+    {
+      tag: 'T-c',
+      how: 'lomtár-gombja',
+      who: '`trash: true`-s munkatársi mentés',
+      first: (id) => trashes(id, owner),
+      second: staffPublishesWithTrashFlag,
+    },
+    {
+      tag: 'T-d',
+      how: 'lomtár-gombja',
+      who: 'tulajdonosi verzió-visszaállítás',
+      first: (id) => trashes(id, owner),
+      second: (id) => restoresPublishedVersion(id, owner),
+    },
+    {
+      tag: 'T-e',
+      how: 'lomtár-gombja',
+      who: 'munkatársi tömeges Közzététel (`?draft=true`)',
+      first: (id) => trashes(id, owner),
+      second: (id) => (context) =>
+        saveWhere(id, staff, { _status: 'published' }, { draft: true, context }),
+      bulk: true,
+    },
+    {
+      tag: 'T-f',
+      how: 'lomtár-gombja',
+      who: 'munkatársi tömeges Visszavonás',
+      first: (id) => trashes(id, owner),
+      second: (id) => (context) => saveWhere(id, staff, { _status: 'draft' }, { context }),
+      bulk: true,
+    },
+  ])(
+    'PR #305 (codex4 rev2, BRK-$tag): a tulajdonos $how után a zár mögött várakozó $who nem hozza ki a kurzust a lomtárból',
+    async ({ tag, first, second, bulk = false }) => {
+      const id = await createPublished(`lomtar ${tag}`)
+      const result = await race(first(id), second(id))
+      const row = await mainRow(id)
+      const notFound = await notFoundMessage()
+      expect({ ...result, trashed: Boolean(row.deletedAt), _status: row._status }).toEqual({
+        first: 'OK',
+        second: bulk ? [notFound] : `NotFound: ${notFound}`,
+        secondWaited: true,
+        trashed: true,
+        _status: 'draft',
+      })
+    },
+    120_000,
+  )
+
+  /**
+   * PR #305 (codex4 rev3, vezetői átnézés MX1): a `trash: true`-s kérés, amely
+   * maga küld `deletedAt`-et, a közben lomtárba tett kurzuson sem kap
+   * NotFound-ot: a lomtárba tételről vagy a visszaállításról ő maga dönt. Itt
+   * a munkatárs `{ deletedAt: null, _status: 'draft' }` visszaállítása vár a
+   * tulajdonos lomtár-gombja mögött. Soros futtatásnál a visszaállítás a
+   * lomtárba tett kurzust piszkozatként hozza vissza; a `deletedAt`-et
+   * figyelmen kívül hagyó ellenőrzés itt tévesen NotFound-dal állt volna le.
+   */
+  it('PR #305 (codex4 rev3, MX1): a tulajdonos lomtára mögött várakozó, `deletedAt: null`-t küldő visszaállítás piszkozatként hozza vissza a kurzust', async () => {
+    const id = await createPublished('lomtar-visszaallitas')
+    const result = await race(trashes(id, owner), (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { deletedAt: null, _status: 'draft' },
+          trash: true,
+          overrideAccess: false,
+          user: asUser(staff),
+          context,
+        }),
+      ),
+    )
+    const row = await mainRow(id)
+    expect({ ...result, trashed: Boolean(row.deletedAt), _status: row._status }).toEqual({
+      first: 'OK',
+      second: 'OK',
+      secondWaited: true,
+      trashed: false,
+      _status: 'draft',
+    })
+  }, 120_000)
+
+  /**
+   * PR #305 (codex4 rev2): a piszkozat-alakú tömeges mentés friss olvasása is a
+   * Payload queryDrafts-ét követi: csak a legutóbbi, lomtáron kívüli verziót
+   * nézi, a fő sorra nem esik vissza. A munkatárs `?draft=true`-s
+   * lomtár-kérése csak verziót ír (a legutóbbi verzió a lomtárba kerül, a fő
+   * sor él), közben a tulajdonos tömeges Közzététele (`?draft=true`) a zárra
+   * vár. Soros futtatásnál a tömeges mentés ezt a kurzust meg sem találja, így
+   * nem írja; a fő sorra visszaeső olvasás a lomtár előtti piszkozat szövegét
+   * élesítené.
+   */
+  it('PR #305 (codex4 rev2): a tömeges Közzététel nem írja azt a kurzust, amelynek legutóbbi verziója közben lomtárba került', async () => {
+    const id = await createPublished('verzio-lomtar')
+    const live = await mainRow(id)
+    await autosave(id, owner, { shortDescription: 'Függő piszkozat.' })
+    const result = await race(
+      (context) =>
+        validationOutcome(
+          payload.update({
+            collection: 'products',
+            id,
+            data: { deletedAt: new Date().toISOString() },
+            draft: true,
+            overrideAccess: false,
+            user: asUser(staff),
+            context,
+          }),
+        ),
+      (context) => saveWhere(id, owner, { _status: 'published' }, { draft: true, context }),
+      { method: 'createVersion' },
+    )
+    const row = await mainRow(id)
+    expect({
+      ...result,
+      _status: row._status,
+      shortDescription: row.shortDescription ?? null,
+      trashed: Boolean(row.deletedAt),
+    }).toEqual({
+      first: 'OK',
+      second: [await notFoundMessage()],
+      secondWaited: true,
+      _status: 'published',
+      shortDescription: live.shortDescription ?? null,
+      trashed: false,
+    })
+  }, 120_000)
+
+  /**
+   * Egy kérés kimenete: 'OK', vagy a Payload API-hibájának HTTP-státusza és
+   * szövege (a NotFound és a 400-as elutasítás is APIError). Más hibát továbbdob.
+   */
+  async function apiOutcome(run: Promise<unknown>): Promise<'OK' | string[]> {
+    try {
+      await run
+      return 'OK'
+    } catch (error) {
+      if (!(error instanceof APIError)) throw error
+      return [`${error.status} ${error.message}`]
+    }
+  }
+
+  /**
+   * A munkatárs JSON-tömb adatú mentése a Local API-n. A REST a
+   * `PATCH /api/products/:id` `[]` törzsét ugyanígy, változatlanul adja a
+   * mentésnek (payload/dist/utilities/addDataAndFileToRequest.js, JSON.parse).
+   */
+  function staffSavesArray(id: number): RaceRequest {
+    return (context) =>
+      apiOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: [] as never,
+          overrideAccess: false,
+          user: asUser(staff),
+          context,
+        }),
+      )
+  }
+
+  /** A munkatárs tokenje a REST-kérésekhez (a createUser DUMMY-tesztjelszavával). */
+  async function staffToken(): Promise<string> {
+    const { token } = await payload.login({
+      collection: 'users',
+      data: { email: String(staff.email), password: dummyPassword('staff') },
+    })
+    if (token === undefined) throw new Error('A munkatárs bejelentkezése nem adott tokent.')
+    return token
+  }
+
+  /**
+   * A munkatárs `PATCH /api/products/:id` kérése JWT-vel és nyers JSON-törzzsel,
+   * a Payload REST-kezelőjén át (a Next catch-all route ugyanezt hívja).
+   */
+  function staffPatchesRest(id: number, token: string, body: string): RaceRequest {
+    return async () => {
+      const response = await handleEndpoints({
+        config: configPromise,
+        request: new Request(`http://localhost:3000/api/products/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `JWT ${token}` },
+          body,
+        }),
+      })
+      if (response.status === 200) return 'OK'
+      const { errors = [] } = (await response.json()) as { errors?: Array<{ message?: string }> }
+      return [`${response.status} ${errors.map((entry) => entry.message).join('; ')}`]
+    }
+  }
+
+  /**
+   * PR #305 (codex4 rev3, breaker X1): a JSON-tömb adatú mentés nem ír. A
+   * mező-szintű beforeValidate a tömbre írja a mentés alapjának értékeit, a
+   * mezők beforeChange-e (`{ ...data }`) pedig teljes objektummá teszi.
+   * 97bc4c7-en a productUpdateLocksRow a tömböt a zár után ellenőrzés nélkül
+   * engedte tovább: a zár mögött várakozó `[]` mentés a közben véglegesen
+   * törölt kurzust közzétett, megvásárolható állapotban szúrta vissza, a
+   * lomtárba tettet élőként hozta vissza (a REST-en is, munkatársi JWT-vel).
+   * Most a hook a zár előtt, 400-zal utasítja el, így a kérés nem is vár.
+   */
+  it('PR #305 (codex4 rev3, breaker X1b): a párhuzamos végleges törlés mellett a munkatárs `[]` adatú mentése 400, a kurzus nem támad fel', async () => {
+    const id = await createPublished('tomb-torles')
+    const result = await race(hardDeletes(id, owner), staffSavesArray(id), {
+      method: 'deleteOne',
+      after: true,
+    })
+    const row = await mainRowOrNull(id)
+    if (row === null) productIds.splice(productIds.indexOf(id), 1)
+    expect({ first: result.first, second: result.second, exists: row !== null }).toEqual({
+      first: 'OK',
+      second: [expect.stringMatching(/^400 /)],
+      exists: false,
+    })
+  }, 120_000)
+
+  it('PR #305 (codex4 rev3, breaker X1d): a párhuzamos lomtár mellett a munkatárs REST `PATCH []` kérése 400, a kurzus a lomtárban marad', async () => {
+    const id = await createPublished('tomb-lomtar-rest')
+    const token = await staffToken()
+    const result = await race(trashes(id, owner), staffPatchesRest(id, token, '[]'))
+    const row = await mainRow(id)
+    expect({
+      first: result.first,
+      second: result.second,
+      trashed: Boolean(row.deletedAt),
+      _status: row._status,
+    }).toEqual({
+      first: 'OK',
+      second: [expect.stringMatching(/^400 /)],
+      trashed: true,
+      _status: 'draft',
+    })
+  }, 120_000)
+
+  /**
+   * A tartalom-job kurzus-mentése (src/scripts/apply-owner-content.ts,
+   * `npm run content:owner`): `overrideAccess`, `draft` és `_status` nélkül,
+   * csak a javított tartalmi mezővel. A `_status`-t a Payload a mentés
+   * alapjából (a legutóbbi verzióból) tölti.
+   */
+  function contentJobSaves(id: number): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { shortDescription: 'Tartalom-job javítása.' },
+          depth: 0,
+          overrideAccess: true,
+          context,
+        }),
+      )
+  }
+
+  /** Egy szkript `_status` nélküli piszkozat-mentése (`draft: true`: csak verziót ír). */
+  function systemSavesDraft(id: number): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { shortDescription: 'Szkript-piszkozat.' },
+          draft: true,
+          depth: 0,
+          overrideAccess: true,
+          context,
+        }),
+      )
+  }
+
+  /** A kurzus fő sorának és legutóbbi verziójának `_status`-a, és hogy lomtárban van-e. */
+  async function visibility(
+    id: number,
+  ): Promise<{ main: unknown; latest: unknown; trashed: boolean }> {
+    const main = await mainRow(id)
+    const latest = (await payload.findByID({
+      collection: 'products',
+      id,
+      depth: 0,
+      draft: true,
+      overrideAccess: true,
+      trash: true,
+    })) as unknown as Doc
+    return { main: main._status, latest: latest._status, trashed: Boolean(main.deletedAt) }
+  }
+
+  /**
+   * PR #305 (codex4 rev3, breaker X2, vezetői átnézés): a kérésből hiányzó
+   * `_status`-t a Payload a zár előtt olvasott alapból tölti, így a zár mögött
+   * várakozó, `_status` nélküli, nem piszkozat mentés az elavult állapotot
+   * írta a fő sorba. 97bc4c7-en a tartalom-job mentése levette az oldalról a
+   * tulajdonos közben közzétett kurzusát (a függő autosave-piszkozat miatt az
+   * alap piszkozat volt), a közben visszavont kurzust pedig újra élesítette.
+   *
+   * Minden sor egyszer egymás után, egyszer versenyben fut; a verseny után a
+   * fő sor és a legutóbbi verzió `_status`-a ugyanaz, mint soros futtatásnál.
+   * Az X2d, X2v és X2t sor a frissítés határait méri: a piszkozat-mentésnél a
+   * Payload a `_status`-t piszkozatra állítja és csak verziót ír (a frissítés
+   * közzétettnek jelölt, nem validált verziót hagyna), a kifejezetten küldött
+   * `_status` (a Visszavonás) a kérés döntése, a lomtár-alakú írást pedig a
+   * trashWritesStayDraft piszkozatra állítja.
+   */
+  it.each<{
+    tag: string
+    who: string
+    decision: string
+    /** A tulajdonos függő autosave-piszkozata: a várakozó mentés alapja piszkozat. */
+    pendingDraft: boolean
+    first: (id: number) => RaceRequest
+    second: (id: number) => RaceRequest
+    expected: { main: string; latest: string; trashed: boolean }
+  }>([
+    {
+      tag: 'X2',
+      who: 'tartalom-job mentés',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: contentJobSaves,
+      expected: { main: 'published', latest: 'published', trashed: false },
+    },
+    {
+      tag: 'X2u',
+      who: 'tartalom-job mentés',
+      decision: 'Visszavonása',
+      pendingDraft: false,
+      first: (id) => unpublishes(id, owner),
+      second: contentJobSaves,
+      expected: { main: 'draft', latest: 'draft', trashed: false },
+    },
+    {
+      tag: 'X2d',
+      who: '`_status` nélküli piszkozat-mentés',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: systemSavesDraft,
+      expected: { main: 'published', latest: 'draft', trashed: false },
+    },
+    {
+      tag: 'X2v',
+      who: 'munkatársi Visszavonás',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: (id) => unpublishes(id, staff),
+      expected: { main: 'draft', latest: 'draft', trashed: false },
+    },
+    {
+      tag: 'X2t',
+      who: 'munkatársi lomtár',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: (id) => trashes(id, staff),
+      expected: { main: 'draft', latest: 'draft', trashed: true },
+    },
+  ])(
+    'PR #305 (codex4 rev3, $tag): a tulajdonos $decision mögött várakozó $who a soros futtatás `_status`-át hagyja',
+    async ({ tag, pendingDraft, first, second, expected }) => {
+      const course = async (order: string) => {
+        const id = await createPublished(`status ${tag} ${order}`)
+        if (pendingDraft) await autosave(id, owner, { seoTitle: 'Tulajdonosi piszkozat' })
+        return id
+      }
+      const serialId = await course('soros')
+      const serial = { first: await first(serialId)({}), second: await second(serialId)({}) }
+      const raceId = await course('verseny')
+      const raced = await race(first(raceId), second(raceId))
+      expect({
+        soros: { ...serial, ...(await visibility(serialId)) },
+        verseny: { ...raced, ...(await visibility(raceId)) },
+      }).toEqual({
+        soros: { first: 'OK', second: 'OK', ...expected },
+        verseny: { first: 'OK', second: 'OK', secondWaited: true, ...expected },
+      })
+    },
+    120_000,
+  )
+
+  /**
+   * Kontroll (codex4 rev1, breaker BRK-D): a sorzár és a friss olvasás a
+   * jogosultság ellenőrzése után jön (a Payload a beforeOperation hookok után,
+   * a mentés alapjának olvasása előtt ellenőriz). Az anonim látogató és a
+   * vásárló mentése akkor is azonnal Forbidden, ha a kurzus sorát egy másik
+   * tranzakció zárolja: nem áll be a zár mögé, így a várakozással kapcsolatot
+   * sem foglal.
+   */
+  it.each<{ role: string; customer: boolean }>([
+    { role: 'az anonim látogató', customer: false },
+    { role: 'a vásárló', customer: true },
+  ])(
+    'kontroll (codex4 rev1, BRK-D): $role mentése a lezárt kurzuson a zárra várás nélkül Forbidden',
+    async ({ customer }) => {
+      const id = await createPublished(`forbidden ${customer ? 'customer' : 'anonymous'}`)
+      const user = customer ? await createUser('customer') : undefined
+      if (user !== undefined) expect(user.role).toBe('customer')
+      const pg = await import('pg')
+      const holder = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+      const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+      await holder.connect()
+      await observer.connect()
+      try {
+        const holderPid = await backendPid(holder)
+        await holder.query('BEGIN')
+        await holder.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id])
+        let done = false
+        const outcome = payload
+          .update({
+            collection: 'products',
+            id,
+            data: { priceInHUF: 10, _status: 'published' },
+            overrideAccess: false,
+            ...(user === undefined ? {} : { user: asUser(user) }),
+          })
+          .then(
+            () => 'OK',
+            (error: unknown) => (error as { name?: string }).name ?? String(error),
+          )
+          .finally(() => {
+            done = true
+          })
+        const waited = await untilWaitersBehind(observer, holderPid, 1, () => done)
+        await holder.query('ROLLBACK')
+        expect({ outcome: await outcome, waited }).toEqual({ outcome: 'Forbidden', waited: false })
+      } finally {
+        await holder.query('ROLLBACK').catch(() => undefined)
+        await holder.end()
+        await observer.end()
+      }
+      expect((await mainRow(id)).priceInHUF).toBe(79_500)
+    },
+    60_000,
+  )
 
   /**
    * PR #305 rev3 (breaker BRK-L1): a mentés sorzárja nem ütközhet a kurzusra

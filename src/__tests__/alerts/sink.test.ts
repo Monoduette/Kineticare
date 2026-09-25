@@ -7,8 +7,10 @@ import {
   ALERT_POSTHOG_EVENT,
   parseAlertRecipients,
 } from '../../lib/alerts/mail'
+import { emitAlert } from '../../lib/alerts/emit'
 import {
   ALERT_MAIL_COOLDOWN_MS,
+  ALERT_SOURCE_THROTTLE_FIELD,
   createAlertSink,
   MAX_ALERT_MAILS_PER_HOUR,
   type AlertSinkDeps,
@@ -139,6 +141,31 @@ describe('riasztás-csatorna — levél', () => {
     expect(h.mails[1]?.text).toContain('Az előző levél óta még 2 alkalommal jelentkezett.')
   })
 
+  // Az AAM két oka (hiányzó összeg, lapozási korlát) ugyanazt a kódot viseli,
+  // de külön forrásfojtása van (src/lib/alerts/aam.ts): a második ok levele nem
+  // veszhet el a kód óránkénti fojtásán, mert a forrásfojtása egy napig nem
+  // engedné újra.
+  it('Devin (PR #306): egy kód alatti két forrás-ok egy órán belül is külön levelet kap, külön idempotenciakulccsal; ugyanannak az oknak az ismétlése nem', async () => {
+    const h = harness()
+    const log = createLogger()
+    const code = 'aam-keret-nem-teljes'
+    const osszeg = { [ALERT_SOURCE_THROTTLE_FIELD]: `${code}:osszeg:2026` }
+    const lapozas = { [ALERT_SOURCE_THROTTLE_FIELD]: `${code}:lapozas:2026` }
+    emitAlert(log, code, 'RIASZTÁS: a keret nem számolható, hiányzó számlaösszeg', osszeg)
+    await h.handle.flush()
+    h.clock.now = NOW + 5 * 60_000
+    emitAlert(log, code, 'RIASZTÁS: a keret nem számolható, lapozási korlát', lapozas)
+    await h.handle.flush()
+    h.clock.now = NOW + 10 * 60_000
+    emitAlert(log, code, 'RIASZTÁS: a keret nem számolható, hiányzó számlaösszeg', osszeg)
+    await h.handle.flush()
+    expect(h.mails.map((mail) => mail.subject)).toEqual([
+      'Kineticare riasztás: a keret nem számolható, hiányzó számlaösszeg',
+      'Kineticare riasztás: a keret nem számolható, lapozási korlát',
+    ])
+    expect(new Set(h.mails.map((mail) => mail.idempotencyKey)).size).toBe(2)
+  })
+
   it('más kód külön levelet kap ugyanabban az órában', async () => {
     const h = harness()
     const log = createLogger()
@@ -151,24 +178,120 @@ describe('riasztás-csatorna — levél', () => {
     ])
   })
 
-  it('sikertelen küldés után a kód nem némul el: a következő előfordulás újrapróbálja', async () => {
-    let fail = true
-    const sendMail = vi.fn(async (): Promise<SendResult> => {
-      if (fail) {
-        return { ok: false, provider: 'resend', retryable: true, error: 'HTTP 503' }
-      }
-      return { ok: true, provider: 'resend' }
+  it.each<[string, () => Promise<SendResult>]>([
+    [
+      'a szolgáltató hibát ad',
+      async () => ({ ok: false, provider: 'resend', retryable: true, error: 'HTTP 503' }),
+    ],
+    // devin5: a dobó levélküldés tartalék-eredménye is 'noop' szolgáltatójú, de
+    // nem siker: a hiba útján kell mennie, nem a hiányzó szolgáltatóén.
+    [
+      'a levélküldés dob',
+      async () => {
+        throw new Error('a kapcsolat megszakadt')
+      },
+    ],
+  ])(
+    'sikertelen küldés után (%s) figyelmeztet, és a kód nem némul el: a következő előfordulás újrapróbálja',
+    async (_eset, failure) => {
+      let fail = true
+      const sendMail = vi.fn(async (): Promise<SendResult> =>
+        fail ? failure() : { ok: true, provider: 'resend' },
+      )
+      const h = harness({ sendMail })
+      const log = createLogger()
+      log.error('RIASZTÁS: hiba')
+      await h.handle.flush()
+      expect(
+        h.sinkLog.filter(
+          (entry) => entry.level === 'warn' && entry.msg.includes('a riasztás-levél nem ment ki'),
+        ),
+      ).toHaveLength(1)
+      expect(h.sinkLog.some((entry) => entry.msg.includes('nincs e-mail-szolgáltató'))).toBe(false)
+      fail = false
+      h.clock.now = NOW + 60_000
+      log.error('RIASZTÁS: hiba')
+      await h.handle.flush()
+      expect(sendMail).toHaveBeenCalledTimes(2)
+      // A valódi kézbesítés pontosan egy „levél elküldve” sort ír: ez a
+      // horgonya a noop-teszt negatív állításának (breaker BRK-5, devin5 rev1).
+      expect(h.sinkLog.filter((entry) => entry.msg === 'riasztás: levél elküldve')).toHaveLength(1)
+    },
+  )
+
+  /**
+   * Codex P2 (PR #305) és devin5: e-mail-szolgáltató nélkül (se RESEND_API_KEY,
+   * se SMTP_HOST) a levélmodul noop-szolgáltatója `{ ok: true, provider: 'noop' }`-t
+   * ad, holott semmi nem ment ki: ez nem kézbesítés, „levél elküldve” sor nincs,
+   * és az elnyelt ismétlések száma megmarad. A kód óránkénti fojtása viszont
+   * megmarad: a szolgáltató a folyamat egész életére rögzül
+   * (src/lib/email/provider.ts), a beállításához redeploy kell, így a fojtás
+   * feloldása csak minden előforduláskor újra hívná a noop-szolgáltatót.
+   */
+  it('devin5: noop-szolgáltatónál a kód fojtása megmarad (egy órán belül nem hívja újra), nincs „levél elküldve”, és az elnyelt ismétlések száma megmarad', async () => {
+    const attempts: SendMailInput[] = []
+    const sendMail = vi.fn(async (input: SendMailInput): Promise<SendResult> => {
+      attempts.push(input)
+      return { ok: true, provider: 'noop' }
     })
     const h = harness({ sendMail })
     const log = createLogger()
-    log.error('RIASZTÁS: hiba')
+    for (const minutes of [0, 5, 59]) {
+      h.clock.now = NOW + minutes * 60_000
+      log.error('RIASZTÁS: ismétlődő hiba')
+      await h.handle.flush()
+    }
+    expect(sendMail).toHaveBeenCalledTimes(1)
+
+    // Egy óra után a fojtás lejár: a noop sem némítja el végleg a kódot.
+    for (const minutes of [60, 120]) {
+      h.clock.now = NOW + minutes * 60_000
+      log.error('RIASZTÁS: ismétlődő hiba')
+      await h.handle.flush()
+    }
+    expect(sendMail).toHaveBeenCalledTimes(3)
+    // A 2 elnyelt ismétlés a noop-próba után sem vész el.
+    expect(attempts[1]?.text).toContain('Az előző levél óta még 2 alkalommal jelentkezett.')
+    expect(attempts[2]?.text).toContain('Az előző levél óta még 2 alkalommal jelentkezett.')
+    expect(h.sinkLog.some((entry) => entry.msg.includes('levél elküldve'))).toBe(false)
+  })
+
+  it('Codex P2 (PR #305): noop-szolgáltatónál a levélplafon nem telik be: a próba után a helye felszabadul', async () => {
+    const sendMail = vi.fn(async (): Promise<SendResult> => ({ ok: true, provider: 'noop' }))
+    const h = harness({ sendMail })
+    const log = createLogger()
+    for (let index = 0; index < MAX_ALERT_MAILS_PER_HOUR + 5; index += 1) {
+      log.error(`RIASZTÁS: vihar ${String.fromCharCode(97 + (index % 26))}${String(index)}`)
+      await h.handle.flush()
+    }
+    expect(sendMail).toHaveBeenCalledTimes(MAX_ALERT_MAILS_PER_HOUR + 5)
+    expect(h.sinkLog.some((entry) => entry.msg.includes('levélplafon'))).toBe(false)
+  })
+
+  it('a hiányzó e-mail-szolgáltatóról naponta egyszer szól: 23 óra múlva még nem, 24 óra múlva újra', async () => {
+    // Szó szerinti időtartamok, nem a konstansból: a konstans elrontását
+    // (például 60 000 ms) a 23 órás lépés észreveszi.
+    const sendMail = vi.fn(async (): Promise<SendResult> => ({ ok: true, provider: 'noop' }))
+    const h = harness({ sendMail })
+    const log = createLogger()
+    const providerWarns = () =>
+      h.sinkLog.filter(
+        (entry) => entry.level === 'warn' && entry.msg.includes('nincs e-mail-szolgáltató'),
+      )
+    log.error('RIASZTÁS: reggeli hiba')
     await h.handle.flush()
-    expect(h.sinkLog.some((entry) => entry.msg.includes('nem ment ki'))).toBe(true)
-    fail = false
-    h.clock.now = NOW + 60_000
-    log.error('RIASZTÁS: hiba')
+    expect(providerWarns()).toHaveLength(1)
+
+    h.clock.now = NOW + 23 * 60 * 60_000
+    log.error('RIASZTÁS: esti hiba')
     await h.handle.flush()
-    expect(sendMail).toHaveBeenCalledTimes(2)
+    expect(providerWarns()).toHaveLength(1)
+
+    h.clock.now = NOW + 24 * 60 * 60_000
+    log.error('RIASZTÁS: másnapi hiba')
+    await h.handle.flush()
+    expect(providerWarns()).toHaveLength(2)
+    expect(sendMail).toHaveBeenCalledTimes(3)
   })
 
   it('OWNER_ALERT_EMAILS nélkül nincs levél, egyszer figyelmeztet, a PostHog-esemény megy', async () => {

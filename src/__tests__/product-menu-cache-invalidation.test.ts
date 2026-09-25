@@ -22,7 +22,11 @@ vi.mock('../lib/logger', async (importOriginal) => ({
 
 import { MENUS_CACHE_TAG } from '../lib/cache-tags'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
-import { ecommerce, productUpdateLocksRow } from '../plugins/ecommerce'
+import {
+  ecommerce,
+  productUpdateLocksRow,
+  productUpdateRemembersSource,
+} from '../plugins/ecommerce'
 
 beforeAll(async () => {
   // Csak a plugin regisztrációját vizsgáljuk, adatbázis és Payload-indítás nélkül.
@@ -78,12 +82,15 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     // (beforeChange), illetve mögéjük (beforeOperation). PR #305 rev2-b: a
     // fő sor zárolása a kollekció listájában áll, tehát az audit plugin
     // később hozzáfűzött „before” olvasása előtt fut (a zár hatását a
-    // product-guards-db X1 és B1 tesztje méri).
+    // product-guards-db X1 és B1 tesztje méri). PR #305 (codex4 rev1): a
+    // mentés alapjának forrását jegyző hook a beforeOperation lista végén áll,
+    // hogy a végleges argumentumokból döntsön (productUpdateLocksRow).
     expect(products.hooks?.beforeChange).toHaveLength(4)
     expect(products.hooks?.beforeChange?.slice(2, 3)).toEqual(hooks.beforeChange)
     expect(products.hooks?.beforeChange).toContain(productUpdateLocksRow)
-    expect(products.hooks?.beforeOperation).toHaveLength(2)
+    expect(products.hooks?.beforeOperation).toHaveLength(3)
     expect(products.hooks?.beforeOperation?.slice(0, 1)).toEqual(hooks.beforeOperation)
+    expect(products.hooks?.beforeOperation?.at(-1)).toBe(productUpdateRemembersSource)
     expect(hooks.beforeChange).toEqual([beforeChange])
     expect(hooks.beforeOperation).toEqual([beforeOperation])
     expect(hooks.afterChange).toHaveLength(2)
