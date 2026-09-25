@@ -291,7 +291,7 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     fajl: 'app/(frontend)/elallas/page.tsx',
     kategoria: 'nem-cta',
     indok:
-      'Folyószövegbe ragozott dokumentum-hivatkozás az /elallas bevezetőjében (az elállási jog feltételei az ÁSZF-ben).',
+      'Folyószövegbe ragozott dokumentum-hivatkozás az /elallas bevezetőjében (az ÁSZF „Elállási jog kizárása” pontja).',
   },
   {
     felirat: 'Általános szerződési feltételek',

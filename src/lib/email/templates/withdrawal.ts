@@ -65,7 +65,12 @@ export function withdrawalReceiptEmail(
     'nyilatkozatod beérkezésétől számított 14 napon belül visszatérítjük, ugyanazzal a fizetési ' +
     'móddal, amellyel fizettél.'
   const terms = input.termsUrl?.trim() || null
-  const termsText = 'Az elállási jog feltételeit az ÁSZF tartalmazza'
+  // Semleges hivatkozás: az ÁSZF az elállási jog kizárását rögzíti, az elállás
+  // feltételeit nem tartalmazza (hibavadászat, W1), és az elismervény a stáb
+  // döntése előtt nem sugallhatja, hogy az elállás érvénytelen.
+  const termsText = terms
+    ? 'Az Általános szerződési feltételeinket itt olvashatod'
+    : 'Az Általános szerződési feltételeinket a webhelyünkön olvashatod'
   const support = input.supportEmail
 
   return {

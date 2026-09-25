@@ -61,10 +61,16 @@ export default async function ElallasPage({ searchParams }: ElallasPageProps) {
           az e-mail-címedet, majd kattints az „{WITHDRAWAL_SUBMIT_LABEL}” gombra. A nyilatkozatodról
           azonnal átvételi elismervényt küldünk e-mailben, a küldés napjával és időpontjával.
         </p>
+        {/*
+          Az ÁSZF LÉTEZŐ pontjára mutat, mint a pénztár (r-legal-7,
+          CheckoutForm.tsx): az ÁSZF az elállási jog kizárását rögzíti
+          („Elállási jog kizárása”), az elállás feltételeit nem tartalmazza
+          (hibavadászat, W1).
+        */}
         <p className="kc-contact-intro">
-          Az elállási jog feltételeiről az{' '}
-          <Link href="/aszf">Általános szerződési feltételekben</Link> olvashatsz. Ha nem szeretnéd
-          az űrlapot használni, e-mailben is elállhatsz:{' '}
+          Az elállási jog kizárásáról az{' '}
+          <Link href="/aszf">Általános szerződési feltételekben</Link> olvashatsz, az „Elállási jog
+          kizárása” pontban. Ha nem szeretnéd az űrlapot használni, e-mailben is elállhatsz:{' '}
           <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
         </p>
         <WithdrawalForm

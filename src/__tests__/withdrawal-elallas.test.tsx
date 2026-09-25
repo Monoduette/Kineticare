@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { NextRequest } from 'next/server'
@@ -6,7 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/' }))
 vi.mock('../components/layout/NewsletterSignup', () => ({ NewsletterSignup: () => null }))
+vi.mock('../lib/contact-email-server', () => ({
+  getContactEmail: async () => 'info@kineticare.hu',
+}))
 
+import ElallasPage from '../app/(frontend)/elallas/page'
 import { AccountView } from '../components/account/AccountView'
 import { Footer } from '../components/layout/Footer'
 import {
@@ -635,4 +642,61 @@ describe('az elállási funkció elérhetősége (22. § (1b))', () => {
       expect(html).toContain('href="mailto:info@kineticare.hu"')
     },
   )
+})
+
+// ---------------------------------------------------------------------------
+// Az ÁSZF-hivatkozások (vö. checkout-waiver.test.ts, r-legal-7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Hibavadászat (W1): az /elallas és az átvételi elismervény az elállási jog
+ * „feltételeire” mutatott az ÁSZF-ben, holott az ÁSZF csak a kizárást rögzíti
+ * („Elállási jog kizárása”), és azt írja, hogy fizetés után nincs
+ * visszatérítés. A hivatkozás csak az ÁSZF létező pontjára mutathat: amíg az
+ * ÁSZF-ben nincs az elállás feltételeiről szóló pont, egyik szöveg sem
+ * állíthatja, hogy ott vannak, és minden „…” ponttal megnevezett rész az ÁSZF
+ * valódi címsora.
+ */
+describe('az elállás ÁSZF-hivatkozásai az ÁSZF valódi pontjaira mutatnak', () => {
+  const aszf = readFileSync(path.join(process.cwd(), 'src/lib/legal-source/aszf.txt'), 'utf8')
+  const cimsorok = aszf
+    .split('\n')
+    .filter((sor) => sor.startsWith('# '))
+    .map((sor) => sor.slice(2).trim())
+  const vanFeltetelPont = cimsorok.some((cim) => /elállási jog (feltétel|gyakorlás)/i.test(cim))
+
+  function ellenoriz(szoveg: string): void {
+    if (!vanFeltetelPont) {
+      expect(szoveg).not.toMatch(/elállási jog feltétel/i)
+    }
+    for (const [, nev] of szoveg.matchAll(/„([^”]+)” pont/g)) {
+      expect(cimsorok).toContain(nev)
+    }
+  }
+
+  it('az /elallas bevezetője az „Elállási jog kizárása” pontra mutat', async () => {
+    const html = renderToStaticMarkup(await ElallasPage({ searchParams: Promise.resolve({}) }))
+    ellenoriz(html)
+    expect(html).toContain('az „Elállási jog kizárása” pontban')
+    expect(html).toContain('href="/aszf"')
+  })
+
+  it('az elismervény ÁSZF-hivatkozása semleges, szövegben és HTML-ben, cím nélkül is', async () => {
+    for (const termsUrl of ['https://kineticare.test/aszf', null]) {
+      const { eredmeny, hivasok } = futtat({
+        env: {
+          NODE_ENV: 'production',
+          CONTACT_STAFF_EMAILS: 'stab@example.test',
+          NEXT_PUBLIC_SERVER_URL: termsUrl === null ? '' : 'https://kineticare.test/',
+        },
+      })
+      await eredmeny
+      const elismerveny = hivasok.find((h) => h.idempotencyKey.startsWith('withdrawal-receipt:'))
+      expect(elismerveny).toBeDefined()
+      for (const resz of [elismerveny?.text ?? '', elismerveny?.html ?? '']) {
+        ellenoriz(resz)
+        expect(resz).toContain('Általános szerződési feltételeinket')
+      }
+    }
+  })
 })
