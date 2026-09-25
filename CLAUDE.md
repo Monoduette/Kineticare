@@ -156,6 +156,21 @@ szabva.
   szekciója. A teljes `main` Bugbot-átnézéséhez a
   `.cursor/agents/kineticare-bugbot.md` projekt-subagentet használd.
 
+## Állapotjelentés a tulajdonosnak
+
+A tulajdonos 2026-09-25-i kérése, szó szerint: _„Jó lenne hogyha az eredeti
+dolgok lennének megoldva nem folyamatosan újakat akarnál fejleszteni. A számla,
+általános szerződési feltételek, Barion volt a három fő kérdés […]”_
+
+- A jelentés a feltett kérdésre felel először. A fő témáknál (számlázás, ÁSZF,
+  Barion) kimondja, hogy működik-e, mi nincs még élesben kipróbálva, és mi vár
+  a tulajdonosra.
+- Új fejlesztést csak kérésre kezdj. Amit közben találsz, a
+  [`docs/feladatlista.md`](docs/feladatlista.md) nyitott tételei közé kerül, és
+  a jelentésben egy mondatban szólsz róla.
+- A nyitott teendők, a tulajdonosi döntések és az éles állapot helye a
+  `docs/feladatlista.md`. Ami ott elavul, azt a változás PR-jében frissítsd.
+
 ## Üzemeltetési tanulságok — élesben szerzett
 
 Ezek mind valós, órákat elvivő hibák voltak. Mielőtt új diagnózist építesz,
@@ -354,6 +369,36 @@ naplója sosem íródik ki. (Mérve 2026-08-21.)
     A `railway.demo.json` és a `docs/demo-kornyezet.md` történeti. A demo
     Postgres (`Postgres-UtWo`) és a régi kötet nélküli `Postgres` békén
     hagyandó.
+
+### Fizetés, jobok és átnézés (2026-09-25)
+
+25. **A Barion `401 AuthenticationFailed` a bolt élesítése előtt nem
+    kulcshiba.** A 2026-09-16-i és a 09-24-i éles fizetésindítás így bukott,
+    mert a Barion-bolt akkor még nem volt élesítve; a tulajdonos a próba után
+    élesítette. Mielőtt a `BARION_POSKEY_PROD`-ot gyanúsítod, nézd meg, hogy a
+    hiba idején élesítve volt-e a bolt. A W1 (#307) utáni első indítás a valódi
+    próba (runbook 11, pénzmozgás nélkül).
+26. **A Payload job-queue sorrendje `createdAt` szerinti, és az újrapróbáló job
+    megtartja a régi `createdAt`-jét.** Egy Számlázz.hu-kimaradás alatt ezért a
+    számlajobok elfoglalták az order-maintenance queue minden helyét, és az
+    order-poll 20–40 percig nem futott (nem volt callback-pótlás, resweep és
+    életjel). Azóta az order-poll a saját `order-poll` queue-jában fut (limit
+    1), a számlázási queue limitje 3, együtt továbbra is 4 job tickenként.
+    Rendszeres, időzített jobot ne tegyél egy queue-ba hosszan újrapróbáló
+    jobokkal. Új queue-hoz nem kell migráció: a `payload_jobs.queue` szöveges
+    oszlop.
+27. **A futás közben elhalt job sora `processing` marad.** A Payload 3.88 a
+    deploy vagy összeomlás miatt megszakadt futás sorát nem engedi el. Élőnek
+    ezért csak a várakozó és a 15 percen belül frissült futó job számít
+    (`src/jobs/live-jobs.ts`); a számla-resweep duplikátumszűrője és a
+    helyesbítő-panel is ezt a közös segédet használja.
+28. **A Devin Review a nagyon nagy PR-t el sem kezdi.** A #307 (kb. 190 fájl,
+    +30 000 sor) minden fején „Completed analysis in 3s” piros státusszal
+    bukott, átnézés nélkül, miközben a #306-ot ugyanez a Devin kb. 5 percig
+    elemezte, és zöld lett. A piros Devin ilyenkor nem kódhiba. Ha
+    Devin-átnézés kell, a munkát kisebb PR-ekre kell bontani. A Codex a nagy
+    PR-t is átnézi, fejenként kb. 10–15 perc alatt, és minden új commitra
+    újra.
 
 ## Munkamodell — Sol orkesztrátor + Grok 4.6 extra high csapat (tulajdonosi alapbeállítás, 2026-08-22)
 
