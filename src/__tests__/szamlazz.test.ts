@@ -49,6 +49,7 @@ import {
 } from '../lib/szamlazz/invoice'
 import type { OrderPaidMoment } from '../lib/szamlazz/paid-date'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from '../lib/szamlazz/pdf'
+import { stornoMegjegyzes } from '../lib/szamlazz/storno'
 import {
   SzamlazzApiError,
   type IssueInvoiceResult,
@@ -1695,7 +1696,10 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
     expect(updates).toEqual([{ invoiceStatus: 'failed', invoiceLastError: result.reason }])
   })
 
-  it('kiállítás után refunded, stornó nélkül: inline stornó, a számla issued marad', async () => {
+  // A stornó megjegyzését a vevő is megkapja, és a NAV-hoz is kimegy. Ezen az
+  // úton az indok a rendszer rögzített szövege; tulajdonosi vagy API-indok
+  // nem kerülhet a stornóra (a refund-helyreállítás indok nélkül hívja).
+  it('kiállítás után refunded, stornó nélkül: inline stornó a rögzített rendszerindokkal, a számla issued marad', async () => {
     const order = createOrder({ status: 'paid' })
     let finds = 0
     const payload = {
@@ -1707,6 +1711,8 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
         return {
           ...order,
           status: 'refunded' as const,
+          // A tulajdonos indoka a rendelésen van, a stornóra mégsem kerülhet.
+          refundReason: 'Elállás, telefonon egyeztetve',
           invoiceNumber: order.invoiceNumber,
           stornoStatus: 'none' as const,
           stornoNumber: undefined,
@@ -1718,6 +1724,7 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
       },
     }
     const stornoOrders: Order[] = []
+    const stornoReasons: Array<string | null | undefined> = []
     const result = await issueInvoiceForOrder({
       payload: payload as never,
       orderId: 101,
@@ -1725,8 +1732,9 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
       issueDate: '2026-08-04',
       queryByKulsoAzon: silentLookup,
       postXml: async () => ({ szamlaszam: 'KIN-2026-7' }),
-      issueStorno: async (ord) => {
+      issueStorno: async (ord, deps) => {
         stornoOrders.push(ord)
+        stornoReasons.push(deps?.reason)
         return { outcome: 'storned', stornoNumber: 'ST-1' }
       },
     })
@@ -1735,6 +1743,12 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
     expect(stornoOrders).toHaveLength(1)
     expect(stornoOrders[0]?.invoiceNumber).toBe('KIN-2026-7')
     expect(stornoOrders[0]?.status).toBe('refunded')
+    expect(stornoReasons).toEqual(['a számla a visszatérítés után állt ki, automatikus stornó'])
+    // Így áll a stornón (storno.ts, stornoMegjegyzes):
+    expect(stornoMegjegyzes(ORDER_NUMBER, stornoReasons[0])).toBe(
+      'Visszatérítés miatti sztornó, rendelésszám: KH-2026-000123. ' +
+        'Indok: a számla a visszatérítés után állt ki, automatikus stornó',
+    )
   })
 })
 

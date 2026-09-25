@@ -32,13 +32,22 @@ stornó).
 | XSD                            | `https://www.szamlazz.hu/szamla/docs/xsds/agentst/xmlszamlast.xsd`                                                                                                        |
 | Hivatkozás az eredeti számlára | `<fejlec><szamlaszam>` (KÖTELEZŐ)                                                                                                                                         |
 | Bizonylattípus                 | `<fejlec><tipus>SS</tipus>` (sztornó)                                                                                                                                     |
-| Megjegyzés                     | `<fejlec><megjegyzes>`: „Visszatérítés miatti sztornó, rendelésszám: <rendelésszám>." + „ Indok: <a refund indoka>", ha van (a rendelésszám az indok mellett is megmarad) |
+| Megjegyzés                     | `<fejlec><megjegyzes>`: „Visszatérítés miatti sztornó, rendelésszám: <rendelésszám>." + „ Indok: <rögzített indok>", ha van (a rendelésszám az indok mellett is megmarad) |
 | Dátumok                        | **nincsenek a kérésben** (sem `keltDatum`, sem `teljesitesDatum`)                                                                                                         |
 | Külső azonosító                | a stornó **saját** kulcsa: `<beallitasok><szamlaKulsoAzon>` = `<a számla egyedi kulcsa>-STORNO` (a `valaszVerzio` után, az élő XSD szerint)                               |
 | Válasz                         | ugyanaz az `xmlszamlavalasz` (valaszVerzio=2), mint a számlakiállításnál                                                                                                  |
 
 A stornó XML-ben **nincs tétel-/összegblokk**: a Számlázz.hu az eredeti
 számlából generálja a negatív bizonylatot.
+
+**Indok a stornón.** A stornó megjegyzését a vevő is megkapja, és a NAV-hoz is
+kimegy, ezért indokot csak a rendszer ír rá, rögzített szöveggel. Ma egy ilyen
+út van: ha a számla a visszatérítés után áll ki, az automatikus stornó
+(`invoice.ts`) az „Indok: a számla a visszatérítés után állt ki, automatikus
+stornó" toldást kapja. A tulajdonos vagy a visszatérítési API szabad szövegű
+indoka a rendelésre és a műveletnaplóba kerül, a stornóra nem: a visszatérítés
+feldolgozása indok nélkül kéri a stornót (`refund-recovery.ts`). Mindkettőt
+teszt őrzi (`szamlazz.test.ts`, `refund-szamlazz.test.ts`).
 
 **Dátumok szándékosan kihagyva.** A stornó számlán a teljesítési dátumnak az
 EREDETI számláéval azonosnak kell lennie. A `keltDatum`/`teljesitesDatum` az

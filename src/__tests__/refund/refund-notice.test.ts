@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 // A közös tároló-, zár- és Barion-mockokat a szolgáltatás importja előtt kell regisztrálni.
 import { access, fixture, locks, mail, store } from '../refund-fixture'
+import { resolveAlertCode } from '../../lib/alerts/classify'
 import type { SendResult } from '../../lib/email/types'
 import type { Logger } from '../../lib/logger'
 import { refundNoticeEmail, type RefundNoticeInput } from '../../lib/email/templates/refund'
@@ -133,20 +134,22 @@ describe('a visszatérítési értesítő sablonja', () => {
 
 function spyLogger() {
   const errors: string[] = []
+  const contexts: Array<Record<string, unknown>> = []
   const log: Logger = {
     debug: () => {},
     info: () => {},
     warn: () => {},
-    error: (message) => {
+    error: (message, context) => {
       errors.push(message)
+      contexts.push((context ?? {}) as Record<string, unknown>)
     },
     child: () => log,
   }
-  return { log, errors }
+  return { log, errors, contexts }
 }
 
 describe('a visszatérítési értesítő kiküldése a lezárás után', () => {
-  it('teljes visszatérítés: egyszer, a rendelés-záron kívül, refund:<intentId> kulccsal, a küldés bizonyítékával', async () => {
+  it('teljes visszatérítés: egyszer, minden zár elengedése után, refund:<intentId> kulccsal, a küldés bizonyítékával', async () => {
     const f = fixture()
     Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
     const heldAtSend: string[][] = []
@@ -166,7 +169,10 @@ describe('a visszatérítési értesítő kiküldése a lezárás után', () => 
         text: expect.stringContaining('stornószámlát'),
       }),
     )
-    expect(heldAtSend[0]).not.toContain(`order:mutate:${f.order.id}`)
+    // Egyetlen advisory-zár sem áll, a „Feldolgozás folytatása” koordinátor-zárja
+    // (refund-recovery:order:<id>) sem: annak tétlen tranzakcióját a Postgres
+    // 60 s után bontja, a levél ideje nem számíthat bele (advisory-lock.ts).
+    expect(heldAtSend).toEqual([[]])
     expect(f.audits.filter((row) => row.action === 'refund-notice-email')).toEqual([
       expect.objectContaining({
         after: expect.objectContaining({
@@ -180,6 +186,33 @@ describe('a visszatérítési értesítő kiküldése a lezárás után', () => 
     // Egy későbbi „Feldolgozás folytatása” nem küldi újra.
     await f.recover()
     expect(mail.send).toHaveBeenCalledTimes(1)
+  })
+
+  // A valódi withAdvisoryLock a kész szakasz UTÁN is elbukhat: ha a tétlen
+  // zár-tranzakciót a Postgres közben bontotta, a COMMIT és a ROLLBACK is hibát
+  // dob („Failed query: rollback”). A kísérlet ekkor már committed, a levelet
+  // más hívó nem küldi el.
+  it('ha a koordinátor-zár csak a kész lezárás után hibázik, a levél akkor is kimegy, egyszer és zár nélkül', async () => {
+    const f = fixture()
+    Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
+    // Az első futás helyi feldolgozása elakad (a rendelés írása), a pénz a Barionnál már visszament.
+    f.failures.order = true
+    await expect(f.start()).rejects.toMatchObject({ status: 503 })
+    expect(store.intents.get(f.payload)?.state).toBe('provider_succeeded')
+    expect(mail.send).not.toHaveBeenCalled()
+    f.failures.order = false
+    const heldAtSend: string[][] = []
+    mail.send.mockImplementation(async () => {
+      heldAtSend.push([...locks.held])
+      return { ok: true, provider: 'resend', id: 'SYNTHETIC-MSG-1' }
+    })
+    locks.failAfterSection = `refund-recovery:order:${f.order.id}`
+    await f.recover()
+    // A koordinátor-zár valóban a kész szakasz után bukott el.
+    expect(locks.failAfterSection).toBeNull()
+    expect(store.intents.get(f.payload)?.state).toBe('committed')
+    expect(heldAtSend).toEqual([[]])
+    expect(f.audits.filter((row) => row.action === 'refund-notice-email')).toHaveLength(1)
   })
 
   it('részleges visszatérítés: a helyesbítő számlát nevezi meg, és a hozzáférés megmarad', async () => {
@@ -318,16 +351,23 @@ describe('a visszatérítési értesítő kiküldése a lezárás után', () => 
       error: 'SYNTHETIC: a kapcsolat a levél lezárása után megszakadt',
     }
     mail.send.mockResolvedValue(uncertain)
-    const { log, errors } = spyLogger()
+    const { log, errors, contexts } = spyLogger()
     await expect(
       refundOrder({ ...f.options, input: { operationKey: 'A'.repeat(43) }, logger: log }),
     ).resolves.toMatchObject({ type: 'full' })
     expect(store.intents.get(f.payload)?.state).toBe('committed')
     expect(mail.send).toHaveBeenCalledTimes(1)
-    const notices = errors.filter((message) => message.includes('visszatérítési értesítő'))
+    const notices = errors
+      .map((message, index) => ({ message, context: contexts[index] }))
+      .filter(({ message }) => message.includes('visszatérítési értesítő'))
     expect(notices).toHaveLength(1)
-    expect(notices[0]).toMatch(/bizonytalan/iu)
-    expect(notices[0]).not.toContain('NEM ment ki')
+    const [notice] = notices
+    // A riasztás-csatorna csak a riasztásnak besorolt sort küldi el a tulajdonosnak.
+    expect(resolveAlertCode(notice!.message, {}, notice!.context)).not.toBeNull()
+    // Kézi újraküldés előtt a levélküldő szolgáltató naplóját kéri megnézni.
+    expect(notice!.message).toMatch(/bizonytalan/iu)
+    expect(notice!.message).toMatch(/szolgáltató naplójában/u)
+    expect(notice!.message).not.toContain('NEM ment ki')
     expect(f.audits.filter((row) => row.action === 'refund-notice-email')).toEqual([])
   })
 })

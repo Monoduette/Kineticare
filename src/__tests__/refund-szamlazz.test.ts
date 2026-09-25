@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { fixture, documents, provider, store, claimInvoice } from './refund-fixture'
 
 describe('refund document selection and safe recovery', () => {
-  it('first full uses storno, not corrective', async () => {
+  it('first full uses storno, not corrective, and never hands it the owner reason', async () => {
     const f = fixture()
-    await f.start()
+    await f.start({ reason: 'Elállás, telefonon egyeztetve' })
     expect(documents.storno).toHaveBeenCalledTimes(1)
     expect(documents.corrective).not.toHaveBeenCalled()
+    // A tulajdonos indoka a rendelésé; a stornó megjegyzését a vevő és a NAV is
+    // látja, oda csak a rendszer rögzített indoka kerülhet (invoice.ts).
+    expect(f.order.refundReason).toBe('Elállás, telefonon egyeztetve')
+    expect(documents.storno.mock.calls[0]![1]).not.toHaveProperty('reason')
   })
   it('partial uses exact corrective sequence and amount', async () => {
     const f = fixture()

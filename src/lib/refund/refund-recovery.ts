@@ -70,7 +70,7 @@ import {
   type OrderRefundEntry,
   type RefundOrderOptions,
 } from './refund-order'
-import { sendRefundNotice } from './refund-notice'
+import { sendRefundNotice, type SendRefundNoticeInput } from './refund-notice'
 import { REFUND_RECOVERY_ACTION_LABEL } from './recovery-action-label'
 
 /**
@@ -831,6 +831,9 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
   const { payload, orderNumber } = options
   const log = options.logger ?? logger
   const manual = { orderNumber, recoveryStatus: 'manual_review' as const, message: MANUAL }
+  // A lezárást végző ág itt jelöli ki a vevői értesítőt; a küldés a finally-ben,
+  // a koordinátor-zár elengedése UTÁN megy (lásd ott).
+  const deferred: { notice: SendRefundNoticeInput | null } = { notice: null }
   try {
     const preOrder = await findRecoveryOrder(payload, orderNumber)
     if (!preOrder) return manual
@@ -886,15 +889,15 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
             : { orderNumber, recoveryStatus: 'manual_review' as const, message: status.message }
         }
         if (financial.automatic) {
-          // A vevői értesítő a rendelés-záron kívül, csak a lezárást végző hívótól.
+          // A vevői értesítő csak a lezárást végző hívótól, minden zár után (finally).
           if (financial.commit)
-            await sendRefundNotice({
+            deferred.notice = {
               payload,
               ...financial.commit,
               kind: 'order-not-accepted',
               document: 'none',
               logger: log,
-            })
+            }
           return { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
         }
         const { order, intent, entry } = financial
@@ -982,9 +985,9 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
           },
           log,
         )
-        // A vevői értesítő a lezárás UTÁN, a rendelés-záron kívül (HTTP a zár
-        // alatt tilos); a committed CAS miatt pontosan egyszer (refund-notice.ts).
-        await sendRefundNotice({
+        // A vevői értesítő a lezárás UTÁN, minden zár elengedése után megy ki
+        // (finally); a committed CAS miatt pontosan egyszer (refund-notice.ts).
+        deferred.notice = {
           payload,
           order: committed.order,
           intent: committed.intent,
@@ -992,7 +995,7 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
           kind: entry.type,
           document: entry.type === 'full' && intent.refundSequence === 1 ? 'storno' : 'corrective',
           logger: log,
-        })
+        }
         return { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
       },
       log,
@@ -1009,6 +1012,14 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
       recoveryStatus: 'manual_review' as const,
       message: status.state === 'manual_review' ? status.message : INTERRUPTED,
     }
+  } finally {
+    // A levél HTTP-hívás, zár alatt tilos (advisory-lock.ts): a koordinátor
+    // tranzakciója a szakasz alatt tétlen, és 60 s után a Postgres bontja
+    // (idle_in_transaction_session_timeout, payload.config.ts), ezért a levél
+    // ideje nem számíthat bele. Akkor is kimegy, ha a kész szakasz után maga a
+    // zár hibázott (a tétlen tranzakció COMMIT-ja bontott kapcsolaton): a
+    // kísérlet ekkor már committed, és más hívó nem küldi el. Sosem dob.
+    if (deferred.notice) await sendRefundNotice(deferred.notice)
   }
 }
 

@@ -337,8 +337,8 @@ describe('corrective-invoice-issue task', () => {
   })
 
   // A helyesbítő összege a kért sorszámú refund-bejegyzésé: ez megy a NAV-hoz.
-  // A visszatérítés indokát a kiállító nem is fogadja (corrective.ts, a
-  // típusellenőrzés őrzi), ezért itt csak a sorszám és az összeg számít.
+  // A visszatérítés indokát a kiállító nem olvassa (corrective.ts), ezt a
+  // corrective.test.ts őrzi, ezért itt csak a sorszám és az összeg számít.
   it('a kiállító a kért sorszámú refund-bejegyzés összegét kapja, a kimenet a kiállítás eredménye', async () => {
     const restore = withAgentKey()
     try {

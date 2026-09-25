@@ -163,9 +163,15 @@ export function buildCorrectiveInvoiceXml(input: BuildCorrectiveInvoiceXmlInput)
       kulsoAzon: input.kulsoAzon,
       ...(input.rendelesSzam ? { rendelesSzam: input.rendelesSzam } : {}),
     },
+    // A megjegyzés ponttal zárul, mert AAM módban a buildInvoiceXml (withVatNote)
+    // egy szóközzel fűzi mögé az „Alanyi adómentes (Áfa tv. XIII. fejezet).”
+    // mondatot. Pont nélkül a rendelésszám és az adómentességi utalás egy
+    // mondatba olvadna, holott az Áfa tv. 169. § m) egyértelmű utalást kér. A
+    // kijelentő mondat végén pont áll: AkH. 12. kiadás, 241. a)
+    // (https://www.szotar.net/mod/object/object.php?objazonosito=szabalyzat2015_241).
     megjegyzes:
       `Helyesbítő számla a(z) ${input.originalInvoiceNumber} számú számlához — ` +
-      `részleges visszatérítés, rendelés: ${input.orderNumber}`,
+      `részleges visszatérítés, rendelés: ${input.orderNumber}.`,
   })
 }
 

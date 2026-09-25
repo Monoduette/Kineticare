@@ -100,6 +100,11 @@ const locks = vi.hoisted(() => ({
   held: [] as string[],
   events: [] as string[],
   beforeOrder: null as null | (() => void),
+  /**
+   * Ennél a kulcsnál a zár a KÉSZ szakasz után dob, ahogy a valódi
+   * withAdvisoryLock, ha a tétlen zár-tranzakció COMMIT-ja bontott kapcsolaton fut.
+   */
+  failAfterSection: null as null | string,
   tails: new Map<string, Promise<void>>(),
 }))
 vi.mock('../lib/advisory-lock', () => ({
@@ -122,7 +127,12 @@ vi.mock('../lib/advisory-lock', () => ({
     locks.held.push(key)
     locks.events.push(key)
     try {
-      return await fn()
+      const result = await fn()
+      if (locks.failAfterSection === key) {
+        locks.failAfterSection = null
+        throw new Error('SYNTHETIC: Failed query: rollback')
+      }
+      return result
     } finally {
       locks.held.splice(locks.held.lastIndexOf(key), 1)
       release()
@@ -455,6 +465,7 @@ beforeEach(() => {
   locks.held = []
   locks.events = []
   locks.beforeOrder = null
+  locks.failAfterSection = null
   locks.tails.clear()
   mail.send.mockReset().mockResolvedValue({ ok: true, provider: 'noop' })
   vi.stubGlobal(

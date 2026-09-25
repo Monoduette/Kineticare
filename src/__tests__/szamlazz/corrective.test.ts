@@ -204,18 +204,23 @@ describe('buildCorrectiveInvoiceXml — helyesbítő számla séma', () => {
   })
 
   // Vezetői döntés (w1 integráció): a helyesbítő megjegyzését a vevő is
-  // megkapja, ezért a visszatérítés belső indoka nem kerülhet rá. A kiállító
-  // típusa nem fogad indokot (ezt a @ts-expect-error őrzi a típusellenőrzésben),
-  // és a futás közben mégis átadott indokot sem írja ki.
-  it('a megjegyzés az eredeti számlára és a rendelésre hivatkozik, a visszatérítés indokára nem', () => {
+  // megkapja, ezért a visszatérítés belső indoka nem kerülhet rá. A közvetlenül
+  // megadott `reason` mezőt a típusellenőrzésben a lenti @ts-expect-error őrzi,
+  // a futás közben mégis átadott indokot pedig a kiállító nem írja ki. Éles, AAM
+  // módban a teljes szöveg rögzített: a rendelésszám után pont áll, így az
+  // adómentességi utalás külön mondat.
+  it('a megjegyzés az eredeti számlára és a rendelésre hivatkozik, indok nélkül; AAM módban az adómentességi utalás külön mondat', () => {
     const withReason = buildCorrectiveInvoiceXml({
       ...input,
+      vatMode: 'AAM',
       // @ts-expect-error -- a helyesbítő nem fogad indokot: a vevőnek látható megjegyzésbe kerülne
       reason: 'Kedvezmény utólag, telefonos egyeztetés után',
     })
     const note = /<megjegyzes>([\s\S]*?)<\/megjegyzes>/u.exec(withReason)?.[1] ?? ''
-    expect(note).toContain(`Helyesbítő számla a(z) ${ORIGINAL_INVOICE_NUMBER} számú számlához`)
-    expect(note).toContain(`rendelés: ${ORDER_NUMBER}`)
+    expect(note).toBe(
+      'Helyesbítő számla a(z) KIN-2026-7 számú számlához — részleges visszatérítés, ' +
+        'rendelés: KH-2026-000123. Alanyi adómentes (Áfa tv. XIII. fejezet).',
+    )
     expect(note).not.toContain('Kedvezmény utólag')
     expect(note).not.toMatch(/indok/iu)
   })

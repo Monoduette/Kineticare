@@ -193,7 +193,12 @@ export interface IssueStornoForOrderDeps {
   logger?: Logger
   /** Injektálható HTTP-hívó (teszteléshez); alapból a valódi postStornoXml. */
   postXml?: (xml: string, config: SzamlazzClientConfig) => Promise<SzamlazzParsedSuccess>
-  /** A stornó indoka (pl. a refund reason) — a <megjegyzes> mezőbe kerül. */
+  /**
+   * A stornó indoka, a <megjegyzes> mezőbe kerül. Csak a rendszer rögzített
+   * szövege lehet (ma: a visszatérítés után kiállt számla automatikus stornója,
+   * invoice.ts). A stornót a vevő és a NAV is látja, ezért tulajdonosi vagy
+   * API-indok nem kerülhet ide (docs/szamlazz-storno.md).
+   */
   reason?: string | null
 }
 
