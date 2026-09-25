@@ -272,6 +272,7 @@ async function readProductRow(
         promoEnabled: true,
         promoEnd: true,
         promoPriceHuf: true,
+        updatedAt: true,
       },
     })
     return row as unknown as PublishedProduct
@@ -403,15 +404,31 @@ async function findLastPublishedSnapshot(
  *   azelőtt vonták vissza, vagy a best-effort naplóírás (src/lib/audit.ts
  *   writeAuditLog) elbukott.
  *
- * A „soha” két független bizonyítéka együtt kell: megvan a kurzus
- * létrehozásának naplóbejegyzése (a napló a kurzus teljes életét látta), és a
- * verziótáblában nincs közzétett verzió (a közzététel közzétett verziót ír; ha
- * a naplóírás elbukott, a verzió ezt többnyire még mutatja). Bármelyik
- * olvasás hibája kivétel: a hívó ilyenkor sem bízik a fő sorban.
+ * A „soha” bizonyítéka a létrehozás naplóbejegyzése ÉS az, hogy a fő sort
+ * azóta nem írták. A fő sort csak a nem piszkozat-mentés írja (a
+ * közzététel, a visszavonás, a lomtár, a visszaállítás és a rendszer
+ * mentései), és a Payload minden ilyen írásnál az `updatedAt`-et a
+ * pillanatnyi időre állítja (payload/dist/collections/operations/utilities/
+ * update.js: „Ensure updatedAt date is always updated”); a piszkozat- és az
+ * autosave-mentés csak a verziótáblát írja. A létrehozás bejegyzését a napló
+ * a fő sor beszúrása után írja (afterChange), így a soha újra nem írt sor
+ * `updatedAt`-je legfeljebb a bejegyzés `createdAt`-je; a közzététel ezt
+ * biztosan túllépi. Ezt a visszavonás nem tünteti el, a beküldött
+ * `updatedAt`-et a mentés felülírja, a bejegyzés idejét pedig a napló adja.
+ * A soha nem közzétett, de lomtárba tett és visszaállított kurzus így egyszer
+ * megerősítést kér: ez a biztonságos irány.
+ *
+ * A verziótábla ehhez csak további, szigorító jel: a visszavonás a
+ * legutóbbi közzétett verziót helyben piszkozatra írja (lásd
+ * findLastPublishedSnapshot), így a közzétett verzió HIÁNYA nem bizonyít
+ * semmit; ha viszont van közzétett verzió (például egy lomtár előtti
+ * régebbi), a kurzus közzé volt téve. Bármelyik olvasás hibája kivétel: a
+ * hívó ilyenkor sem bízik a fő sorban.
  */
 async function provenNeverPublished(
   req: PayloadRequest | undefined,
   id: number | string,
+  row: PublishedProduct,
 ): Promise<boolean> {
   if (typeof req?.payload?.find !== 'function' || typeof req.payload.findVersions !== 'function') {
     throw new Error('a műveletnapló vagy a verziótábla nem olvasható')
@@ -425,13 +442,17 @@ async function provenNeverPublished(
         { action: { equals: 'create' } },
       ],
     },
+    sort: '-createdAt',
     limit: 1,
     depth: 0,
     overrideAccess: true,
     req,
-    select: { action: true },
+    select: { createdAt: true },
   })
-  if (created.docs.length === 0) return false
+  const createdAt = toValidDate(created.docs[0]?.createdAt)
+  const rowWrittenAt = toValidDate(row.updatedAt)
+  if (createdAt === null || rowWrittenAt === null) return false
+  if (rowWrittenAt.getTime() > createdAt.getTime()) return false
   const published = await req.payload.findVersions({
     collection: 'products',
     where: {
@@ -477,7 +498,7 @@ async function productReference(options: GuardOptions): Promise<ProductReference
   try {
     const lastPublished = await findLastPublishedSnapshot(req, id)
     if (lastPublished !== null) return { row, lastPublished, unknown: false }
-    return { row, lastPublished: null, unknown: !(await provenNeverPublished(req, id)) }
+    return { row, lastPublished: null, unknown: !(await provenNeverPublished(req, id, row)) }
   } catch (error) {
     logger.warn('kurzus ár-őr: a legutóbb közzétett állapot nem olvasható', {
       productId: String(id),

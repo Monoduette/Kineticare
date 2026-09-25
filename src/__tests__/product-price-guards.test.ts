@@ -64,6 +64,16 @@ type Role = 'owner' | 'staff'
 
 type AuditEntry = { before?: unknown; after?: unknown }
 
+/**
+ * A fő sor beszúrása és a létrehozás naplóbejegyzése (a napló afterChange-ben,
+ * a beszúrás után ír). A fixtúra fő sora alapból a beszúrás óta nem íródott
+ * újra (`updatedAt` a beszúrás ideje); a közzététel, a visszavonás vagy a lomtár
+ * írását a fixtúra `updatedAt: WRITTEN_LATER`-rel jelzi.
+ */
+const ROW_INSERTED_AT = '2026-09-01T08:00:00.000Z'
+const CREATE_LOGGED_AT = '2026-09-01T08:00:00.004Z'
+const WRITTEN_LATER = '2026-09-02T10:30:00.000Z'
+
 /** A közzétett (fő táblás) sor, ahogy a findByID adja; `undefined`: olvasás nem várható. */
 function fakeReq(
   options: {
@@ -75,9 +85,10 @@ function fakeReq(
     /** Több lap: a find `page` paramétere szerint (1-től), a Payload lapozásának alakjában. */
     auditPages?: AuditEntry[][]
     /**
-     * A kurzus létrehozásának naplóbejegyzése megvan-e (a „soha nem közzétett”
-     * egyik bizonyítéka); 'hiba': a lekérdezés elbukik. Megadás nélkül a
-     * lekérdezés hangosan dob, vagyis a közzétett múlt ismeretlen.
+     * A kurzus létrehozásának naplóbejegyzése (CREATE_LOGGED_AT) megvan-e (a
+     * „soha nem közzétett” egyik bizonyítéka); 'hiba': a lekérdezés elbukik.
+     * Megadás nélkül a lekérdezés hangosan dob, vagyis a közzétett múlt
+     * ismeretlen.
      */
     created?: boolean | 'hiba'
     /** Van-e közzétett verzió a verziótáblában; 'hiba': a lekérdezés elbukik. */
@@ -98,14 +109,17 @@ function fakeReq(
   const findByID = vi.fn(async () => {
     if (published === undefined) throw new Error('Ebben az esetben nem kellene olvasni.')
     if (published === 'hiba') throw new Error('DB-hiba')
-    return { id: 1, ...published }
+    return { id: 1, updatedAt: ROW_INSERTED_AT, ...published }
   })
   const pages = auditPages ?? (audit === undefined || audit === 'hiba' ? undefined : [audit])
   const find = vi.fn(async (args: { page?: number; where?: unknown }) => {
     if (JSON.stringify(args.where).includes('"action":{"equals":"create"}')) {
       if (created === undefined) throw new Error('Ebben az esetben nem kellene naplót olvasni.')
       if (created === 'hiba') throw new Error('DB-hiba')
-      return { docs: created ? [{ id: 90, action: 'create' }] : [], hasNextPage: false }
+      return {
+        docs: created ? [{ id: 90, createdAt: CREATE_LOGGED_AT }] : [],
+        hasNextPage: false,
+      }
     }
     if (audit === 'hiba') throw new Error('DB-hiba')
     if (pages === undefined) throw new Error('Ebben az esetben nem kellene naplót olvasni.')
@@ -465,7 +479,15 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
       ['a napló olvasása elbukik', { audit: 'hiba' }],
       ['a létrehozási bejegyzés keresése elbukik', { audit: [], created: 'hiba' }],
       [
-        'van létrehozási bejegyzés, de a verziótábla közzétett verziót mutat (elbukott naplóírás)',
+        'van létrehozási bejegyzés, de a fő sort azóta írták (közzététel és visszavonás, elveszett naplóírással)',
+        { audit: [], created: true, published: { ...mistyped, updatedAt: WRITTEN_LATER } },
+      ],
+      [
+        'van létrehozási bejegyzés, de a fő sor írási ideje nem olvasható',
+        { audit: [], created: true, published: { ...mistyped, updatedAt: null } },
+      ],
+      [
+        'van létrehozási bejegyzés, a fő sort azóta nem írták, de a verziótábla közzétett verziót őriz',
         { audit: [], created: true, publishedVersion: true },
       ],
       ['a verziótábla olvasása elbukik', { audit: [], created: true, publishedVersion: 'hiba' }],
@@ -503,7 +525,7 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
       ).toBe(true)
     })
 
-    it('az akciós ár és a „Fizetős kurzus” pipa sem mér a piszkozat-sorhoz', async () => {
+    it('az akciós ár sem mér a piszkozat-sorhoz', async () => {
       const promoDraft = {
         ...PAID_PUBLISHED,
         _status: 'draft',
@@ -518,7 +540,9 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
       expect(
         await validatePromoPriceHuf(3_950, numberOpts({ req: promo.req, data: confirmedPromo })),
       ).toBe(true)
+    })
 
+    it('a „Fizetős kurzus” pipa kivétele sem mér a piszkozat-sorhoz', async () => {
       // A visszavonáskor odaírt piszkozatban a pipa és az ár is üres, rendelés nincs.
       const freeDraft = {
         ...PAID_PUBLISHED,

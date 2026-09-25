@@ -54,8 +54,21 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function runs(orderCount: number, runCount: number) {
+type Throttle = typeof import('../../lib/alert-throttle')
+
+async function runs(
+  orderCount: number,
+  runCount: number,
+  options: {
+    /** A futás ideje (alapból 5 percenként, NOW-tól). */
+    runAt?: (run: number) => number
+    /** Az első futás előtt, ugyanazzal a fojtás-példánnyal, amit a futások látnak. */
+    beforeFirstRun?: (throttle: Throttle) => void
+  } = {},
+) {
+  const { runAt = (run: number) => NOW + run * RUN_INTERVAL_MS, beforeFirstRun } = options
   const watch = await import('../../lib/alerts/poll-watch')
+  beforeFirstRun?.(await import('../../lib/alert-throttle'))
   const { payload, findCalls } = createMemoryPayload({ orders: stuckOrders(orderCount) })
   const perRun: Array<{ alerted: number; orderIds: unknown[]; finds: number }> = []
   for (let run = 0; run < runCount; run += 1) {
@@ -64,7 +77,7 @@ async function runs(orderCount: number, runCount: number) {
     const alerted = await watch.alertStuckPendingPayments({
       payload: payload as never,
       logger: recordingLogger(entries),
-      nowMs: NOW + run * RUN_INTERVAL_MS,
+      nowMs: runAt(run),
     })
     const alerts = entries.filter((entry) => entry.level === 'error')
     expect(alerts).toHaveLength(alerted)
@@ -88,7 +101,7 @@ describe('régi függő rendelések: a riasztás a teljes háttérlistán végig
     )
   })
 
-  it('a lapkorlátnál hosszabb listán a kurzor körbeforog: minden rendelés pontosan egyszer riaszt, futásonként legfeljebb 25', async () => {
+  it('a lapkorlátnál hosszabb listán a kurzor futásról futásra továbbhalad: minden rendelés pontosan egyszer riaszt, futásonként legfeljebb 25 riasztás és 8 lap', async () => {
     const orderCount = 230
     // 10 futás riaszthatja végig (25-ösével), a 11. már üres.
     const { perRun, watch } = await runs(orderCount, 11)
@@ -105,5 +118,39 @@ describe('régi függő rendelések: a riasztás a teljes háttérlistán végig
       expect(run.alerted).toBeLessThanOrEqual(batch)
       expect(run.finds).toBeLessThanOrEqual(pagesPerRun)
     }
+  })
+
+  it('a lista végére érve a futás az elejéről folytatja: az első lap közben lejárt fojtású rendeléseit ugyanabban a futásban riasztja', async () => {
+    const { DEFAULT_ALERT_COOLDOWN_MS } = await import('../../lib/alert-throttle')
+    const pollServiceAlertedAt = NOW - DEFAULT_ALERT_COOLDOWN_MS + 7 * 60_000
+    const { perRun } = await runs(55, 3, {
+      runAt: (run) => NOW + run * 10 * 60_000,
+      // Az első lap 25 rendeléséről a poll-szolgáltatás ugyanazzal a kulccsal
+      // (src/lib/order-poll/service.ts) már riasztott; a fojtás NOW + 7 perckor jár le.
+      beforeFirstRun: (throttle) => {
+        for (let id = 1; id <= 25; id += 1) {
+          expect(
+            throttle.shouldEmitThrottledAlert(`stuck-order:${id}`, undefined, pollServiceAlertedAt),
+          ).toBe(true)
+        }
+      },
+    })
+    const ids = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, index) => from + index)
+    // 1. futás: az első lap fojtott, a második lap 25 riasztása kitölti a keretet.
+    expect(perRun[0].orderIds).toEqual(ids(26, 50))
+    // 2. futás (a fojtás már lejárt): a harmadik lap 5 rendelése után a lista
+    // végéről az elejére fordul, és a keret maradékát (20) ott tölti ki.
+    expect(perRun[1].orderIds).toEqual([...ids(51, 55), ...ids(1, 20)])
+    // 3. futás: az első lap maradéka.
+    expect(perRun[2].orderIds).toEqual(ids(21, 25))
+  })
+
+  it('körbeérve a futás a kezdőlapnál megáll, egy lapot sem olvas kétszer', async () => {
+    const { perRun } = await runs(55, 4)
+    expect(perRun.map((run) => run.alerted)).toEqual([25, 25, 5, 0])
+    // 3. futás: 2. lap (fojtott), 3. lap, fordulás, 1. lap (fojtott), majd megáll
+    // a kezdőlapnál; a 4. futás ugyanígy, riasztás nélkül.
+    expect(perRun.map((run) => run.finds)).toEqual([1, 2, 3, 3])
   })
 })

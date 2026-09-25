@@ -1049,11 +1049,12 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     }
   }, 120_000)
 
-  it('kontroll (PR #305): a soha nem közzétett, új kurzus a tulajdonos közzétételével megerősítés nélkül élesedik', async () => {
+  /** Az admin „Új kurzus” útja: a tulajdonos piszkozatként hozza létre (naplózott létrehozás). */
+  async function createDraftAsOwner(key: string): Promise<number> {
     const created = (await payload.create({
       collection: 'products',
       data: {
-        sku: `DB-GUARD fresh ${stamp}`,
+        sku: `DB-GUARD ${key} ${stamp}`,
         category: categoryId,
         status: 'published',
         _status: 'draft',
@@ -1065,9 +1066,78 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       user: asUser(owner),
     })) as unknown as Doc
     productIds.push(created.id)
-    expect((await mainRow(created.id))._status).toBe('draft')
+    return created.id
+  }
 
-    expect(await save(created.id, owner, { _status: 'published' })).toBe('OK')
-    expect((await mainRow(created.id))._status).toBe('published')
+  it('kontroll (PR #305): a soha nem közzétett, új kurzus a tulajdonos közzétételével megerősítés nélkül élesedik', async () => {
+    const id = await createDraftAsOwner('fresh')
+    // Az autosave csak a verziótáblát írja: a kurzus továbbra is bizonyítottan
+    // soha nem közzétett.
+    await autosave(id, owner, { priceInHUF: 69_500 })
+    expect((await mainRow(id))._status).toBe('draft')
+
+    expect(await save(id, owner, { _status: 'published' })).toBe('OK')
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'published',
+      priceInHUF: 69_500,
+    })
+  }, 120_000)
+
+  /**
+   * PR #305 rev1 (breaker): a verziótábla nem bizonyítja, hogy a kurzus soha
+   * nem volt közzétéve, mert a visszavonás a közzétett verziót helyben
+   * piszkozatra írja. A kurzus naplózottan jött létre, közzé volt téve, majd
+   * visszavonták; a lomtár és az admin visszaállítása a piszkozat 7 950 Ft-os
+   * árát a fő sorba írta. Ha a közzététel oldali naplóbejegyzések elvesznek
+   * (best-effort naplóírás; a visszavonást a korábbi kód nem is naplózta), a
+   * régi „soha” bizonyíték (létrehozási bejegyzés, közzétett verzió nélkül)
+   * igaz lett volna, a piszkozat-sor önmagához mérve „nem csökkent”, és a
+   * munkatárs megerősítés nélkül tette volna közzé.
+   */
+  it('PR #305 rev1: közzétett, majd visszavont kurzus elveszett közzétételi naplóval: az elütött ár csak a tulajdonos megerősítésével élesedik', async () => {
+    const id = await createDraftAsOwner('published-then-lost-audit')
+    expect(await save(id, owner, { _status: 'published' })).toBe('OK')
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    expect(await save(id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
+    expect(await saveWhere(id, staff, { deletedAt: null }, { trashed: true })).toBe('OK')
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'draft',
+      priceInHUF: 7_950,
+    })
+    // Csak a létrehozás bejegyzése marad meg.
+    await payload.db.deleteMany({
+      collection: 'audit-logs',
+      where: {
+        and: [
+          { entityType: { equals: 'products' } },
+          { entityId: { equals: String(id) } },
+          { action: { not_equals: 'create' } },
+        ],
+      },
+    })
+    const remaining = await payload.find({
+      collection: 'audit-logs',
+      where: {
+        and: [{ entityType: { equals: 'products' } }, { entityId: { equals: String(id) } }],
+      },
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect(remaining.docs.map((entry) => entry.action)).toEqual(['create'])
+    // A verziótáblában nincs közzétett verzió: ez egymagában nem bizonyíték.
+    const publishedVersions = await payload.findVersions({
+      collection: 'products',
+      where: {
+        and: [{ parent: { equals: id } }, { 'version._status': { equals: 'published' } }],
+      },
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect(publishedVersions.totalDocs).toBe(0)
+
+    await expectConfirmationRequired(id)
   }, 120_000)
 })
