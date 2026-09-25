@@ -168,6 +168,20 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
       ...(replyTo ? { replyTo } : {}),
       idempotencyKey: refundNoticeIdempotencyKey(intent.id),
     })
+    if (!result.ok && result.deliveryUncertain === true) {
+      // A levél célba érhetett (SMTP: a kapcsolat a tartalom átadása után
+      // szakadt meg, lásd SendResult.deliveryUncertain). A „NEM ment ki, küldd
+      // el kézzel” itt második levelet íratna a vevőnek, ezért a riasztás előbb
+      // ellenőrzést kér, ahogy a visszaigazolónál is (order-paid.ts).
+      log.error(
+        'RIASZTÁS: a vevői visszatérítési értesítő kézbesítése BIZONYTALAN. Az SMTP-kapcsolat a levél tartalmának átadása után megszakadt, a szerver átvehette, ezért automatikus újraküldés nincs. Nézd meg az SMTP-szolgáltató naplójában (vagy kérdezd meg a vevőt), megérkezett-e; csak akkor küldd el kézzel, ha nem.',
+        {
+          cimzett: maskEmail(recipient),
+          error: result.error === undefined ? undefined : maskEmailsInText(result.error),
+        },
+      )
+      return
+    }
     if (!result.ok) {
       log.error(
         'RIASZTÁS: a vevői visszatérítési értesítő NEM ment ki. A visszatérítés megtörtént; küldd el kézzel a vevőnek a rendelésszámmal és az összeggel.',

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 // A közös tároló-, zár- és Barion-mockokat a szolgáltatás importja előtt kell regisztrálni.
 import { access, fixture, locks, mail, store } from '../refund-fixture'
+import type { SendResult } from '../../lib/email/types'
 import type { Logger } from '../../lib/logger'
 import { refundNoticeEmail, type RefundNoticeInput } from '../../lib/email/templates/refund'
 import { refundOrder } from '../../lib/refund/refund-order'
@@ -300,5 +301,33 @@ describe('a visszatérítési értesítő kiküldése a lezárás után', () => 
     f.failures.receipt = 'refund-prepared'
     await expect(f.start()).rejects.toMatchObject({ status: 409 })
     expect(mail.send).not.toHaveBeenCalled()
+  })
+
+  // Az SMTP-szolgáltató a levél tartalma után megszakadt kapcsolatot
+  // `deliveryUncertain`-nel adja (a lánc: email-smtp-kezbesites.test.ts): a
+  // levél célba érhetett, a „NEM ment ki, küldd el kézzel” második levelet
+  // íratna a vevőnek.
+  it('bizonytalan SMTP-kézbesítésnél a RIASZTÁS ellenőrzést kér a „NEM ment ki” helyett, és küldést sem rögzít', async () => {
+    const f = fixture()
+    Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
+    const uncertain: SendResult = {
+      ok: false,
+      provider: 'smtp',
+      retryable: false,
+      deliveryUncertain: true,
+      error: 'SYNTHETIC: a kapcsolat a levél lezárása után megszakadt',
+    }
+    mail.send.mockResolvedValue(uncertain)
+    const { log, errors } = spyLogger()
+    await expect(
+      refundOrder({ ...f.options, input: { operationKey: 'A'.repeat(43) }, logger: log }),
+    ).resolves.toMatchObject({ type: 'full' })
+    expect(store.intents.get(f.payload)?.state).toBe('committed')
+    expect(mail.send).toHaveBeenCalledTimes(1)
+    const notices = errors.filter((message) => message.includes('visszatérítési értesítő'))
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatch(/bizonytalan/iu)
+    expect(notices[0]).not.toContain('NEM ment ki')
+    expect(f.audits.filter((row) => row.action === 'refund-notice-email')).toEqual([])
   })
 })
