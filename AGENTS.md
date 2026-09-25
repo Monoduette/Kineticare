@@ -153,7 +153,8 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
   `szamlaKulsoAzon = rendelésszám` — idempotens). Stornó teljes refundnál,
   helyesbítő számla részleges refundnál (külön taskok).
 - **Jobok:** a workerek az `ENABLE_JOB_WORKERS=true` env mögött futnak (autoRun
-  cron: webhook-retry percenként, order-maintenance 5 percenként); dev-ben
+  cron: webhook-retry percenként, order-poll és order-maintenance 5 percenként,
+  külön queue-ban); dev-ben
   alapból KI vannak kapcsolva. Nem éles címen a hiányzó flag → induláskori
   **warn** (`job_workerek_kikapcsolva`). Az éles címen (`NEXT_PUBLIC_SERVER_URL`)
   a hiányzó flag boot-hiba, hacsak nincs mellette `JOB_WORKERS_OFF_CONFIRM=igen`

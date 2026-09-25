@@ -3,7 +3,7 @@ import { PgDialect } from '@payloadcms/db-postgres/drizzle/pg-core'
 import { BasePayload, type PayloadRequest, type SanitizedConfig, type Where } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ORDER_MAINTENANCE_QUEUE, WEBHOOK_RETRY_QUEUE } from '../../jobs/queues'
+import { ORDER_POLL_QUEUE, WEBHOOK_RETRY_QUEUE } from '../../jobs/queues'
 import configPromise from '../../payload.config'
 
 /**
@@ -151,14 +151,14 @@ describe('handleSchedules — a VALÓDI Payload-ütemező az éles configgal', (
     const harness = createHarness(config, { runnableOrActive: 0 })
 
     const result = await harness.payload.jobs.handleSchedules({
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       req: harness.req,
     })
 
     expect(harness.queueCalls).toHaveLength(1)
     expect(harness.queueCalls[0]).toMatchObject({
       task: 'order-poll',
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       meta: { scheduled: true },
     })
     expect(harness.queueCalls[0].waitUntil).toBeInstanceOf(Date)
@@ -196,7 +196,7 @@ describe('handleSchedules — a VALÓDI Payload-ütemező az éles configgal', (
     const harness = createHarness(config, { runnableOrActive: 0 })
 
     await harness.payload.jobs.handleSchedules({
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       req: harness.req,
     })
 
@@ -208,7 +208,7 @@ describe('handleSchedules — a VALÓDI Payload-ütemező az éles configgal', (
     const harness = createHarness(config, { runnableOrActive: 1, stale: 0 })
 
     const result = await harness.payload.jobs.handleSchedules({
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       req: harness.req,
     })
 
@@ -222,7 +222,7 @@ describe('handleSchedules — beragadt job (a néma leállás elleni védelem)',
     const harness = createHarness(config, { runnableOrActive: 1, stale: 1 })
 
     const result = await harness.payload.jobs.handleSchedules({
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       req: harness.req,
     })
 
@@ -252,7 +252,7 @@ describe('handleSchedules — beragadt job (a néma leállás elleni védelem)',
     })
 
     const result = await harness.payload.jobs.handleSchedules({
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       req: harness.req,
     })
 

@@ -27,10 +27,11 @@
  * w1-barion-platform). A „(pool.max − 2) / 4” ökölszabály így 4 helyet is
  * engedne, a korlát mégis a kisebb, biztonságos 2 marad, mert ugyanebből a
  * poolból él a Barion-callback és a háttér-jobok is. Egy callback csúcson 4
- * kapcsolatot fog (session-zár + rendelés-zár + ügyfél-zár + lekérdezés). Az
- * order-maintenance queue egy tickben 4 jobot futtat párhuzamosan
- * (src/jobs/index.ts `ORDER_MAINTENANCE_AUTORUN_LIMIT`: order-poll, számla,
- * stornó, helyesbítő), jobonként legfeljebb 3 kapcsolattal, ez 12.
+ * kapcsolatot fog (session-zár + rendelés-zár + ügyfél-zár + lekérdezés). A
+ * két rendelés-queue egy tickben együtt 4 jobot futtat párhuzamosan
+ * (src/jobs/index.ts: `ORDER_MAINTENANCE_AUTORUN_LIMIT` 3 számla-, stornó- vagy
+ * helyesbítő job, `ORDER_POLL_AUTORUN_LIMIT` 1 order-poll), jobonként
+ * legfeljebb 3 kapcsolattal, ez 12.
  *
  * A legrosszabb eset így sem fér el: két nyitott pénztár (8) és egy teli
  * job-tick (12) már mind a 20 kapcsolatot fogja, a callbacknek és a

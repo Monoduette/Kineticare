@@ -1118,7 +1118,7 @@ healthcheckje miatt a Railway a régit hagyja futni.
 | Task                       | Queue                 | Mikor                   | Mit                        |
 | -------------------------- | --------------------- | ----------------------- | -------------------------- |
 | `webhook-retry`            | `webhook-maintenance` | cron `* * * * *`        | elhasalt callback újra     |
-| `order-poll`               | `order-maintenance`   | cron `*/5 * * * *`      | GetState v4, árva, resweep |
+| `order-poll`               | `order-poll`          | cron `*/5 * * * *`      | GetState v4, árva, resweep |
 | `invoice-issue`            | `order-maintenance`   | esemény (paid)          | számla                     |
 | `storno-issue`             | `order-maintenance`   | esemény (teljes refund) | stornó                     |
 | `corrective-invoice-issue` | `order-maintenance`   | esemény (részrefund)    | helyesbítő                 |
@@ -1127,6 +1127,9 @@ Az `autoRun` csak a sorban lévőt futtatja — a periodikus taskoknak
 `schedule` kell. A kettő párban. A `scheduling` sémát hoz: a migrációnak
 ugyanabban a körben kell lennie. Job REST + `payload-jobs` staff/owner.
 Hiányzó `payload.jobs.queue` → hangos riasztás, nem néma false (W6).
+Az `order-poll` saját queue-ban fut (tickenként 1 job), az `order-maintenance`
+tickenként 3 Számlázz.hu-jobot vesz fel: így egy Számlázz.hu-kimaradás
+újrapróbáló jobjai nem éheztetik ki a pollt (hibavadász C, PR #307).
 
 ---
 

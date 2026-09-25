@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { JOB_STATS_GLOBAL_SLUG, restrictJobStatsGlobalAccess } from '../../jobs/jobs-stats-access'
-import { ORDER_MAINTENANCE_QUEUE } from '../../jobs/queues'
+import { ORDER_POLL_QUEUE } from '../../jobs/queues'
 import configPromise from '../../payload.config'
 
 /**
@@ -133,7 +133,7 @@ describe('a zár után is fut az ütemezés (user nélküli, belső úton)', () 
     // A kérésben SZÁNDÉKOSAN nincs user — ez a szigorítás legszigorúbb esete.
     const req = { payload, user: null } as unknown as PayloadRequest
 
-    const result = await payload.jobs.handleSchedules({ queue: ORDER_MAINTENANCE_QUEUE, req })
+    const result = await payload.jobs.handleSchedules({ queue: ORDER_POLL_QUEUE, req })
 
     // K4: a saját őr MAGA állítja sorba a jobot advisory-zár alatt (a `queued`
     // a bizonyíték), és shouldSchedule:false-t ad vissza — a handleSchedules
@@ -141,7 +141,7 @@ describe('a zár után is fut az ütemezés (user nélküli, belső úton)', () 
     expect(result.queued).toHaveLength(0)
     expect(result.skipped).toHaveLength(1)
     expect(queued).toHaveLength(1)
-    expect(queued[0]).toMatchObject({ task: 'order-poll', queue: ORDER_MAINTENANCE_QUEUE })
+    expect(queued[0]).toMatchObject({ task: 'order-poll', queue: ORDER_POLL_QUEUE })
     // …és mindezt a db-rétegen keresztül, nem a global-operationökön.
     expect(globalCalls).toContain(`db.findGlobal:${JOB_STATS_GLOBAL_SLUG}`)
     expect(globalCalls.some((call) => call.startsWith('db.'))).toBe(true)

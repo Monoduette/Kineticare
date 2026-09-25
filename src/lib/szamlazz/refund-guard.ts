@@ -52,7 +52,7 @@ export class RefundDocumentGuardError extends Error {
  * is beküldhetne egyet.
  *
  * Miért 2 óra: az order-maintenance sor 5 percenként fut
- * (ORDER_MAINTENANCE_CRON, jobs/queues.ts), egy ütemben legfeljebb 4 jobot
+ * (ORDER_MAINTENANCE_CRON, jobs/queues.ts), egy ütemben legfeljebb 3 jobot
  * vesz fel (ORDER_MAINTENANCE_AUTORUN_LIMIT, jobs/index.ts), a job pedig
  * `retries: 3` mellett legfeljebb négyszer fut, várakoztatás nélkül a
  * következő ütemekben: torlódás nélkül ez nagyjából 20 perc. A 2 óra ennek

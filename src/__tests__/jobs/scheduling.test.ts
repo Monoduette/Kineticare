@@ -6,6 +6,7 @@ import { buildJobsConfig } from '../../jobs'
 import {
   ORDER_MAINTENANCE_CRON,
   ORDER_MAINTENANCE_QUEUE,
+  ORDER_POLL_QUEUE,
   WEBHOOK_RETRY_CRON,
   WEBHOOK_RETRY_QUEUE,
 } from '../../jobs/queues'
@@ -201,7 +202,7 @@ describe('job-ütemezés — a végleges (szanitált) Payload-config', () => {
     const config = await configPromise
 
     expect(taskBySlug(config.jobs, 'order-poll')?.schedule).toMatchObject([
-      { cron: ORDER_MAINTENANCE_CRON, queue: ORDER_MAINTENANCE_QUEUE },
+      { cron: ORDER_MAINTENANCE_CRON, queue: ORDER_POLL_QUEUE },
     ])
     expect(taskBySlug(config.jobs, 'webhook-retry')?.schedule).toMatchObject([
       { cron: WEBHOOK_RETRY_CRON, queue: WEBHOOK_RETRY_QUEUE },
@@ -318,7 +319,7 @@ describe('job-ütemezés — negatív kontroll (a kapu tényleg bukik)', () => {
   it('disableScheduling: true az autoRun-entryn → rés', () => {
     const broken = cloneJobsConfig(workersOnConfig())
     broken.autoRun = (broken.autoRun as AutorunEntryLike[]).map((entry) =>
-      entry.queue === ORDER_MAINTENANCE_QUEUE ? { ...entry, disableScheduling: true } : entry,
+      entry.queue === ORDER_POLL_QUEUE ? { ...entry, disableScheduling: true } : entry,
     )
 
     const gaps = findSchedulingGaps(broken, REQUIRED_SCHEDULED_TASKS)
@@ -331,7 +332,7 @@ describe('job-ütemezés — negatív kontroll (a kapu tényleg bukik)', () => {
     const broken = cloneJobsConfig(workersOnConfig())
     broken.tasks = broken.tasks?.map((task) =>
       task.slug === 'order-poll'
-        ? { ...task, schedule: [{ cron: '* * * * *', queue: ORDER_MAINTENANCE_QUEUE }] }
+        ? { ...task, schedule: [{ cron: '* * * * *', queue: ORDER_POLL_QUEUE }] }
         : task,
     )
 
@@ -350,7 +351,7 @@ describe('job-ütemezés — negatív kontroll (a kapu tényleg bukik)', () => {
     const relaxed = cloneJobsConfig(workersOnConfig())
     relaxed.tasks = relaxed.tasks?.map((task) =>
       task.slug === 'order-poll'
-        ? { ...task, schedule: [{ cron: '0 3 * * *', queue: ORDER_MAINTENANCE_QUEUE }] }
+        ? { ...task, schedule: [{ cron: '0 3 * * *', queue: ORDER_POLL_QUEUE }] }
         : task,
     )
 
@@ -379,6 +380,7 @@ describe('job-ütemezés — az autoRun ÖNMAGÁBAN nem elég (a hiba oka)', () 
     expect((autoRunOnly.autoRun as AutorunEntryLike[]).map((entry) => entry.queue)).toEqual([
       WEBHOOK_RETRY_QUEUE,
       ORDER_MAINTENANCE_QUEUE,
+      ORDER_POLL_QUEUE,
     ])
 
     // Mégsem ütemez semmit: sanitize.js `hasScheduleProperty` → false, tehát
