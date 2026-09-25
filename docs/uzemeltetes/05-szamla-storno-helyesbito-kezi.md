@@ -96,6 +96,16 @@ keresi a helyesbítőt a Számlázz.hu-ban („Ne állíts ki kézzel helyesbít
 ez az üzenet látszik.”), ne állítsd ki kézzel: a rendszer maga pótolja, és a
 kézi mellé egy második helyesbítő készülne.
 
+A panel két esetben kér kézi rendezést: ha azt írja, hogy a rendszer nem
+talált helyesbítőt, és nem küldi be újra, vagy hogy a helyesbítő „nem készült
+el biztosan, és a háttérbeli ellenőrzés sem járt sikerrel”. Ez utóbbi
+legkorábban két órával a háttérbeli újrapróbálás indulása után jelenhet meg,
+és csak akkor, ha éppen nem fut beküldés. Ilyenkor a rendszer már nem küldi be
+a helyesbítőt. Előbb az 1. pont szerint keresd meg a Számlázz.hu-ban
+(`KH-…-HELYESBITO-<sorszám>`). Ha megvan, küldd el a számát az üzemeltetőnek.
+Ha nincs meg, állítsd ki kézzel az alábbiak szerint, és jelezd az
+üzemeltetőnek a rendelésszámmal együtt.
+
 1. A Számlázz.hu-ban az eredeti számlához állíts ki módosító (helyesbítő)
    számlát a visszatérített összeggel csökkentve.
 2. A teljesítés dátuma az eredeti számla teljesítési dátuma (a rendelésen:

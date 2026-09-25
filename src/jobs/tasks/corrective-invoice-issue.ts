@@ -1,6 +1,7 @@
 import type { TaskConfig } from 'payload'
 
 import type { Order } from '../../payload-types'
+import { ALERT_CODES } from '../../lib/alerts/classify'
 import { finishRefundAfterCorrective } from '../../lib/refund/refund-recovery'
 import { readRefundEntries } from '../../lib/refund/refund-order'
 import { issueCorrectiveInvoiceForOrder } from '../../lib/szamlazz'
@@ -107,7 +108,7 @@ export const correctiveInvoiceIssueTask: TaskConfig<CorrectiveInvoiceJobIO> = {
       logger.error(
         `RIASZTÁS: a helyesbítő újrapróbáló jobja leállt, mert a rendszer ehhez a visszatérítéshez automatikusan nem küldhet be helyesbítőt (a refund-őr megtagadta). A helyesbítő nem készült el biztosan: kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban ${correctiveSearchText(order, refundSeq)}, és csak akkor állítsd ki kézzel, ha nincs meg (05-ös útmutató, 4. pont).`,
         {
-          alertCode: 'helyesbito-nem-kuldheto-be-ujra',
+          alertCode: ALERT_CODES.helyesbitoNemKuldhetoBeUjra,
           orderId,
           orderNumber: order.orderNumber ?? null,
           refundSeq,
@@ -159,7 +160,7 @@ export const correctiveInvoiceIssueTask: TaskConfig<CorrectiveInvoiceJobIO> = {
       logger.error(
         `RIASZTÁS: a helyesbítő újrapróbáló jobja minden próbálkozás után hibával állt le, a helyesbítő nem készült el biztosan. Nyisd meg a rendelés visszatérítési paneljét, és kövesd az ott leírtakat. Kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban ${correctiveSearchText(order, seq)}.`,
         {
-          alertCode: 'helyesbito-ujraprobalas-kimerult',
+          alertCode: ALERT_CODES.helyesbitoUjraprobalasKimerult,
           orderId: typeof orderId === 'number' ? orderId : null,
           orderNumber: order?.orderNumber ?? null,
           refundSeq: seq,
