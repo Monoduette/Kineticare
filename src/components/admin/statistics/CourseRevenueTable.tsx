@@ -44,9 +44,15 @@ const skuCellStyle: CSSProperties = {
  * és havi száma a részleges visszatérítést már levonja, a kurzusonkénti
  * bevétel viszont nem, mert a visszatérítés-bejegyzés nem mondja meg, melyik
  * kurzusra szólt (csak összeg és időpont). Találgatott szétosztás helyett a
- * lap kimondja, hogy ez a tábla teljes összeggel számol. A munkatársi
- * nézetben is igaz; ott a kártyák alatti mondat (RESZLEGES_NINCS_LEVONVA)
- * ugyanígy fogalmaz.
+ * lap kimondja, hogy ez a tábla teljes összeggel számol.
+ *
+ * A jegyzet szándékosan INDOKLÁS NÉLKÜLI tény, mert mindkét nézetben igaz,
+ * az oka viszont nézetenként más: a tulajdonosnál a tétel hiánya
+ * (RESZLEGES_AGAK_NEM_LEVONVA), a munkatársnál az, hogy a visszatérítés
+ * nem olvasható (RESZLEGES_NINCS_LEVONVA). Az okot a kártyák alatti mondat
+ * adja; ha a jegyzet is indokolna, a munkatársi lap két különböző okot
+ * mondana ugyanarra a számra (WCAG 2.2 SC 3.2.4 Consistent Identification,
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
  *
  * MIÉRT A TÁBLÁHOZ KÖTVE (források, megnyitva 2026-09-25):
  * - GOV.UK Design System, Table: „A caption helps users find, navigate and
@@ -60,7 +66,7 @@ const skuCellStyle: CSSProperties = {
  *   https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html
  */
 export const KURZUS_TELJES_OSSZEG =
-  'A részlegesen visszatérített rendelés itt a teljes összegével szerepel, mert a visszatérítés nem tartalmazza, melyik kurzusra szólt.'
+  'A részlegesen visszatérített rendelés ebben a táblában a teljes összegével szerepel.'
 
 export function CourseRevenueTable({ rows }: { rows: readonly CourseRevenueRow[] }) {
   if (rows.length === 0) {

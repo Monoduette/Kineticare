@@ -513,7 +513,30 @@ export function attentionTotal(counts: AttentionCounts): number {
     .reduce((sum, definition) => sum + counts[definition.key], 0)
 }
 
+/**
+ * A Payload admin a lista címének query-jét a qs alapbeállításával olvassa
+ * (@payloadcms/next/dist/views/Root/index.js: `qs.parse(queryString, {
+ * depth: 10, ignoreQueryPrefix: true })`), vagyis `arrayLimit: 20`-szal: a
+ * 20-nál nagyobb indexű elemtől a tömb objektummá válik. Az `in` feltételre
+ * ilyenkor a Payload nem tömböt kap, a feltételt kihagyja
+ * (@payloadcms/drizzle sanitizeQueryValue → null → parseParams `break`), és a
+ * link mást mutatna, mint a szám. Ezért a hosszabb, csak egyszerű értékekből
+ * álló tömb vesszővel elválasztva megy: az `in` operátor szövegét a Payload
+ * ugyanígy tömbbé bontja (`createArrayFromCommaDelineated`).
+ */
+const PAYLOAD_QS_ARRAY_LIMIT = 20
+
+function isScalarList(value: readonly unknown[]): value is readonly (string | number)[] {
+  return value.every(
+    (item) => typeof item === 'number' || (typeof item === 'string' && !item.includes(',')),
+  )
+}
+
 function appendQueryPairs(prefix: string, value: unknown, out: string[]): void {
+  if (Array.isArray(value) && value.length > PAYLOAD_QS_ARRAY_LIMIT && isScalarList(value)) {
+    out.push(`${encodeURIComponent(prefix)}=${encodeURIComponent(value.join(','))}`)
+    return
+  }
   if (Array.isArray(value)) {
     value.forEach((item, index) => appendQueryPairs(`${prefix}[${String(index)}]`, item, out))
     return

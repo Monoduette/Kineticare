@@ -1,4 +1,5 @@
 import type { Where } from 'payload'
+import { parse } from 'qs-esm'
 
 /**
  * Kis, memóriabeli `Where`-kiértékelő a riasztás-tesztekhez: pontosan azokat
@@ -27,9 +28,13 @@ function matchesField(doc: Doc, field: string, condition: unknown): boolean {
       case 'equals':
         if (value !== operand) return false
         break
-      case 'in':
-        if (!Array.isArray(operand) || !operand.includes(value)) return false
+      case 'in': {
+        // A Payload az `in` szövegét vesszőnél tömbbé bontja
+        // (@payloadcms/drizzle sanitizeQueryValue, createArrayFromCommaDelineated).
+        const list = typeof operand === 'string' ? operand.split(',') : operand
+        if (!Array.isArray(list) || !list.includes(value)) return false
         break
+      }
       case 'less_than':
         if (value === undefined || value === null || compare(value, operand) >= 0) return false
         break
@@ -87,4 +92,25 @@ export function createMemoryPayload(collections: Readonly<Record<string, readonl
     },
   }
   return { payload, countCalls, findCalls }
+}
+
+/**
+ * A rendelés-lista linkje melyik rendeléseket nyitja meg: a query-t PONTOSAN
+ * úgy olvassuk vissza, mint a Payload admin RootPage-e
+ * (@payloadcms/next/dist/views/Root/index.js: `qs.parse(queryString, {
+ * depth: 10, ignoreQueryPrefix: true })`, tehát a qs alap `arrayLimit`-jével).
+ * A qs minden értéket szövegként ad; az azonosítót a Payload a mező típusára
+ * alakítja, ezért itt az azonosító szövegként hasonlít.
+ */
+export function orderIdsOpenedByHref(
+  href: string,
+  docs: ReadonlyArray<Readonly<Record<string, unknown>> & { id: number }>,
+): number[] {
+  const parsed = parse(href.slice(href.indexOf('?') + 1), {
+    depth: 10,
+    ignoreQueryPrefix: true,
+  }) as { where?: Where }
+  return docs
+    .filter((doc) => matchesWhere({ ...doc, id: String(doc.id) }, parsed.where ?? {}))
+    .map((doc) => doc.id)
 }

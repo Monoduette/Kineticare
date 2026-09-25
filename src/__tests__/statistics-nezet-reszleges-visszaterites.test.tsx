@@ -35,6 +35,10 @@ vi.mock('../lib/statistics/engagement-query', () => ({
   },
 }))
 
+/** A kurzustábla leírása (`aria-describedby`), indoklás nélkül, mert mindkét nézetben igaz. */
+const KURZUS_JEGYZET =
+  /id="kc-stat-kurzus-bevetel-jegyzet"[^>]*>A részlegesen visszatérített rendelés ebben a táblában a teljes összegével szerepel\.</
+
 const { StatisticsView } = await import('../components/admin/StatisticsView')
 const { WebAnalyticsView } = await import('../components/admin/WebAnalyticsView')
 
@@ -115,15 +119,13 @@ describe('Statisztika oldal: részleges visszatérítés szerepkör szerint', ()
     expect(html).toContain(RESZLEGES_LEVONVA)
     expect(html).not.toContain(RESZLEGES_NINCS_LEVONVA)
     // PR #305, Codex P2: az ág- és a kurzusbontás teljes összeggel marad (a
-    // visszatérítés nem mondja meg, melyik kurzusra szólt), és ezt a lap a
-    // kártyák alatt és a kurzustábla leírásaként is kimondja.
+    // visszatérítés nem mondja meg, melyik kurzusra szólt); a kártyák alatti
+    // mondat ezt indokolja, a kurzustábla leírása kimondja.
     expect(html).toContain(
-      'Az otthoni és a szakmai ág összegéből, valamint a kurzusonkénti bevételből nem vontuk le, mert a visszatérítés nem tartalmazza, melyik kurzusra szólt.',
+      'Az otthoni és a szakmai ág összegéből, valamint a kurzusonkénti bevételből nem vontuk le, mert a visszatérítésnél nincs rögzítve, melyik kurzusra szólt.',
     )
     expect(html).toContain('aria-describedby="kc-stat-kurzus-bevetel-jegyzet"')
-    expect(html).toMatch(
-      /id="kc-stat-kurzus-bevetel-jegyzet"[^>]*>A részlegesen visszatérített rendelés itt a teljes összegével szerepel, mert a visszatérítés nem tartalmazza, melyik kurzusra szólt\.</,
-    )
+    expect(html).toMatch(KURZUS_JEGYZET)
   })
 
   it('a munkatársnál a refunds mezőt le sem kéri, bruttót mutat, és ezt ki is mondja', async () => {
@@ -136,6 +138,11 @@ describe('Statisztika oldal: részleges visszatérítés szerepkör szerint', ()
     expect(html).not.toContain('Levont részleges visszatérítés')
     expect(html).toContain(RESZLEGES_NINCS_LEVONVA)
     expect(html).not.toContain(RESZLEGES_LEVONVA)
+    // A kurzustábla jegyzete itt is áll, de a tulajdonosi indoklás (a
+    // visszatérítés tétele) nem: a munkatársnál az ok az, hogy a
+    // visszatérítés nem olvasható, és a lap csak ezt az egy okot mondja.
+    expect(html).toMatch(KURZUS_JEGYZET)
+    expect(html).not.toContain('melyik kurzusra szólt')
   })
 })
 

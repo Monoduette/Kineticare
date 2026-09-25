@@ -10,6 +10,8 @@ import {
   queryAamStatus,
 } from '../../lib/alerts/aam'
 import {
+  ATTENTION_LOOKBACK_DAYS,
+  AttentionIncompleteError,
   attentionDefinitions,
   attentionListHref,
   attentionTotal,
@@ -22,7 +24,7 @@ import {
   NO_PROVIDER_REQUEST_REFERENCE,
   REFUND_INTENT_STATES,
 } from '../../lib/refund/refund-intent'
-import { createMemoryPayload, matchesWhere } from './where-eval'
+import { createMemoryPayload, matchesWhere, orderIdsOpenedByHref } from './where-eval'
 
 /**
  * „Figyelmet igényel": a küszöbök (2 óra, 1 óra, 24 óra, 15 perc, 14 napos
@@ -167,11 +169,12 @@ describe('elakadt visszatérítés: minden feloldatlan állapot', () => {
  * (`committed`) visszatérítési szándék.
  */
 describe('hiányzó helyesbítő visszatérítésenként', () => {
-  const partial = (amountHuf: number, refundedAt: string) => ({
-    type: 'partial',
+  const entry = (type: 'partial' | 'full', amountHuf: number, refundedAt: string) => ({
+    type,
     amountHuf,
     refundedAt,
   })
+  const partial = (amountHuf: number, refundedAt: string) => entry('partial', amountHuf, refundedAt)
   const twoPartials = {
     status: 'paid',
     invoiceStatus: 'issued',
@@ -181,6 +184,23 @@ describe('hiányzó helyesbítő visszatérítésenként', () => {
     refunds: [partial(10_000, daysAgo(2)), partial(5_000, daysAgo(1))],
     createdAt: daysAgo(5),
     updatedAt: daysAgo(1),
+  }
+  type Intent = { id: number; order: number; state: string; refundSequence: number }
+
+  async function bizonylatHibaOn(
+    orderDocs: ReadonlyArray<Record<string, unknown>>,
+    intents: readonly Intent[],
+  ): Promise<number> {
+    const { counts } = await resolveOn({
+      orders: orderDocs,
+      'refund-intents': intents.map((intent) => ({
+        ...intent,
+        createdAt: daysAgo(2),
+        updatedAt: daysAgo(2),
+      })),
+      'webhook-events': [],
+    })
+    return counts.bizonylatHiba
   }
 
   it('a korábbi, bizonyíték nélküli helyesbítő számít, és a link pontosan azt a rendelést adja', async () => {
@@ -197,7 +217,48 @@ describe('hiányzó helyesbítő visszatérítésenként', () => {
     expect(listed.map((order) => order.id)).toEqual([21, 7, 9])
   })
 
-  it.each([
+  // Minden sor egy bizonyíték-szabályt véd: ha a szabály lazul (bármilyen
+  // állapotú szándék, más rendelés szándéka, vagy a lezáró teljes
+  // visszatérítés kimarad), a hiányzó bizonylat eltűnne a számból.
+  it.each<[string, ReadonlyArray<Record<string, unknown>>, readonly Intent[]]>([
+    [
+      'az 1. sorszám szándéka nem lezárt (provider_succeeded, a helyesbítő nem készült el)',
+      [{ id: 22, ...twoPartials }],
+      [{ id: 5, order: 22, state: 'provider_succeeded', refundSequence: 1 }],
+    ],
+    [
+      'az 1. sorszám szándéka kézi ellenőrzésre vár (manual_review)',
+      [{ id: 22, ...twoPartials }],
+      [{ id: 5, order: 22, state: 'manual_review', refundSequence: 1 }],
+    ],
+    [
+      'a rendelést lezáró, nem első teljes visszatérítésnek nincs bizonyítéka',
+      [
+        {
+          id: 23,
+          ...twoPartials,
+          status: 'refunded',
+          correctiveInvoiceStatus: 'pending',
+          correctiveInvoiceSeq: 1,
+          correctiveInvoiceNumber: 'E-KIN-2026-51',
+          refunds: [partial(10_000, daysAgo(2)), entry('full', 69_500, daysAgo(1))],
+        },
+      ],
+      [],
+    ],
+    [
+      'csak egy MÁSIK rendelésnek van lezárt szándéka ugyanarra a sorszámra',
+      [
+        { id: 31, ...twoPartials },
+        { id: 32, ...twoPartials },
+      ],
+      [{ id: 6, order: 31, state: 'committed', refundSequence: 1 }],
+    ],
+  ])('számít, ha %s', async (_name, orderDocs, intents) => {
+    expect(await bizonylatHibaOn(orderDocs, intents)).toBe(1)
+  })
+
+  it.each<[string, Record<string, unknown>, readonly Intent[]]>([
     [
       'az 1. sorszámhoz lezárt szándék tartozik',
       { id: 22, ...twoPartials },
@@ -224,17 +285,32 @@ describe('hiányzó helyesbítő visszatérítésenként', () => {
       },
       [],
     ],
+    [
+      `a rendelés ${String(ATTENTION_LOOKBACK_DAYS)} napnál régebben módosult (kézzel rendezett régi ügy)`,
+      {
+        id: 25,
+        ...twoPartials,
+        refunds: [partial(10_000, daysAgo(22)), partial(5_000, daysAgo(21))],
+        createdAt: daysAgo(40),
+        updatedAt: daysAgo(20),
+      },
+      [],
+    ],
   ])('nem számít, ha %s', async (_name, order, intents) => {
-    const { counts } = await resolveOn({
-      orders: [order],
-      'refund-intents': intents.map((intent) => ({
-        ...intent,
-        createdAt: daysAgo(2),
-        updatedAt: daysAgo(2),
-      })),
-      'webhook-events': [],
-    })
-    expect(counts.bizonylatHiba).toBe(0)
+    expect(await bizonylatHibaOn([order], intents)).toBe(0)
+  })
+
+  it('ha a jelöltek lapozása a korlátnál sem ér véget, hibát ad, nem alulbecsült számot', async () => {
+    // 25 lap × 200 sor a keresés korlátja; eggyel több jelölt már nem fér bele.
+    const many = Array.from({ length: 25 * 200 + 1 }, (_, index) => ({
+      id: 1000 + index,
+      ...twoPartials,
+      correctiveInvoiceSeq: 1,
+      refunds: [partial(10_000, daysAgo(2))],
+    }))
+    await expect(
+      resolveOn({ orders: many, 'refund-intents': [], 'webhook-events': [] }),
+    ).rejects.toBeInstanceOf(AttentionIncompleteError)
   })
 })
 
@@ -256,6 +332,19 @@ describe('attentionListHref', () => {
         ),
       )
     }
+  })
+
+  it('sok hiányzó helyesbítős rendelésnél is azokat nyitja meg, ahogy a Payload admin a címet olvassa', () => {
+    // A Payload admin qs-olvasása (arrayLimit 20) a 21. elem fölött a tömböt
+    // objektummá alakítja; a link ennél a hossznál sem veszítheti el a rendeléseket.
+    const ids = Array.from({ length: 25 }, (_, index) => 100 + index)
+    const definition = attentionDefinitions(NOW, { missingCorrectiveOrderIds: ids }).find(
+      (item) => item.key === 'bizonylatHiba',
+    )
+    expect(definition).toBeDefined()
+    const href = attentionListHref('/admin', 'orders', definition?.where ?? {})
+    const docs = [...ids, 999].map((id) => ({ id, status: 'paid', invoiceStatus: 'issued' }))
+    expect(orderIdsOpenedByHref(href, docs)).toEqual(ids)
   })
 
   it('a link feltétele ugyanazokat a sorokat választja ki, mint a számláló', () => {

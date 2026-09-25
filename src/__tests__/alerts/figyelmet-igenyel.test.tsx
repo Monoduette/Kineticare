@@ -8,7 +8,7 @@ import {
   NINCS_TEENDO_SZOVEG,
 } from '../../components/admin/FigyelmetIgenyel'
 import { GyakoriTeendok } from '../../components/admin/GyakoriTeendok'
-import { createMemoryPayload } from './where-eval'
+import { createMemoryPayload, orderIdsOpenedByHref } from './where-eval'
 
 /**
  * A tulajdonosi „Figyelmet igényel" blokk: csak tulajdonosnak, a napi
@@ -101,6 +101,37 @@ describe('FigyelmetIgenyel', () => {
     for (const call of [...countCalls, ...findCalls]) {
       expect(call).toMatchObject({ overrideAccess: false, user: OWNER })
     }
+  })
+
+  it('a csak hiányzó helyesbítő miatt számolt rendelést a linkje meg is nyitja', async () => {
+    // Az 1. részrefund helyesbítőjének nincs bizonyítéka, a pár a 2.-at igazolja.
+    const order = {
+      id: 21,
+      status: 'paid',
+      invoiceStatus: 'issued',
+      correctiveInvoiceStatus: 'issued',
+      correctiveInvoiceSeq: 2,
+      correctiveInvoiceNumber: 'E-KIN-2026-52',
+      refunds: [
+        { type: 'partial', amountHuf: 10_000, refundedAt: minutesAgo(2 * 24 * 60) },
+        { type: 'partial', amountHuf: 5_000, refundedAt: minutesAgo(24 * 60) },
+      ],
+      createdAt: minutesAgo(5 * 24 * 60),
+      updatedAt: minutesAgo(24 * 60),
+    }
+    const { payload } = payloadWith({
+      orders: [order],
+      'refund-intents': [],
+      'webhook-events': [],
+    })
+    const html = await htmlje(
+      FigyelmetIgenyel({ payload: payload as never, user: OWNER, nowMs: NOW, vatMode: '27' }),
+    )
+    expect(html).toContain('>1 sikertelen számla, stornó vagy helyesbítő</a>')
+    const hrefs = [...html.matchAll(/href="([^"]*collections\/orders[^"]*)"/g)].map((match) =>
+      (match[1] ?? '').replaceAll('&amp;', '&'),
+    )
+    expect(hrefs.flatMap((href) => orderIdsOpenedByHref(href, [order]))).toEqual([21])
   })
 
   it('nincs teendő → csendes tájékoztató sor, figyelem-szín nélkül', async () => {

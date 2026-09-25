@@ -18,7 +18,7 @@ import { afterOrderPoll, alertStuckPendingPayments } from '../../lib/alerts/poll
 import type { SendMailInput } from '../../lib/email'
 import type { SendResult } from '../../lib/email/types'
 import type { LogContext, Logger } from '../../lib/logger'
-import { createMemoryPayload } from './where-eval'
+import { createMemoryPayload, orderIdsOpenedByHref } from './where-eval'
 
 /**
  * Napi összesítő (07:00 Budapest, `digest-ÉÉÉÉ-HH-NN` idempotenciakulcs, csak
@@ -151,6 +151,31 @@ describe('napi összesítő — küldés', () => {
     expect(mail?.html).toContain('<a href="https://kineticare.hu/admin/collections/orders?where')
     // Személyes adat (vevő e-mail) nincs benne; rendelésszám sem kell a számokhoz.
     expect(mail?.text).not.toContain('@example.com')
+  })
+
+  it('a csak hiányzó helyesbítő miatt számolt rendelést a levél listalinkje meg is nyitja', async () => {
+    // Az 1. részrefund helyesbítőjének nincs bizonyítéka, a pár a 2.-at igazolja.
+    const order = {
+      id: 21,
+      orderNumber: 'KH-2026-000021',
+      status: 'paid',
+      invoiceStatus: 'issued',
+      correctiveInvoiceStatus: 'issued',
+      correctiveInvoiceSeq: 2,
+      correctiveInvoiceNumber: 'E-KIN-2026-52',
+      refunds: [
+        { type: 'partial', amountHuf: 10_000, refundedAt: minutesBefore(MORNING, 2 * 24 * 60) },
+        { type: 'partial', amountHuf: 5_000, refundedAt: minutesBefore(MORNING, 24 * 60) },
+      ],
+      createdAt: minutesBefore(MORNING, 5 * 24 * 60),
+      updatedAt: minutesBefore(MORNING, 24 * 60),
+    }
+    const h = digestHarness({ orders: [order], vatMode: '27' })
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    const text = h.mails[0]?.text ?? ''
+    expect(text).toContain('- 1 sikertelen számla, stornó vagy helyesbítő')
+    const hrefs = [...text.matchAll(/Lista: (\S+)/g)].map((match) => match[1] ?? '')
+    expect(hrefs.flatMap((href) => orderIdsOpenedByHref(href, [order]))).toEqual([21])
   })
 
   it('új nap → új összesítő', async () => {

@@ -23,12 +23,13 @@ export const RESZLEGES_LEVONVA = 'A részleges visszatérítést a visszatérít
  * összeget és időpontot hordoz (`refunds`: transactionId, amountHuf, status,
  * refundedAt, type), tételt nem. Az ág- és a kurzusbontás ezért teljes
  * összeggel számol; találgatott szétosztás helyett ezt a lap kimondja.
- * A mondat a levonás mondata után áll, a kurzustábla alatti jegyzet
- * (`KURZUS_TELJES_OSSZEG`) ugyanazzal az indoklással ismétli, mert a tábla
- * a lap alján, a kártyáktól messze van.
+ * A mondat a levonás mondata után áll; az indoklás csak itt szerepel, mert
+ * csak a tulajdonosi nézetre igaz. A kurzustábla alatti jegyzet
+ * (`KURZUS_TELJES_OSSZEG`) indoklás nélkül ismétli a tényt, így a munkatársi
+ * nézetben sem ad a lap két különböző okot ugyanarra a számra.
  */
 export const RESZLEGES_AGAK_NEM_LEVONVA =
-  'Az otthoni és a szakmai ág összegéből, valamint a kurzusonkénti bevételből nem vontuk le, mert a visszatérítés nem tartalmazza, melyik kurzusra szólt.'
+  'Az otthoni és a szakmai ág összegéből, valamint a kurzusonkénti bevételből nem vontuk le, mert a visszatérítésnél nincs rögzítve, melyik kurzusra szólt.'
 
 export const RESZLEGES_NINCS_LEVONVA =
   'A részlegesen visszatérített rendelés itt a teljes összegével szerepel, mert a visszatérítések ezen a nézeten nem olvashatók.'
