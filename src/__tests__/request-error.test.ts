@@ -1,3 +1,6 @@
+import { DynamicServerError } from 'next/dist/client/components/hooks-server-context'
+import { BailoutToCSRError } from 'next/dist/shared/lib/lazy-dynamic/bailout-to-csr'
+import { notFound, redirect } from 'next/navigation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PostHogCapture, PostHogCaptureEredmeny } from '../lib/feedback/posthog-capture'
@@ -7,6 +10,7 @@ import {
   parseStackFrames,
   pathWithoutQuery,
   POSTHOG_EXCEPTION_EVENT,
+  REQUEST_ERROR_IGNORED_LOG_MSG,
   REQUEST_ERROR_LOG_MSG,
   throttleKey,
   type RequestErrorContext,
@@ -285,6 +289,68 @@ describe('createRequestErrorReporter — PostHog $exception', () => {
     report(new Error('hiba'), keres({ headers: {} }), ROUTE_KORNYEZET)
 
     expect(hivasok[0].distinctId).toBe('veletlen-azonosito')
+  })
+})
+
+/** A Next saját függvénye dobja a jelzést; a dobott értéket adjuk vissza. */
+function elkapott(fn: () => unknown): unknown {
+  try {
+    fn()
+  } catch (error) {
+    return error
+  }
+  throw new Error('a Next-függvény nem dobott')
+}
+
+const REVALIDATE_KORNYEZET: RequestErrorContext = {
+  routerKind: 'App Router',
+  routePath: '/sitemap.xml',
+  routeType: 'render',
+  revalidateReason: 'stale',
+}
+
+describe('createRequestErrorReporter — a Next vezérlési jelzései', () => {
+  /**
+   * Élő előzmény (2026-09): a `force-dynamic` route revalidate-kori statikus
+   * renderének megszakítása (DynamicServerError) `$exception`-ként, kezeletlen
+   * hibaként jelent meg a hibakövetésben, pedig a Next kiszolgálta az oldalt.
+   * A valódi Next-konstruktorok miatt egy Next-frissítés digest-átnevezése
+   * ezt a tesztet buktatja.
+   */
+  it.each([
+    ['DynamicServerError (force-dynamic)', () => new DynamicServerError('headers')],
+    ['redirect()', () => elkapott(() => redirect('/uj-jelszo?token=titkos-visszaallito-jegy'))],
+    ['notFound()', () => elkapott(() => notFound())],
+    ['BailoutToCSRError', () => new BailoutToCSRError('useSearchParams()')],
+  ])('%s: nincs error szintű sor és nincs $exception', (_nev, jelzes) => {
+    const report = createRequestErrorReporter({
+      logger: createLogger(),
+      capture: tiltottCapture,
+      shouldSend: () => true,
+    })
+
+    report(jelzes(), keres({ method: 'GET', path: '/sitemap.xml' }), REVALIDATE_KORNYEZET)
+
+    const sorok = naplosorok()
+    expect(sorok.filter((sor) => sor.level === 'error')).toEqual([])
+    expect(sorok.map((sor) => sor.msg)).toEqual([REQUEST_ERROR_IGNORED_LOG_MSG])
+    expect(nyersKimenet()).not.toContain('titkos-visszaallito-jegy')
+  })
+
+  it('a valódi render-hiba (Next hash-digesttel) továbbra is error sor és $exception', () => {
+    const { capture, hivasok } = rogzitoCapture()
+    const report = createRequestErrorReporter({
+      logger: createLogger(),
+      capture,
+      shouldSend: () => true,
+    })
+    const hiba = Object.assign(stateHiba(), { digest: '2317843120' })
+
+    report(hiba, keres(), REVALIDATE_KORNYEZET)
+
+    expect(naplosorok().map((sor) => sor.level)).toEqual(['error'])
+    expect(hivasok).toHaveLength(1)
+    expect(hivasok[0].properties.digest).toBe('2317843120')
   })
 })
 
