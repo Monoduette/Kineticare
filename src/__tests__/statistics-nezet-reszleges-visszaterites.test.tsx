@@ -114,6 +114,16 @@ describe('Statisztika oldal: részleges visszatérítés szerepkör szerint', ()
     expect(html).toContain(huf(20_000))
     expect(html).toContain(RESZLEGES_LEVONVA)
     expect(html).not.toContain(RESZLEGES_NINCS_LEVONVA)
+    // PR #305, Codex P2: az ág- és a kurzusbontás teljes összeggel marad (a
+    // visszatérítés nem mondja meg, melyik kurzusra szólt), és ezt a lap a
+    // kártyák alatt és a kurzustábla leírásaként is kimondja.
+    expect(html).toContain(
+      'Az otthoni és a szakmai ág összegéből, valamint a kurzusonkénti bevételből nem vontuk le, mert a visszatérítés nem tartalmazza, melyik kurzusra szólt.',
+    )
+    expect(html).toContain('aria-describedby="kc-stat-kurzus-bevetel-jegyzet"')
+    expect(html).toMatch(
+      /id="kc-stat-kurzus-bevetel-jegyzet"[^>]*>A részlegesen visszatérített rendelés itt a teljes összegével szerepel, mert a visszatérítés nem tartalmazza, melyik kurzusra szólt\.</,
+    )
   })
 
   it('a munkatársnál a refunds mezőt le sem kéri, bruttót mutat, és ezt ki is mondja', async () => {

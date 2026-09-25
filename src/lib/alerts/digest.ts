@@ -18,7 +18,7 @@
  * hívja a Resendet 5 percenként egész nap.
  */
 
-import type { Payload, Where } from 'payload'
+import type { Payload } from 'payload'
 
 import { budapestDateString, budapestDateTimeString } from '../date/budapest'
 import type { SendMailInput } from '../email'
@@ -26,12 +26,12 @@ import type { SendResult } from '../email/types'
 import type { Logger } from '../logger'
 import { formatAamLine, payloadAamFind, queryAamStatus, type AamStatus } from './aam'
 import {
-  attentionDefinitions,
   attentionListHref,
   attentionTotal,
-  countAttention,
-  type AttentionCollection,
+  payloadAttentionSources,
+  resolveAttention,
   type AttentionCounts,
+  type AttentionDefinition,
 } from './attention'
 
 /** Budapest szerinti óra, amelytől az összesítő esedékes. */
@@ -97,14 +97,6 @@ export function isDigestDue(nowMs: number, state: DigestState): boolean {
   return !(state.attemptDate === today && state.attempts >= MAX_DIGEST_ATTEMPTS_PER_DAY)
 }
 
-/** A rendszer-szintű darabszámláló (job-kontextus, nincs felhasználó). */
-function systemCount(payload: Pick<Payload, 'count'>) {
-  return async (collection: AttentionCollection, where: Where): Promise<number> => {
-    const result = await payload.count({ collection, where, overrideAccess: true })
-    return result.totalDocs
-  }
-}
-
 export interface DigestMail {
   readonly subject: string
   readonly text: string
@@ -138,10 +130,13 @@ function aamWarning(aam: AamStatus): string {
 
 /**
  * A levél. Csak a nem nulla kategóriák kerülnek bele, mindegyik a szűrt
- * admin-listára mutató linkkel.
+ * admin-listára mutató linkkel. A `definitions` ugyanabból a
+ * `resolveAttention`-hívásból jön, mint a számok, így a link pontosan azt a
+ * listát nyitja meg, amelyből a szám jön.
  */
 export function buildDigestMail(input: {
   readonly counts: AttentionCounts
+  readonly definitions: readonly AttentionDefinition[]
   readonly aam: AamStatus | null
   readonly nowMs: number
   readonly serverUrl: string
@@ -166,8 +161,7 @@ export function buildDigestMail(input: {
   if (total > 0) {
     textLines.push('Teendők:')
     htmlParts.push('<p><strong>Teendők:</strong></p>', '<ul>')
-    const definitions = attentionDefinitions(nowMs)
-    for (const definition of definitions) {
+    for (const definition of input.definitions) {
       if (definition.reszhalmaz === true) {
         continue
       }
@@ -239,7 +233,11 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   }
   state.attempts += 1
 
-  const counts = await countAttention(systemCount(deps.payload), deps.nowMs)
+  // Rendszer-szintű számolás (job-kontextus, nincs felhasználó).
+  const { counts, definitions } = await resolveAttention(
+    payloadAttentionSources(deps.payload, { overrideAccess: true }),
+    deps.nowMs,
+  )
   const aam =
     deps.vatMode?.trim() === '27'
       ? null
@@ -266,7 +264,13 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
     return 'nincs-cimzett'
   }
 
-  const mail = buildDigestMail({ counts, aam, nowMs: deps.nowMs, serverUrl: deps.serverUrl })
+  const mail = buildDigestMail({
+    counts,
+    definitions,
+    aam,
+    nowMs: deps.nowMs,
+    serverUrl: deps.serverUrl,
+  })
   let result: SendResult
   try {
     result = await deps.sendMail({

@@ -18,6 +18,18 @@ export const KONYVELES_MEGJEGYZES =
 
 export const RESZLEGES_LEVONVA = 'A részleges visszatérítést a visszatérítés hónapjában levontuk.'
 
+/**
+ * A levonás hatóköre (PR #305, Codex P2): a visszatérítés-bejegyzés csak
+ * összeget és időpontot hordoz (`refunds`: transactionId, amountHuf, status,
+ * refundedAt, type), tételt nem. Az ág- és a kurzusbontás ezért teljes
+ * összeggel számol; találgatott szétosztás helyett ezt a lap kimondja.
+ * A mondat a levonás mondata után áll, a kurzustábla alatti jegyzet
+ * (`KURZUS_TELJES_OSSZEG`) ugyanazzal az indoklással ismétli, mert a tábla
+ * a lap alján, a kártyáktól messze van.
+ */
+export const RESZLEGES_AGAK_NEM_LEVONVA =
+  'Az otthoni és a szakmai ág összegéből, valamint a kurzusonkénti bevételből nem vontuk le, mert a visszatérítés nem tartalmazza, melyik kurzusra szólt.'
+
 export const RESZLEGES_NINCS_LEVONVA =
   'A részlegesen visszatérített rendelés itt a teljes összegével szerepel, mert a visszatérítések ezen a nézeten nem olvashatók.'
 
@@ -39,7 +51,9 @@ export function TotalsCards({ totals }: { totals: RevenueTotals }) {
       </div>
       <p style={{ ...noticeStyle, marginTop: 'var(--kc-as-space-3, calc(var(--base) * 0.75))' }}>
         {KONYVELES_MEGJEGYZES}{' '}
-        {totals.refundsDeducted === true ? RESZLEGES_LEVONVA : RESZLEGES_NINCS_LEVONVA}
+        {totals.refundsDeducted === true
+          ? `${RESZLEGES_LEVONVA} ${RESZLEGES_AGAK_NEM_LEVONVA}`
+          : RESZLEGES_NINCS_LEVONVA}
       </p>
     </>
   )

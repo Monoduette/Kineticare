@@ -13,10 +13,15 @@ import {
   attentionDefinitions,
   attentionListHref,
   attentionTotal,
-  countAttention,
-  type AttentionCollection,
+  payloadAttentionSources,
+  resolveAttention,
 } from '../../lib/alerts/attention'
 import { MAX_WEBHOOK_ATTEMPTS } from '../../lib/idempotency'
+import {
+  isRefundIntentUnresolved,
+  NO_PROVIDER_REQUEST_REFERENCE,
+  REFUND_INTENT_STATES,
+} from '../../lib/refund/refund-intent'
 import { createMemoryPayload, matchesWhere } from './where-eval'
 
 /**
@@ -96,18 +101,19 @@ const webhookEvents = [
   { id: 4, status: 'received', attempts: 2, createdAt: minutesAgo(1), updatedAt: minutesAgo(1) },
 ]
 
-describe('countAttention', () => {
+/** A valódi Payload-adapteren át, memóriabeli gyűjteményekkel. */
+function resolveOn(collections: Parameters<typeof createMemoryPayload>[0]) {
+  const { payload } = createMemoryPayload(collections)
+  return resolveAttention(payloadAttentionSources(payload as never, { overrideAccess: true }), NOW)
+}
+
+describe('resolveAttention', () => {
   it('a küszöbök szerint számol, a részhalmaz nem adódik hozzá kétszer', async () => {
-    const { payload } = createMemoryPayload({
+    const { counts } = await resolveOn({
       orders,
       'refund-intents': refundIntents,
       'webhook-events': webhookEvents,
     })
-    const counts = await countAttention(
-      async (collection: AttentionCollection, where) =>
-        (await payload.count({ collection, where })).totalDocs,
-      NOW,
-    )
     expect(counts).toEqual({
       fizetettSzamlaNelkul: 1,
       fuggoFizetes: 2,
@@ -120,9 +126,121 @@ describe('countAttention', () => {
   })
 })
 
+/**
+ * Codex P1 (PR #305, attention.ts:53): a Barion-siker rögzítve, de a helyi
+ * lezárás elmaradt (`provider_succeeded`), az is elakadt visszatérítés. Az
+ * elvárt értéket a refund-állapotgép saját definíciója adja
+ * (`isRefundIntentUnresolved`, a tárolt `provider_failed` sor mindig
+ * hatás nélküli bizonyítékkal él), nem a tesztelt lista.
+ */
+describe('elakadt visszatérítés: minden feloldatlan állapot', () => {
+  const storedEvidence = {
+    kind: 'provider_confirmed_no_effect' as const,
+    confirmedAt: minutesAgo(40),
+    reference: NO_PROVIDER_REQUEST_REFERENCE,
+  }
+  it.each(REFUND_INTENT_STATES.map((state) => [state] as const))(
+    '%s állapotú, 30 perce indult szándék pontosan akkor számít, ha az állapotgép szerint feloldatlan',
+    async (state) => {
+      const expected = isRefundIntentUnresolved(
+        state,
+        state === 'provider_failed' ? storedEvidence : undefined,
+      )
+        ? 1
+        : 0
+      const { counts } = await resolveOn({
+        orders: [],
+        'refund-intents': [{ id: 1, state, createdAt: minutesAgo(30), updatedAt: minutesAgo(20) }],
+        'webhook-events': [],
+      })
+      expect(counts.visszateritesElakadt).toBe(expected)
+    },
+  )
+})
+
+/**
+ * Codex P1 (PR #305, attention.ts:156): a helyesbítő hiánya visszatérítésenként
+ * dől el. Ha az 1. részrefund helyesbítője elbukott, és a 2.-é később kiállt,
+ * a rendelés `correctiveInvoiceStatus`-a `issued` lesz, de az 1. bizonylat
+ * továbbra is hiányzik. Bizonyíték sorszámonként: a tárolt (seq, szám) pár
+ * (csak a `refunds[seq - 1]`-et igazolja), vagy az adott sorszámú lezárt
+ * (`committed`) visszatérítési szándék.
+ */
+describe('hiányzó helyesbítő visszatérítésenként', () => {
+  const partial = (amountHuf: number, refundedAt: string) => ({
+    type: 'partial',
+    amountHuf,
+    refundedAt,
+  })
+  const twoPartials = {
+    status: 'paid',
+    invoiceStatus: 'issued',
+    correctiveInvoiceStatus: 'issued',
+    correctiveInvoiceSeq: 2,
+    correctiveInvoiceNumber: 'E-KIN-2026-52',
+    refunds: [partial(10_000, daysAgo(2)), partial(5_000, daysAgo(1))],
+    createdAt: daysAgo(5),
+    updatedAt: daysAgo(1),
+  }
+
+  it('a korábbi, bizonyíték nélküli helyesbítő számít, és a link pontosan azt a rendelést adja', async () => {
+    const { counts, definitions } = await resolveOn({
+      orders: [{ id: 21, ...twoPartials }],
+      'refund-intents': [],
+      'webhook-events': [],
+    })
+    expect(counts.bizonylatHiba).toBe(1)
+    const definition = definitions.find((item) => item.key === 'bizonylatHiba')
+    const listed = [{ id: 21, ...twoPartials }, ...orders].filter((order) =>
+      matchesWhere(order, definition?.where ?? {}),
+    )
+    expect(listed.map((order) => order.id)).toEqual([21, 7, 9])
+  })
+
+  it.each([
+    [
+      'az 1. sorszámhoz lezárt szándék tartozik',
+      { id: 22, ...twoPartials },
+      [{ id: 5, order: 22, state: 'committed', refundSequence: 1 }],
+    ],
+    [
+      'egyetlen részrefund, a pár a saját sorszámára szól',
+      {
+        id: 23,
+        ...twoPartials,
+        correctiveInvoiceSeq: 1,
+        refunds: [partial(10_000, daysAgo(1))],
+      },
+      [],
+    ],
+    [
+      'a helyesbítő még fut (két óránál frissebb visszatérítés, függő állapot)',
+      {
+        id: 24,
+        ...twoPartials,
+        correctiveInvoiceStatus: 'pending',
+        correctiveInvoiceSeq: 1,
+        refunds: [partial(10_000, daysAgo(2)), partial(5_000, minutesAgo(30))],
+      },
+      [],
+    ],
+  ])('nem számít, ha %s', async (_name, order, intents) => {
+    const { counts } = await resolveOn({
+      orders: [order],
+      'refund-intents': intents.map((intent) => ({
+        ...intent,
+        createdAt: daysAgo(2),
+        updatedAt: daysAgo(2),
+      })),
+      'webhook-events': [],
+    })
+    expect(counts.bizonylatHiba).toBe(0)
+  })
+})
+
 describe('attentionListHref', () => {
   it('a szűrt admin-lista címe a Payload qs-formátumában visszaolvasható, ugyanazt a feltételt adja', () => {
-    for (const definition of attentionDefinitions(NOW)) {
+    for (const definition of attentionDefinitions(NOW, { missingCorrectiveOrderIds: [21, 34] })) {
       const href = attentionListHref('/admin', definition.collection, definition.where)
       expect(href.startsWith(`/admin/collections/${definition.collection}?`)).toBe(true)
       // Ugyanúgy olvassuk vissza, mint a Payload admin RootPage-e

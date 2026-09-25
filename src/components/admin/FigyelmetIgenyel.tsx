@@ -1,15 +1,15 @@
 import Link from 'next/link'
-import type { Payload, Where } from 'payload'
+import type { Payload } from 'payload'
 
 import { hasOwnerRole, type RoleUser } from '../../access/roles'
 import { formatAamLine, payloadAamFind, queryAamStatus, type AamStatus } from '../../lib/alerts/aam'
 import {
-  attentionDefinitions,
   attentionListHref,
   attentionTotal,
-  countAttention,
-  type AttentionCollection,
+  payloadAttentionSources,
+  resolveAttention,
   type AttentionCounts,
+  type AttentionDefinition,
 } from '../../lib/alerts/attention'
 import { logger } from '../../lib/logger'
 
@@ -66,26 +66,22 @@ export interface FigyelmetIgenyelProps {
 
 interface Adatok {
   counts: AttentionCounts
+  /** A számokkal egy hívásban épült definíciók: a linkek feltételei ezekből jönnek. */
+  definitions: readonly AttentionDefinition[]
   aam: AamStatus | null
-  /** A számolás pillanata: a linkek feltételei is ehhez igazodnak. */
-  nowMs: number
 }
 
 async function adatokBetoltese(props: FigyelmetIgenyelProps): Promise<Adatok> {
   const { payload, user } = props
   const nowMs = props.nowMs ?? Date.now()
-  const count = async (collection: AttentionCollection, where: Where): Promise<number> => {
-    const result = await payload.count({ collection, where, overrideAccess: false, user })
-    return result.totalDocs
-  }
   const vatMode = props.vatMode ?? process.env.SZAMLAZZ_AFAKULCS
-  const [counts, aam] = await Promise.all([
-    countAttention(count, nowMs),
+  const [{ counts, definitions }, aam] = await Promise.all([
+    resolveAttention(payloadAttentionSources(payload, { overrideAccess: false, user }), nowMs),
     vatMode?.trim() === '27'
       ? Promise.resolve(null)
       : queryAamStatus(payloadAamFind(payload, { overrideAccess: false, user }), nowMs),
   ])
-  return { counts, aam, nowMs }
+  return { counts, definitions, aam }
 }
 
 function AamSor({ aam }: { aam: AamStatus }) {
@@ -125,11 +121,11 @@ export async function FigyelmetIgenyel(props: FigyelmetIgenyelProps) {
     )
   }
 
-  const { counts, aam, nowMs } = adatok
+  const { counts, definitions, aam } = adatok
   const osszes = attentionTotal(counts)
   const adminRoute = props.payload.config.routes.admin
   const figyelem = osszes > 0 || (aam !== null && aam.level !== 'rendben')
-  const tetelek = attentionDefinitions(nowMs).filter(
+  const tetelek = definitions.filter(
     (definicio) => definicio.reszhalmaz !== true && counts[definicio.key] > 0,
   )
 

@@ -52,7 +52,7 @@ describe('FigyelmetIgenyel', () => {
   })
 
   it('teendőnél figyelem-doboz, számmal kezdődő linkek a szűrt listára, a tulajdonos jogaival', async () => {
-    const { payload, countCalls } = payloadWith({
+    const { payload, countCalls, findCalls } = payloadWith({
       orders: [
         {
           id: 1,
@@ -89,7 +89,16 @@ describe('FigyelmetIgenyel', () => {
     expect(html).not.toContain('visszatérítés</a>')
     // AAM-sor: nincs számla, 0%.
     expect(html).toContain('Alanyi adómentes keret, 2026: 0 Ft a 20')
-    for (const call of countCalls) {
+    // A helyesbítő-bizonyíték (refunds, helyesbítő száma) tulajdonosi
+    // olvasású mező: a keresés is a tulajdonos jogaival fut.
+    expect(
+      findCalls.some(
+        (call) =>
+          call.collection === 'orders' &&
+          (call.select as Record<string, unknown> | undefined)?.refunds === true,
+      ),
+    ).toBe(true)
+    for (const call of [...countCalls, ...findCalls]) {
       expect(call).toMatchObject({ overrideAccess: false, user: OWNER })
     }
   })

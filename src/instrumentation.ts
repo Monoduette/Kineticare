@@ -1,10 +1,21 @@
 import type { Instrumentation } from 'next'
 
 /**
- * Next.js instrumentation: server_start napló (commitSha, nodeVersion), majd assertRequiredEnv.
+ * Next.js instrumentation: riasztás-csatorna, server_start napló (commitSha,
+ * nodeVersion), majd assertRequiredEnv.
+ *
+ * A riasztás-csatorna (e-mail + PostHog a RIASZTÁS-sorokra) az env-ellenőrzés
+ * ELŐTT kapcsol be, különben az induláskori RIASZTÁS (pl. SZAMLAZZ_AGENT_KEY
+ * SZAMLAZZ_AFAKULCS nélkül) csak a naplóba kerülne. A bekötés idempotens (a
+ * csatorna a `globalThis`-en él), így az order-poll modul későbbi hívása nem
+ * köt be második csatornát. Csak a Node-ágon: az edge-futtatókörnyezetbe nem
+ * kerül.
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { installAlertSink } = await import('./lib/alerts/install')
+    installAlertSink()
+
     const { logger } = await import('./lib/logger')
     logger.info('server_start', {
       nodeVersion: process.version,
