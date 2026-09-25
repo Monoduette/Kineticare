@@ -249,10 +249,15 @@ describe('WP40 – a váz és a szolgáltatók bővítése (reply-to, idempotenc
     vi.unstubAllGlobals()
   })
 
-  it('renderLayout: footer nélkül a régi „ne válaszolj" sor marad (a többi sablon nem változik)', () => {
+  // K14 (2026-09-24): a saját lábléc nélküli levél sem „ne válaszolj”, hanem a
+  // hivatalos ügyfélszolgálati címre terel (a válaszcím is az, provider.ts).
+  it('renderLayout: footer nélkül az alapértelmezett lábléc a hivatalos címet nevezi meg (K14)', () => {
     const out = renderLayout({ heading: 'Próba', paragraphsHtml: ['x'], paragraphsText: ['x'] })
-    expect(out.html).toContain('erre a címre ne válaszolj')
-    expect(out.text).toContain('erre a címre ne válaszolj')
+    for (const part of [out.html, out.text]) {
+      expect(part).toContain('automatikus üzenet')
+      expect(part).toContain(`írj az ${KAPCSOLATI_EMAIL_TARTALEK} címre`)
+      expect(part).not.toContain('ne válaszolj')
+    }
   })
 
   it('renderLayout: a closing bekezdések a gomb után, a note előtt kerülnek ki', () => {

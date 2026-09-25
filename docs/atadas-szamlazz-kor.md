@@ -6,8 +6,7 @@
 > támaszkodik; ami kell, az a repóban van.
 >
 > **Hogyan használd:** a 0. szakasz a helyzet egy percben. Az 1. mondja meg,
-> mi van élesben. **A 2. a következő feladatod.** A 3. a priorizált backlog, a
-> 4. pedig azt, amit NE csinálj meg. Az 5–11. szakasz technikai anyag:
+> mi van élesben. **A 2. a következő feladatod.** A 3. a priorizált backlog, a 4. pedig azt, amit NE csinálj meg. Az 5–11. szakasz technikai anyag:
 > receptek, specifikációk, környezet, tilos zónák.
 >
 > **Előzmény:** a doksi a Számlázz.hu-megfelelőségi kör (#53) naplójaként
@@ -15,6 +14,7 @@
 > `docs/szamlazz-megfeleles.md` és a git-történet felé mutat tovább.
 
 ---
+
 ## 0. HA CSAK EGY DOLGOT OLVASOL EL
 
 **A rendszer élesben fut, és ma odáig jutott, hogy a fizetési főlánc egyáltalán
@@ -44,15 +44,15 @@ javasolt CI-őr, ami gépivé tenné.
 
 ## 1. Mi van ÉLESBEN (2026-08-10)
 
-| PR | main | Mit vitt ki | Igazolás |
-| --- | --- | --- | --- |
-| #59 | `d4c5ca1` | Kurzusok-lista javítás + `orders.refunds` migráció | valódi `next build`; `Migrated: …szamlazz_refunds_oszlop (4ms)`; `server_start` a SHA-val |
-| #60 | `db9ed72` | A fizetési főfolyam séma-driftje (állapotgép-enum, job-slug enumok, `webhook_events`) | `Migrated: …sema_drift_allapotgep_es_jobok (16ms)`; `server_start` a SHA-val |
-| #61 | `82940ef` | Rendelések/Kosarak/Űrlapbeküldések listák + keresés-őr + doksi | `server_start` a SHA-val; migrációt nem igényelt |
-| #62 | `aaec794` | A soha nem futó jobok + a díszlet-számlázási űrlap | `Migrated: …job_utemezes_stats (8ms)`; `server_start` a SHA-val; a jobok azóta **tisztán futnak** (lásd lent) |
-| #53–#55 | `c514464` | Dependabot: `@types/react`, `posthog-js`, `tsx` | CI 5/5 zöld mindháromra, friss mainre ráállítva |
-| #64 | `babee08` | CMS-URL engedélylista + CORS/CSRF-eredetlista (a #41 nem access-control fele) | CI 4/4 zöld; fő fában 1587 teszt + `next build` exit 0 |
-| #65 | `7e21fbb` | jobs-jogosultság, `payload-jobs-stats` global, `streamAssetId`, `readVersions` (access-control) | CI zöld a VALÓDI S1+S2 kombináción; fő fában 1642 teszt + build exit 0; deploy SUCCESS, tényleges `npm run build`, és a jobok azóta **tisztán futnak** (lásd lent) |
+| PR      | main      | Mit vitt ki                                                                                     | Igazolás                                                                                                                                                           |
+| ------- | --------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #59     | `d4c5ca1` | Kurzusok-lista javítás + `orders.refunds` migráció                                              | valódi `next build`; `Migrated: …szamlazz_refunds_oszlop (4ms)`; `server_start` a SHA-val                                                                          |
+| #60     | `db9ed72` | A fizetési főfolyam séma-driftje (állapotgép-enum, job-slug enumok, `webhook_events`)           | `Migrated: …sema_drift_allapotgep_es_jobok (16ms)`; `server_start` a SHA-val                                                                                       |
+| #61     | `82940ef` | Rendelések/Kosarak/Űrlapbeküldések listák + keresés-őr + doksi                                  | `server_start` a SHA-val; migrációt nem igényelt                                                                                                                   |
+| #62     | `aaec794` | A soha nem futó jobok + a díszlet-számlázási űrlap                                              | `Migrated: …job_utemezes_stats (8ms)`; `server_start` a SHA-val; a jobok azóta **tisztán futnak** (lásd lent)                                                      |
+| #53–#55 | `c514464` | Dependabot: `@types/react`, `posthog-js`, `tsx`                                                 | CI 5/5 zöld mindháromra, friss mainre ráállítva                                                                                                                    |
+| #64     | `babee08` | CMS-URL engedélylista + CORS/CSRF-eredetlista (a #41 nem access-control fele)                   | CI 4/4 zöld; fő fában 1587 teszt + `next build` exit 0                                                                                                             |
+| #65     | `7e21fbb` | jobs-jogosultság, `payload-jobs-stats` global, `streamAssetId`, `readVersions` (access-control) | CI zöld a VALÓDI S1+S2 kombináción; fő fában 1642 teszt + build exit 0; deploy SUCCESS, tényleges `npm run build`, és a jobok azóta **tisztán futnak** (lásd lent) |
 
 `/` · `/admin` · `/kurzusok` → HTTP 200. Railway: projekt `pretty-spontaneity`,
 service `Kineticare`, domain `kineticare-production.up.railway.app`.
@@ -133,14 +133,14 @@ azóta átalakultak). Két külön PR lett belőle, és a kör **három olyan r�
 lezárt, amit a #41 nem fedett** (`payload-jobs` collection CRUD, a
 `payload-jobs-stats` global, és a `readVersions`).
 
-| Tétel a #41-ből | Hol landolt |
-| --- | --- |
-| `cors` / `csrf` engedélylista | #64 |
-| URL-allowlist (`sanitizeCmsUrl`) | #64 |
-| jobs-access | #65 |
-| `streamAssetId` field-access | #65 |
-| `promoteFirstUserToOwner` | már korábban a mainen volt |
-| `graphQL: { disable: true }` | már korábban a mainen volt |
+| Tétel a #41-ből                  | Hol landolt                |
+| -------------------------------- | -------------------------- |
+| `cors` / `csrf` engedélylista    | #64                        |
+| URL-allowlist (`sanitizeCmsUrl`) | #64                        |
+| jobs-access                      | #65                        |
+| `streamAssetId` field-access     | #65                        |
+| `promoteFirstUserToOwner`        | már korábban a mainen volt |
+| `graphQL: { disable: true }`     | már korábban a mainen volt |
 
 A #41 ezután „meghaladott" magyarázattal lezárva — ahogy a #40-nel is történt.
 
@@ -161,13 +161,13 @@ A teljes, priorizált lista a 3. szakaszban van. A három legfontosabb:
 
 ### 2.3 Ami a #62-ből nyitva maradt (alacsony súly, NEM blokkoló)
 
-| Ág | Tétel |
-| --- | --- |
-| jobs | Maradék sorfej-blokkolás: 3 egymást követő szállítási hiba a batch ELEJÉN tartósan elzárja a mögötte lévőket |
-| jobs | Beragadt job mellett fékezetlen error-szintű naplóözön (nincs throttling) |
-| checkout | Az „elérhetetlen ág" találat csak részben teljesült, a hozzáírt komment téves |
-| checkout | A külföldi irányítószám-kompromisszum dokumentációja alábecsüli a hatást |
-| checkout | Elavult adószám-fixtúrák a repóban |
+| Ág       | Tétel                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------ |
+| jobs     | Maradék sorfej-blokkolás: 3 egymást követő szállítási hiba a batch ELEJÉN tartósan elzárja a mögötte lévőket |
+| jobs     | Beragadt job mellett fékezetlen error-szintű naplóözön (nincs throttling)                                    |
+| checkout | Az „elérhetetlen ág" találat csak részben teljesült, a hozzáírt komment téves                                |
+| checkout | A külföldi irányítószám-kompromisszum dokumentációja alábecsüli a hatást                                     |
+| checkout | Elavult adószám-fixtúrák a repóban                                                                           |
 
 ### 2.4 ⚠️ KÉT ÉLES VISELKEDÉSVÁLTOZÁS, amit a megrendelőnek tudnia kell
 
@@ -192,15 +192,15 @@ A teljes, priorizált lista a 3. szakaszban van. A három legfontosabb:
 Ezeket egy 17 ügynökös audit-kör tárta fel, és mindegyiket egy független
 ügynök adverzariálisan igazolta (`valos=true`). A sorrend az én javaslatom.
 
-| # | Tétel | Miért ennyire fontos |
-| --- | --- | --- |
-| 1 | **G1–G4 CI-őrök** (lásd 3.1) | Ezek a MAI teljes incidenst elkapták volna. Két őrhöz működő prototípus is készült. |
-| 2 | A 2. szakasz két javításának befejezése | Pénz és számlaadási kötelezettség múlik rajta. |
-| 3 | **A checkout a PISZKOZAT verzióból dönt** | A `startCheckout` `draft: true`-val olvas, az ár-snapshot és a storefront a publikált sorból. Egy félkész szerkesztés azonnal átbillenti a vásárolhatóságot, miközben az oldalon semmi nem változik: a kurzusoldal árat és „Megveszem" gombot mutat, de minden vásárlás 400-zal hasal el. Fordítva: piszkozatban `published`-re állított kurzus az API-n megvásárolható, miközben meg sem jelenik. Napló nincs. |
-| 4 | **A Rendelések listán nem látszik, MIT vettek** | A megrendelő első admin-igénye („ki mit vett és mikor"). A tételek egy névtelen tab alatt, összecsukott tömbben ülnek; oszlopként sem segít, mert a Payload `ArrayCell`-je csak darabszámot ír ki. Külön megjelenítés kell. |
-| 5 | **A carts keresője némán 0 találatot ad** | A #61-ben a `carts.useAsTitle` `id` lett, ami megszünteti a Postgres-hibát — de a Payload a `like`-ot `equals`-re fordítja az id-n, tehát nem-számra némán üres, számra pedig pontos egyezés. Nem hiba, de dokumentálandó/jobbítandó. |
-| 6 | T-013 statisztika-nézet | **KÉSZ** — `/admin/statisztika`, staff/owner, tétel-szintű otthoni/szakmai bontás. A 9. szakasz a szerződést írja; a korábbi „tulajdonosi döntésre vár” sor idejétmúlt. |
-| 7 | Admin videó-feltöltés (tus) | Megrendelői igény; a megvalósult állapot tudatos eltérés (Bunny + kézi GUID). **Megrendelői döntés kell.** |
+| #   | Tétel                                           | Miért ennyire fontos                                                                                                                                                                                                                                                                                                                                                                                            |
+| --- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **G1–G4 CI-őrök** (lásd 3.1)                    | Ezek a MAI teljes incidenst elkapták volna. Két őrhöz működő prototípus is készült.                                                                                                                                                                                                                                                                                                                             |
+| 2   | A 2. szakasz két javításának befejezése         | Pénz és számlaadási kötelezettség múlik rajta.                                                                                                                                                                                                                                                                                                                                                                  |
+| 3   | **A checkout a PISZKOZAT verzióból dönt**       | A `startCheckout` `draft: true`-val olvas, az ár-snapshot és a storefront a publikált sorból. Egy félkész szerkesztés azonnal átbillenti a vásárolhatóságot, miközben az oldalon semmi nem változik: a kurzusoldal árat és „Megveszem" gombot mutat, de minden vásárlás 400-zal hasal el. Fordítva: piszkozatban `published`-re állított kurzus az API-n megvásárolható, miközben meg sem jelenik. Napló nincs. |
+| 4   | **A Rendelések listán nem látszik, MIT vettek** | A megrendelő első admin-igénye („ki mit vett és mikor"). A tételek egy névtelen tab alatt, összecsukott tömbben ülnek; oszlopként sem segít, mert a Payload `ArrayCell`-je csak darabszámot ír ki. Külön megjelenítés kell.                                                                                                                                                                                     |
+| 5   | **A carts keresője némán 0 találatot ad**       | A #61-ben a `carts.useAsTitle` `id` lett, ami megszünteti a Postgres-hibát — de a Payload a `like`-ot `equals`-re fordítja az id-n, tehát nem-számra némán üres, számra pedig pontos egyezés. Nem hiba, de dokumentálandó/jobbítandó.                                                                                                                                                                           |
+| 6   | T-013 statisztika-nézet                         | **KÉSZ** — `/admin/statisztika`, staff/owner, tétel-szintű otthoni/szakmai bontás. A 9. szakasz a szerződést írja; a korábbi „tulajdonosi döntésre vár” sor idejétmúlt.                                                                                                                                                                                                                                         |
+| 7   | Admin videó-feltöltés (tus)                     | Megrendelői igény; a megvalósult állapot tudatos eltérés (Bunny + kézi GUID). **Megrendelői döntés kell.**                                                                                                                                                                                                                                                                                                      |
 
 ### 3.1 A négy javasolt CI-őr (G1–G4)
 
@@ -235,7 +235,7 @@ Az adverzariális kör két „hibát" is elejtett. Ez megtakarított munka, ne
 kezdd újra:
 
 - **„Néma ingyenes-csapda az árazásban"** — az az állítás, hogy a `HUF ár
-  engedélyezése` pipa hiánya ingyen kiadja az egyébként fizetős kurzust,
+engedélyezése` pipa hiánya ingyen kiadja az egyébként fizetős kurzust,
   **a teherhordó magjában hamis**.
 - **„Fordítatlan select-opciócímkék őre"** — a bejelentett három élő találat
   nem áll fenn, és a javasolt szabály maga okozott volna regressziót.
@@ -254,8 +254,12 @@ szivárgása és a magyar címkék DB-hatása mind tisztázva van.
   service `Kineticare` (`27b720ab-8bd1-40a7-ba6a-0df774acadc4`), env `production`
   (`fc57e1fc-...`). A deploy a main-push után automatikus; a „SUCCESS" önmagában
   NEM elég — build-log + `server_start` commitSha ellenőrzendő (CLAUDE.md
-  üzemeltetési 1.). `SZAMLAZZ_*` és `TURNSTILE_*` env NINCS beállítva — a
-  számlázás élesben jelenleg KIKAPCSOLT (enabled=false, szándékosan nem hiba).
+  üzemeltetési 1.). **2026-09-24-i frissítés:** a korábbi „`SZAMLAZZ_*` env NINCS
+  beállítva, a számlázás élesben kikapcsolt" állítás elavult. A tulajdonos
+  szerint a Számlázz.hu-fiók és az Agent-kulcs rendben van, élesben
+  `SZAMLAZZ_AFAKULCS=AAM` fut (a cég alanyi adómentes), a számlázás tehát
+  bekapcsolt; a Barion `BARION_ENVIRONMENT=prod`. Az értékeket itt nem
+  rögzítjük (titok), a `list-variables` Railway-eszköz használata tilos.
 - **Helyi Postgres migráció-generáláshoz:** a recept (a C-kör workflow-szkriptjéből,
   működik): `useradd -m pgrun; su -s /bin/bash pgrun -c "/usr/lib/postgresql/16/bin/initdb -D <dir>/pgdata --auth=trust -U kineticare"`,
   indítás pgrun-ként `-k <pgrun-írható socketdir>` opcióval, majd
@@ -268,7 +272,7 @@ szivárgása és a magyar címkék DB-hatása mind tisztázva van.
   `BARION_POSKEY_TEST` — a DB-függő tesztek TCP-próbával skippelnek.
 - **Opus-csapat minta:** a felhasználó kérése, hogy a programozást Opus
   többügynökös csapat végezze (workflow: worktree-ügynökök `git worktree add
-  --detach <scratch>/wtN-X HEAD` + `ln -s node_modules`, strukturált jelentés-séma,
+--detach <scratch>/wtN-X HEAD` + `ln -s node_modules`, strukturált jelentés-séma,
   fő fát nem írnak; harvest a fő szálban `git diff HEAD` patch-ekkel).
   **Tesztből valódi hálózati hívás TILOS** — minden folyamat-teszt injektálja a
   `postXml` ÉS `queryByKulsoAzon` mockot (volt már kicsúszó éles hívás!).
@@ -307,8 +311,10 @@ szivárgása és a magyar címkék DB-hatása mind tisztázva van.
    felhasználó, vevői fiók döntés, `SZAMLAZZ_AFAKULCS` könyvelővel.
 2. **Teszt-fiókos validálási lista** (T1–T11 — a javító-kör 8-ról 11-re bővítette) —
    éles bekötés ELŐTT futtatandó. A három új tétel a kör tudatos bizonytalanságait
-   fedi: T9 qty>1 tizedes egységár, T10 stornó-`szamlaKulsoAzon` visszakereshetőség,
-   T11 stornó teljesítési dátumának öröklése.
+   fedi: T9 qty>1 tizedes egységár, T10 stornó-`szamlaKulsoAzon` visszakereshetőség
+   (2026-09-24 óta a stornó a saját `…-STORNO` kulcsát küldi; a beküldés előtti
+   stornó-lekérdezés a T10 lefuttatásáig kikapcsolva marad), T11 stornó
+   teljesítési dátumának öröklése.
 3. **Turnstile élesítés**: `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` PÁRBAN
    (env-assert őrzi; újrabuild nem kell).
 4. **Adatbázis-mentés (C14)** — továbbra sincs; éles Postgres-újraindítás tilos
@@ -352,12 +358,12 @@ pótolja** a hiányzókat (és beír egy `dev` sort a `payload_migrations` tábl
 **A drift teljes listája** (tiszta, csak-migrációs adatbázis vs. a konfig
 szerinti igazi séma összevetéséből):
 
-| Hiányzik élesben | Következmény |
-| --- | --- |
-| `orders.refunds` (jsonb) | **minden** orders-olvasás és -írás elszáll |
-| `enum_orders_status`: `created`, `payment_pending`, `paid`, `payment_failed` | rendelés **létre sem jön**, fizetés nem rögzíthető |
-| `enum_payload_jobs_task_slug` + `..._log_task_slug`: `invoice-issue`, `order-poll` | a **számlázó** és a **fizetés-lekérdező** job nem ütemezhető |
-| `webhook_events.processed_at`, `webhook_events.result` + `enum_webhook_events_result` (5 érték) | a Barion-callback nem tudja lekönyvelni a kimenetelét |
+| Hiányzik élesben                                                                                | Következmény                                                 |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `orders.refunds` (jsonb)                                                                        | **minden** orders-olvasás és -írás elszáll                   |
+| `enum_orders_status`: `created`, `payment_pending`, `paid`, `payment_failed`                    | rendelés **létre sem jön**, fizetés nem rögzíthető           |
+| `enum_payload_jobs_task_slug` + `..._log_task_slug`: `invoice-issue`, `order-poll`              | a **számlázó** és a **fizetés-lekérdező** job nem ütemezhető |
+| `webhook_events.processed_at`, `webhook_events.result` + `enum_webhook_events_result` (5 érték) | a Barion-callback nem tudja lekönyvelni a kimenetelét        |
 
 Vagyis: a fizetési főlánc élesben **működésképtelen volt**. Ez magyarázza,
 hogy „még nem futott éles vásárlás" — nem is tudott volna.
@@ -418,13 +424,13 @@ kellene kitölteni. **Az tilos** (CLAUDE.md 3. zóna).
 
 ### 8.4 ✅ ÉLESÍTVE — mindkét migráció kint van
 
-| | 1. lépcső | 2. lépcső |
-| --- | --- | --- |
-| Migráció | `20260810_094820_szamlazz_refunds_oszlop` | `20260810_095237_sema_drift_allapotgep_es_jobok` |
-| PR | #59 | #60 |
-| main | `d4c5ca1` | `db9ed72` |
-| deploy-log | `Migrated: … (4ms)` | `Migrated: … (16ms)` |
-| `server_start` commitSha | `d4c5ca1` | `db9ed72` |
+|                          | 1. lépcső                                 | 2. lépcső                                        |
+| ------------------------ | ----------------------------------------- | ------------------------------------------------ |
+| Migráció                 | `20260810_094820_szamlazz_refunds_oszlop` | `20260810_095237_sema_drift_allapotgep_es_jobok` |
+| PR                       | #59                                       | #60                                              |
+| main                     | `d4c5ca1`                                 | `db9ed72`                                        |
+| deploy-log               | `Migrated: … (4ms)`                       | `Migrated: … (16ms)`                             |
+| `server_start` commitSha | `d4c5ca1`                                 | `db9ed72`                                        |
 
 Az 1. lépcső **additív** volt (`ALTER TABLE "orders" ADD COLUMN "refunds" jsonb;`),
 tehát adattól függetlenül nem tudott elbukni — ezért mehetett előre. A 2.
@@ -547,15 +553,15 @@ a bevétel-nézet ettől függetlenül a 9. szakasz szerződése szerint készü
 
 **`orders` tábla** (mezőnév → oszlopnév):
 
-| Payload-mező | Oszlop | Megjegyzés |
-| --- | --- | --- |
-| `status` | `status` | enum: `created`, `payment_pending`, `paid`, `payment_failed`, `cancelled`, `refunded` |
-| `totalHufSnapshot` | `total_huf_snapshot` | **Ezt használd** a rendelés-szintű végösszeghez (Ft). Nincs rajta olvasási access-korlát. |
-| `amount` | `amount` | plugin-mező, ugyanezt tükrözi — tartalék |
-| `orderNumber` | `order_number` | `KH-<év>-<6 jegy>` |
-| `invoiceCompletionDate` | `invoice_completion_date` | `YYYY-MM-DD` string, a számla teljesítési dátuma |
-| `createdAt` | `created_at` | timestamptz |
-| `refunds` | `refunds` | **owner-only olvasás** (`read: isOwnerFieldAccess`) — **ne olvasd be ebbe a nézetbe**. Az oszlop a 8.4 óta élesben létezik. |
+| Payload-mező            | Oszlop                    | Megjegyzés                                                                                                                  |
+| ----------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `status`                | `status`                  | enum: `created`, `payment_pending`, `paid`, `payment_failed`, `cancelled`, `refunded`                                       |
+| `totalHufSnapshot`      | `total_huf_snapshot`      | **Ezt használd** a rendelés-szintű végösszeghez (Ft). Nincs rajta olvasási access-korlát.                                   |
+| `amount`                | `amount`                  | plugin-mező, ugyanezt tükrözi — tartalék                                                                                    |
+| `orderNumber`           | `order_number`            | `KH-<év>-<6 jegy>`                                                                                                          |
+| `invoiceCompletionDate` | `invoice_completion_date` | `YYYY-MM-DD` string, a számla teljesítési dátuma                                                                            |
+| `createdAt`             | `created_at`              | timestamptz                                                                                                                 |
+| `refunds`               | `refunds`                 | **owner-only olvasás** (`read: isOwnerFieldAccess`) — **ne olvasd be ebbe a nézetbe**. Az oszlop a 8.4 óta élesben létezik. |
 
 A táblázat a **konfig szerinti** sémát írja le, ami a 8. szakasz két
 migrációja óta megegyezik az élessel. Korábban nem egyezett — ha valaha
@@ -563,12 +569,12 @@ gyanús eltérést látsz, a 8.2-es A/B recepttel ellenőrizd, ne feltételezd.
 
 **`orders_items` tábla** (a rendelés tételei — ez kell az ág-bontáshoz):
 
-| Payload-mező | Oszlop |
-| --- | --- |
-| `items[].product` | `product_id` → `products.id` |
-| `items[].quantity` | `quantity` |
-| `items[].titleSnapshot` | `title_snapshot` (a **sku**, nem a marketingcím) |
-| `items[].priceHufSnapshot` | `price_huf_snapshot` (**egységár**, Ft) |
+| Payload-mező               | Oszlop                                           |
+| -------------------------- | ------------------------------------------------ |
+| `items[].product`          | `product_id` → `products.id`                     |
+| `items[].quantity`         | `quantity`                                       |
+| `items[].titleSnapshot`    | `title_snapshot` (a **sku**, nem a marketingcím) |
+| `items[].priceHufSnapshot` | `price_huf_snapshot` (**egységár**, Ft)          |
 
 **`products` tábla:** `audience` oszlop — select, `'laikus' | 'szakember'`,
 **nullable** (a mező bevezetése előtti sorokban NULL).
@@ -584,14 +590,14 @@ ugyanonnan: `AUDIENCE_LABELS`.
 
 ### 9.4 Fájlterv
 
-| Fájl | Mi kerül bele |
-| --- | --- |
-| `src/lib/statistics/revenue.ts` | **Tiszta** aggregáló függvények — se DB, se React. Ez a tesztelhető mag. |
-| `src/lib/statistics/query.ts` | A Payload-lekérdezés + leképezés az aggregátor bemenetére. |
-| `src/components/admin/StatisticsView.tsx` | Az admin-nézet (React **szerver**-komponens). |
-| `src/components/admin/RevenueChart.tsx` | Tiszta SVG oszlopdiagram (nincs függőség). |
-| `src/components/admin/StatisticsNavLink.tsx` | `'use client'` link a bal oldali navba. |
-| `src/__tests__/statistics-revenue.test.ts` | Az aggregátor egységtesztjei. |
+| Fájl                                         | Mi kerül bele                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------------ |
+| `src/lib/statistics/revenue.ts`              | **Tiszta** aggregáló függvények — se DB, se React. Ez a tesztelhető mag. |
+| `src/lib/statistics/query.ts`                | A Payload-lekérdezés + leképezés az aggregátor bemenetére.               |
+| `src/components/admin/StatisticsView.tsx`    | Az admin-nézet (React **szerver**-komponens).                            |
+| `src/components/admin/RevenueChart.tsx`      | Tiszta SVG oszlopdiagram (nincs függőség).                               |
+| `src/components/admin/StatisticsNavLink.tsx` | `'use client'` link a bal oldali navba.                                  |
+| `src/__tests__/statistics-revenue.test.ts`   | Az aggregátor egységtesztjei.                                            |
 
 Minta a szerkezetre és a stílusra: `src/components/admin/RefundPanel.tsx` és
 `GrantPurchasePanel.tsx` (meglévő, működő admin-komponensek), illetve a
@@ -613,9 +619,9 @@ Minta a szerkezetre és a stílusra: `src/components/admin/RefundPanel.tsx` és
   (`SZAMLAZZ_AGENT_KEY` nincs beállítva), ez a mező üres → mindenhol a tartalék
   fut. **Jó középút.**
 - **(C) Új `paidAt` date-mező.** Pontos, de: mező felvétele az orders-overridebe
-  + **Payload-generált** migráció + írás a `paid` átmenetnél + a régi sorokra
-  backfill nincs (marad NULL → `createdAt`-re esik vissza). Csak akkor válaszd,
-  ha a megrendelő kifejezetten a fizetés dátumát kéri.
+  - **Payload-generált** migráció + írás a `paid` átmenetnél + a régi sorokra
+    backfill nincs (marad NULL → `createdAt`-re esik vissza). Csak akkor válaszd,
+    ha a megrendelő kifejezetten a fizetés dátumát kéri.
 
 **Javaslat:** (B) — és a fallback-logikát tedd az aggregátorba, hogy tesztelhető
 legyen.
@@ -634,21 +640,21 @@ Tiszta függvény, DB nélkül — ez teszi egységtesztelhetővé:
 
 ```ts
 export interface RevenueOrderItemInput {
-  audience: unknown        // products.audience — normalizeAudience() szűri
-  priceHuf: number         // priceHufSnapshot (EGYSÉGÁR)
+  audience: unknown // products.audience — normalizeAudience() szűri
+  priceHuf: number // priceHufSnapshot (EGYSÉGÁR)
   quantity: number
 }
 
 export interface RevenueOrderInput {
   status: string
-  createdAt: string                  // ISO
-  invoiceCompletionDate?: string | null   // 'YYYY-MM-DD'
+  createdAt: string // ISO
+  invoiceCompletionDate?: string | null // 'YYYY-MM-DD'
   totalHuf: number | null
   items: RevenueOrderItemInput[]
 }
 
 export interface MonthlyRevenueRow {
-  month: string            // 'YYYY-MM', Budapest szerint
+  month: string // 'YYYY-MM', Budapest szerint
   laikusHuf: number
   szakemberHuf: number
   totalHuf: number
@@ -682,8 +688,8 @@ Payload local API, a nézet szerver-komponenséből:
 const result = await payload.find({
   collection: 'orders',
   where: { status: { equals: 'paid' } },
-  depth: 1,            // hozza a products-ot az items[].product alá (audience kell)
-  limit: 0,            // minden találat — lásd a méret-figyelmeztetést lent
+  depth: 1, // hozza a products-ot az items[].product alá (audience kell)
+  limit: 0, // minden találat — lásd a méret-figyelmeztetést lent
   overrideAccess: true, // CSAK a 9.8 szerinti explicit szerepkör-kapu UTÁN!
 })
 ```
@@ -786,7 +792,7 @@ import { hasStaffOrOwnerRole } from '../../access/roles'
 export const StatisticsView = async ({ initPageResult }: AdminViewServerProps) => {
   const { req } = initPageResult
   if (!hasStaffOrOwnerRole(req.user)) {
-    return <div>Ehhez a nézethez nincs jogosultságod.</div>   // magyar hibaüzenet!
+    return <div>Ehhez a nézethez nincs jogosultságod.</div> // magyar hibaüzenet!
   }
   // …lekérdezés + aggregáció + render
 }
@@ -867,9 +873,11 @@ nem a lejátszási token-kulcs.
 Ezek nem hiányzó funkciók, hanem **nem igazolt** működés — az átadás előtt
 tisztázandók:
 
-1. **A pénzútvonal élesben soha nem futott.** A `BARION_POSKEY_TEST` ál-érték,
-   a `SZAMLAZZ_AGENT_KEY` nincs beállítva. Éles kulcsokkal végigvitt
-   próbavásárlás (fizetés → hozzáférés → számla → visszatérítés) még hátravan.
+1. **A pénzútvonal éles próbája.** (2026-09-24-i frissítés: a Barion és a
+   Számlázz.hu éles kulcsai a tulajdonos szerint be vannak állítva, a korábbi
+   „`SZAMLAZZ_AGENT_KEY` nincs beállítva" állítás elavult.) Éles kulcsokkal
+   végigvitt, dokumentált próbavásárlás (fizetés → hozzáférés → számla →
+   visszatérítés) igazolása továbbra is az átadás része.
 2. **Nincs böngészős végponttól-végpontig teszt** (C6 nyitott). Az 1335 teszt
    egységteszt; a valódi checkout-folyamatot ember vagy Playwright-teszt kell
    végigvigye. A recept: `docs/e2e-staging-runbook.md`.
@@ -943,8 +951,10 @@ Kézenfekvőnek tűnik a Payload `serverURL`-jét beállítani a `cors`/`csrf` m
 `formatAdminURL` pedig pontosan ezen a feltételen dönt:
 
 ```js
-if (relative || !serverURL) { return pathname }              // gyökér-relatív
-return new URL(pathnameWithBase, serverURLObj.origin).toString()   // ABSZOLÚT
+if (relative || !serverURL) {
+  return pathname
+} // gyökér-relatív
+return new URL(pathnameWithBase, serverURLObj.origin).toString() // ABSZOLÚT
 ```
 
 A `next.config.ts`-ben nincs `images.remotePatterns`, a `MediaImage.tsx` pedig
@@ -979,11 +989,11 @@ egy pontos href-egyezésre néző snapshot elbukna rajta.
 
 ### 12.5 A jobs-felület három rétege — a `jobs.access` önmagában kevés
 
-| Réteg | Mit véd | Default a Payloadban |
-| --- | --- | --- |
-| `jobs.access` | `GET /api/payload-jobs/run` és `/handle-schedules` | bármely bejelentkezett user |
-| `payload-jobs` collection `access` | a szokásos CRUD REST-felület | bármely bejelentkezett user |
-| `payload-jobs-stats` global `access` | az ütemezés állapota | bármely bejelentkezett user |
+| Réteg                                | Mit véd                                            | Default a Payloadban        |
+| ------------------------------------ | -------------------------------------------------- | --------------------------- |
+| `jobs.access`                        | `GET /api/payload-jobs/run` és `/handle-schedules` | bármely bejelentkezett user |
+| `payload-jobs` collection `access`   | a szokásos CRUD REST-felület                       | bármely bejelentkezett user |
+| `payload-jobs-stats` global `access` | az ütemezés állapota                               | bármely bejelentkezett user |
 
 A **második** a súlyosabb: `POST /api/payload-jobs`-szal bárki jobot hozhatott
 létre tetszőleges `input`-tal, amit az autoRun-cron rendszer-jogosultsággal

@@ -25,8 +25,25 @@ import type { JSX } from 'react'
  * - src/lib/media-recovery-provenance.ts: media.recovery.provenance.v1;
  * - src/lib/refund/recovery-receipts.ts és refund-recovery.ts: a refund-*
  *   nyugták, valamint order-refund és order-partial-refund;
+ * - src/lib/refund/attempt-audit.ts: a Barion-válasz nyoma
+ *   (refund-provider-rejected, -unknown, -accepted), a visszatérítési viták
+ *   bizonyítéka;
+ * - src/lib/refund/refund-notice.ts: refund-notice-email (a vevői
+ *   visszatérítési értesítő elküldésének bizonyítéka);
+ * - src/lib/refund/recovery-receipts.ts: refund-invoice-retry-queued, valamint
+ *   a helyesbítő újrabeküldésének nyugtái (refund-invoice-no-effect,
+ *   refund-invoice-resubmit-started);
+ * - src/lib/refund/automatic-block.ts: automatic-refund-blocked;
  * - src/lib/order-paid.ts: order-confirmation-email (a vásárlás-visszaigazoló
- *   levél elküldésének bizonyítéka, 45/2014. Korm. rendelet 18. §).
+ *   levél elküldésének bizonyítéka, 45/2014. Korm. rendelet 18. §) és
+ *   order-confirmation-email-uncertain (a levél kézbesítése bizonytalan);
+ * - src/lib/withdrawal/service.ts: withdrawal-request (a beérkezett elállási
+ *   nyilatkozat) és withdrawal-receipt-email (az átvételi elismervény
+ *   elküldése); rendelés nélküli nyilatkozatnál az entitástípus „withdrawal”;
+ * - src/lib/szamlazz/manual-invoice-record.ts: invoice-manual-record (a
+ *   Számlázz.hu-ban megtalált vagy kézzel kiállított számla sorszámának kézi
+ *   rögzítése; a felirat mindkét esetre igaz, és a rendelés „Számla
+ *   sorszáma” mezőjének nevét használja, WCAG 2.2 SC 3.2.4).
  * Az entitástípus a collection slugja; a feliratok a collectionök magyar
  * egyes számú címkéi.
  */
@@ -52,6 +69,17 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'order-partial-refund': 'Részleges visszatérítés',
   'order-confirmation-email': 'Visszaigazoló e-mail elküldése',
   'automatic-refund-blocked': 'Automatikus visszatérítés tartósan leállt',
+  'refund-provider-rejected': 'Visszatérítés: a Barion elutasította',
+  'refund-provider-unknown': 'Visszatérítés: bizonytalan Barion-válasz',
+  'refund-provider-accepted': 'Visszatérítés: a Barion elfogadta',
+  'refund-notice-email': 'Vevői visszatérítési értesítő elküldése',
+  'refund-invoice-retry-queued': 'Helyesbítő számla újrapróbálása sorba állítva',
+  'withdrawal-request': 'Elállási nyilatkozat',
+  'withdrawal-receipt-email': 'Elállási elismervény elküldése',
+  'order-confirmation-email-uncertain': 'Visszaigazoló e-mail: bizonytalan kézbesítés',
+  'refund-invoice-no-effect': 'Helyesbítő beküldése igazoltan hatás nélkül maradt',
+  'refund-invoice-resubmit-started': 'Helyesbítő ismételt beküldése elindult',
+  'invoice-manual-record': 'Számla sorszámának kézi rögzítése',
 }
 
 export const AUDIT_ENTITY_LABELS: Readonly<Record<string, string>> = {
@@ -62,6 +90,7 @@ export const AUDIT_ENTITY_LABELS: Readonly<Record<string, string>> = {
   users: 'Felhasználó',
   media: 'Kép',
   'refund-intents': 'Visszatérítési szándék',
+  withdrawal: 'Elállás',
 }
 
 /** Üres cella kimondott szövege (a Payload angol „<No …>” helyőrzője helyett). */

@@ -1110,13 +1110,15 @@ szerverhibákról, `src/instrumentation.ts` köti be), `cache-tags.ts`,
 ## 9. Jobok
 
 `src/jobs/index.ts`. Workerek: `ENABLE_JOB_WORKERS=true`. Dev-ben ki.
-Élesben hiányzó flag → **warn** (`job_workerek_kikapcsolva`), nem
-fail-closed boot.
+Nem éles címen a hiányzó flag → **warn** (`job_workerek_kikapcsolva`). Az
+éles címen boot-hiba, hacsak nincs mellette `JOB_WORKERS_OFF_CONFIRM=igen`
+nyugtázás (W1): ekkor RIASZTÁS szól, és a bolt kiszolgál. A bukó új verzió
+healthcheckje miatt a Railway a régit hagyja futni.
 
 | Task                       | Queue                 | Mikor                   | Mit                        |
 | -------------------------- | --------------------- | ----------------------- | -------------------------- |
 | `webhook-retry`            | `webhook-maintenance` | cron `* * * * *`        | elhasalt callback újra     |
-| `order-poll`               | `order-maintenance`   | cron `*/5 * * * *`      | GetState v4, árva, resweep |
+| `order-poll`               | `order-poll`          | cron `*/5 * * * *`      | GetState v4, árva, resweep |
 | `invoice-issue`            | `order-maintenance`   | esemény (paid)          | számla                     |
 | `storno-issue`             | `order-maintenance`   | esemény (teljes refund) | stornó                     |
 | `corrective-invoice-issue` | `order-maintenance`   | esemény (részrefund)    | helyesbítő                 |
@@ -1125,6 +1127,9 @@ Az `autoRun` csak a sorban lévőt futtatja — a periodikus taskoknak
 `schedule` kell. A kettő párban. A `scheduling` sémát hoz: a migrációnak
 ugyanabban a körben kell lennie. Job REST + `payload-jobs` staff/owner.
 Hiányzó `payload.jobs.queue` → hangos riasztás, nem néma false (W6).
+Az `order-poll` saját queue-ban fut (tickenként 1 job), az `order-maintenance`
+tickenként 3 Számlázz.hu-jobot vesz fel: így egy Számlázz.hu-kimaradás
+újrapróbáló jobjai nem éheztetik ki a pollt (hibavadász C, PR #307).
 
 ---
 
@@ -1318,6 +1323,7 @@ után. `CONSENT_MODE_DEFAULT` minden tároló `denied`; granted csak
 | `kurzus:videok-modulba`                 | `videok-modulba.ts`                      | **egyetlen** biztonságos átemelés                                                                                                                                                                                                                       |
 | `backfill:ar-snapshot`                  | `backfill-price-snapshot.ts`             | próba; írás `OWNER_BACKFILL_CONFIRM=igen`                                                                                                                                                                                                               |
 | `backfill:access-grants`                | `backfill-access-grants.ts`              | ugyanez                                                                                                                                                                                                                                                 |
+| `record:manual-invoice`                 | `record-manual-invoice.ts`               | próba; írás `OWNER_MANUAL_INVOICE_CONFIRM=igen`; a 'failed' számlájú rendelésre a megtalált vagy kézzel kiállított számla számát rögzíti (a K12 kapu utána nyit); `docs/uzemeltetes/05-szamla-storno-helyesbito-kezi.md`                                |
 | `content:owner`                         | `apply-owner-content.ts`                 | alapból próbafutás, írás `OWNER_CONTENT_CONFIRM=igen`; élesben a `content-job` Railway-szolgáltatás futtatja (`railway.content-job.json`). Doksik: `docs/owner-content-2026-09-19.md`, `docs/owner-content-2026-09-22.md`                               |
 | `email:migracio`                        | `send-migration-notice.ts`               | idempotens; `--force` újraküld                                                                                                                                                                                                                          |
 | `backup:db`                             | `backup-db.ts`                           | `docs/adatbazis-mentes.md`                                                                                                                                                                                                                              |
@@ -1376,9 +1382,16 @@ perjel nélkül. Erre épül CORS/CSRF, `metadataBase`, SEO.
 További boot-hibák: érvénytelen `SZAMLAZZ_AFAKULCS` (csak `27` vagy
 `AAM`); beállított levélküldő (`RESEND_API_KEY` vagy `SMTP_HOST`)
 mellett hiányzó vagy nem e-mail alakú `EMAIL_FROM`; élesben hiányzó
-`BARION_ENVIRONMENT`; élesben fél-lábas Turnstile-pár. Élesben csak
-warn: hiányzó `ENABLE_JOB_WORKERS=true`, mindkét Turnstile-kulcs
-hiánya.
+`BARION_ENVIRONMENT`; élesben fél-lábas Turnstile-pár. Az éles címen
+(`NEXT_PUBLIC_SERVER_URL` a kineticare.hu) boot-hiba a nem-`prod`
+Barion bekapcsolt számlázás (`SZAMLAZZ_AGENT_KEY`) mellett, és a
+hiányzó `ENABLE_JOB_WORKERS=true`, ha nincs mellette
+`JOB_WORKERS_OFF_CONFIRM=igen` nyugtázás. Induláskori RIASZTÁS (az app
+elindul): `SZAMLAZZ_AGENT_KEY` `SZAMLAZZ_AFAKULCS` nélkül vagy
+nagybetűvel; nem-`prod` Barion az éles címen számlázás nélkül;
+nyugtázottan kikapcsolt workerek az éles címen. Élesben csak warn:
+hiányzó `ENABLE_JOB_WORKERS=true` nem éles címen, mindkét
+Turnstile-kulcs hiánya.
 
 Opcionális, degradált módban az app fut: Számlázz, Bunny, PostHog, GA4,
 Turnstile (párban vagy sehogy), e-mail (nincs kulcs → noop).
@@ -1390,6 +1403,8 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | Kulcs                                         | Szerep                                                                                                                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ENABLE_JOB_WORKERS`                          | `true` = cron workerek                                                                                                                                     |
+| `JOB_WORKERS_OFF_CONFIRM`                     | `igen` = a workerek tudatos kikapcsolása az éles címen; nélküle `ENABLE_JOB_WORKERS=true` hiányában az app nem indul. Az `.env.example` jelöli.            |
+| `BARION_SEND_3DS`                             | `false` = a Barion Start négy 3DS-blokkja kimarad (vészkapcsoló); üresen bekapcsolva. Az `.env.example` jelöli.                                            |
 | `PAYLOAD_MEDIA_DIR`                           | élesben `/app/media` volume                                                                                                                                |
 | `EXTRA_ALLOWED_ORIGINS`                       | DNS-cutover CORS                                                                                                                                           |
 | `NEXT_PUBLIC_ALLOW_INDEXING`                  | `true` = nincs noindex-kapu                                                                                                                                |
@@ -1471,8 +1486,10 @@ Migráció-őrök: `docs/ci-orok.md`. G3: meglévő migráció immutábilis;
 új pár + `npx tsx src/scripts/update-migration-checksums.ts`.
 
 pg pool (`payload.config.ts`): keepalive, idle 30s, statement/query 30s,
-`idle_in_transaction_session_timeout` 60s, `pool.max` **szándékosan
-nincs** (W3). A pool `error` eseményét kezelni kell.
+`idle_in_transaction_session_timeout` 60s, `pool.max` 20 (W1, a-callback-7).
+A `max_connections`-t minden induláskor mérjük (onInit,
+`src/lib/db-connection-budget.ts`); ha két konténer × `pool.max` + 10
+tartalék nem fér bele, RIASZTÁS. A pool `error` eseményét kezelni kell.
 
 Média: élesben volume. Induláskor `ensureMediaFiles` a repó-forrásból
 visszatölti a hiányzó fájlt, az id megmarad.
@@ -1563,8 +1580,8 @@ A mérvadó lista a `docs/feladatlista.md`; ha ütközik ezzel a
 szakasszal, az nyer. A K1–K6 / W1–W20 / J2 kódja a `main`en van (#148).
 A 2026-08-30-i állapotból maradt:
 
-- **W3:** Railway `max_connections` × replica mérése; `pool.max` szándékos
-  nyitva.
+- **W3:** `pool.max` 20 (W1); a `max_connections` mérése minden induláskor a
+  deploy-naplóban, szűkös keretnél RIASZTÁS. A beágyazott zár kérdése nyitva.
 - **C6:** consent E2E harness kész; staging valódi PostHog/GA4 kulccsal
   hátra (`E2E_EXPECT_ANALYTICS=1`).
 - **C10:** Dependabot-kör figyelése.

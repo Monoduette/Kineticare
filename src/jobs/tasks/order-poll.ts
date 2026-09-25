@@ -7,7 +7,7 @@ import { afterOrderPoll } from '../../lib/alerts/poll-watch'
 import { sendMail } from '../../lib/email'
 import { type InvoiceResweepStatus, pollPendingOrders } from '../../lib/order-poll/service'
 import { logger } from '../../lib/logger'
-import { ORDER_MAINTENANCE_CRON, ORDER_MAINTENANCE_QUEUE } from '../queues'
+import { ORDER_MAINTENANCE_CRON, ORDER_POLL_QUEUE } from '../queues'
 import { createStaleAwareBeforeSchedule } from '../schedule-guard'
 
 /**
@@ -43,7 +43,8 @@ export const orderPollTask: TaskConfig<OrderPollJobIO> = {
   schedule: [
     {
       cron: ORDER_MAINTENANCE_CRON,
-      queue: ORDER_MAINTENANCE_QUEUE,
+      // Saját queue: a Számlázz.hu-jobok torlódása nem éheztetheti ki (queues.ts).
+      queue: ORDER_POLL_QUEUE,
       hooks: { beforeSchedule: createStaleAwareBeforeSchedule({ taskSlug: 'order-poll' }) },
     },
   ],

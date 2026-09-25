@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { normalizeText } from '../../lib/checkout/billing'
 import { buildCorrectiveInvoiceXml } from '../../lib/szamlazz/corrective'
 import { buildInvoiceXml, type BuildInvoiceXmlInput } from '../../lib/szamlazz/invoice'
+import { buildInvoiceDataQueryXml } from '../../lib/szamlazz/invoice-data'
 import { buildInvoiceLookupXml } from '../../lib/szamlazz/pdf'
 import { buildStornoXml } from '../../lib/szamlazz/storno'
 import { compileSchema, validateXml, type CompiledSchema } from './xsd-subset-validator'
@@ -43,6 +44,7 @@ const XSD = {
   szamla: `${XSD_DIR}xmlszamla.xsd`,
   storno: `${XSD_DIR}xmlszamlast.xsd`,
   lekerdezes: `${XSD_DIR}xmlszamlapdf.xsd`,
+  szamlaadat: `${XSD_DIR}xmlszamlaxml.xsd`,
   valasz: `${XSD_DIR}xmlszamlavalasz.xsd`,
 } as const
 
@@ -50,6 +52,7 @@ const schemas: Record<keyof typeof XSD, CompiledSchema> = {
   szamla: compileSchema(readFileSync(XSD.szamla, 'utf8')),
   storno: compileSchema(readFileSync(XSD.storno, 'utf8')),
   lekerdezes: compileSchema(readFileSync(XSD.lekerdezes, 'utf8')),
+  szamlaadat: compileSchema(readFileSync(XSD.szamlaadat, 'utf8')),
   valasz: compileSchema(readFileSync(XSD.valasz, 'utf8')),
 }
 
@@ -75,6 +78,7 @@ const BUYER_MAGANSZEMELY = {
 const BASE: BuildInvoiceXmlInput = {
   agentKey: DUMMY_AGENT_KEY,
   orderNumber: 'KH-2026-000123',
+  kulsoAzon: 'KH-2026-000123-101-1789898400',
   invoicePrefix: 'KIN',
   issueDate: '2026-10-01',
   teljesitesDatum: '2026-09-30',
@@ -111,13 +115,12 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
       originalInvoiceNumber: 'KIN-2026-7',
       orderNumber: 'KH-2026-000123',
       invoicePrefix: 'KIN',
-      refundSeq: 2,
+      kulsoAzon: 'KH-2026-000123-101-1789898400-HELYESBITO-2',
       amountHuf: 5000,
       issueDate: '2026-10-05',
       teljesitesDatum: '2026-09-30',
       vatMode: '27',
       buyer: BUYER_MAGANSZEMELY,
-      reason: 'Részleges visszatérítés <kérésre>',
     }),
   },
   {
@@ -127,6 +130,7 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
       agentKey: DUMMY_AGENT_KEY,
       originalInvoiceNumber: 'KIN-2026-7',
       orderNumber: 'KH-2026-000123',
+      kulsoAzon: 'KH-2026-000123-101-1789898400-STORNO',
       reason: 'Teljes visszatérítés',
       buyerEmail: 'anna@example.test',
     }),
@@ -138,12 +142,21 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
       agentKey: DUMMY_AGENT_KEY,
       originalInvoiceNumber: 'KIN-2026-7',
       orderNumber: 'KH-2026-000123',
+      kulsoAzon: 'KH-2026-000123-101-1789898400-STORNO',
     }),
   },
   {
     name: 'bizonylat-lekérdezés',
     xsd: 'lekerdezes',
-    xml: buildInvoiceLookupXml({ agentKey: DUMMY_AGENT_KEY, kulsoAzon: 'KH-2026-000123' }),
+    xml: buildInvoiceLookupXml({
+      agentKey: DUMMY_AGENT_KEY,
+      kulsoAzon: 'KH-2026-000123-101-1789898400',
+    }),
+  },
+  {
+    name: 'számlaadat-lekérdezés (az eredeti számla áfakulcsához)',
+    xsd: 'szamlaadat',
+    xml: buildInvoiceDataQueryXml({ agentKey: DUMMY_AGENT_KEY, szamlaszam: 'KIN-2026-7' }),
   },
   // H5: XML 1.0-ban tiltott karakterek (U+FFFF, U+FFFE, U+000B, U+0000,
   // magányos surrogate) a vevőadatban, a tételnévben és a visszatérítési
@@ -165,19 +178,18 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
     }),
   },
   {
-    name: 'helyesbítő — tiltott XML-karakter a vevőadatban és az indokban',
+    name: 'helyesbítő — tiltott XML-karakter a vevőadatban',
     xsd: 'szamla',
     xml: buildCorrectiveInvoiceXml({
       agentKey: DUMMY_AGENT_KEY,
       originalInvoiceNumber: 'KIN-2026-7',
       orderNumber: 'KH-2026-000123',
       invoicePrefix: 'KIN',
-      refundSeq: 1,
+      kulsoAzon: 'KH-2026-000123-101-1789898400-HELYESBITO-1',
       amountHuf: 5000,
       issueDate: '2026-10-05',
       vatMode: 'AAM',
       buyer: { ...BUYER_MAGANSZEMELY, nev: 'Kovács\uFFFFÉva' },
-      reason: 'Részleges\uFFFF visszatérítés\u000B',
     }),
   },
   {
@@ -187,6 +199,7 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
       agentKey: DUMMY_AGENT_KEY,
       originalInvoiceNumber: 'KIN-2026-7',
       orderNumber: 'KH-2026-000123',
+      kulsoAzon: 'KH-2026-000123-101-1789898400-STORNO',
       reason: 'Teljes\uFFFF visszatérítés\u000B\uFFFE',
       buyerEmail: 'anna@example.test',
     }),

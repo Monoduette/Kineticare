@@ -64,7 +64,7 @@ kérésre, külön PR-ben (`CLAUDE.md`, TILOS ZÓNÁK 5.).
 
 | #       | Tétel                                                                           | Állapot                                                                                                                                                                                                     |
 | ------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| W3      | beágyazott zár + `pool.max`                                                     | Szándékosan nyitva: Railway `max_connections` × replika mérése kell.                                                                                                                                        |
+| W3      | beágyazott zár + `pool.max`                                                     | `pool.max` 20 (W1); a `max_connections`-t minden induláskor mérjük, szűkös keretnél RIASZTÁS. A beágyazott zár nyitva.                                                                                      |
 | C6      | Consent-flow E2E stagingen, valódi PostHog-kulccsal és GA4-azonosítóval         | A harness kész (`docs/consent-e2e.md`).                                                                                                                                                                     |
 | C14     | Offsite mentés: E2E restore drill                                               | Emberi kapu: `DATABASE_URI` repo-secret, `BACKUP_AGE_RECIPIENT`, kézi futás, visszafejtés, restore sorszám-egyeztetéssel (`docs/adatbazis-mentes.md`).                                                      |
 | C15–C17 | SEO/GEO tartalmi munka, prompt-portfólió, bot-védelem ellenőrzése élesítés után | `docs/seo-geo-llm.md`.                                                                                                                                                                                      |
@@ -119,7 +119,7 @@ tábla itt a #148 utáni állapot.
 | K6  | HIGH     | `paid` ág `else` (fail-open)                       | kész             | #148                                                     |
 | W1  | WARNING  | poll-ablak beragadt `payment_pending` soron        | kész             | #148                                                     |
 | W2  | WARNING  | bejelentkezve nem látja a vendég-pendinget         | kész             | #148                                                     |
-| W3  | WARNING  | beágyazott zár + `pool.max`                        | szándékos nyitva | nincs cap; Railway `max_connections` × replika kellene   |
+| W3  | WARNING  | beágyazott zár + `pool.max`                        | részben megoldva | `pool.max` 20, induláskori mérés                         |
 | W4  | WARNING  | vendég 409 idegen e-mailre (orákulum)              | kész             | #148; azonos 409, „már megvásároltad” csak belépve       |
 | W5  | WARNING  | `storno-issue` job zsákutca                        | kész             | #148                                                     |
 | W6  | WARNING  | hiányzó `jobs.queue` néma `false`                  | kész             | #148                                                     |

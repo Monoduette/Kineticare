@@ -330,13 +330,34 @@ function isAbortError(error: unknown): boolean {
   )
 }
 
-interface BarionRequestOptions {
+/**
+ * A hívó kérés-szintű naplózója. Ha a hívó átadja (pl. a callback-feldolgozó
+ * `requestId`-s child loggerét), a 'Barion API HTTP-hiba' és a többi
+ * kliens-sor UGYANAZT a requestId-t viszi, mint a kérés többi sora — enélkül
+ * a hibasor csak az időbélyeg alapján volt a kéréshez köthető (a-riasztas-14).
+ */
+export interface BarionCallOptions {
+  logger?: Logger
+}
+
+interface BarionRequestOptions extends BarionCallOptions {
   method: 'GET' | 'POST'
   /** Szerveroldali útvonal az apiUrl-hez képest, pl. '/v2/Payment/Start'. */
   path: string
   /** POST-body a POSKey NÉLKÜL — azt a kliens injektálja bele. */
   body?: Record<string, unknown>
   config?: BarionClientConfig
+}
+
+/**
+ * HTTP 429 a Bariontól: ugyanarra a PaymentId-re 5 másodpercen belül több
+ * PaymentState-hívás ment (Callback_mechanism: „if you call the endpoint with
+ * the same PaymentID more than once within a 5-second interval … HTTP 429 Too
+ * many requests”). Átmeneti: minden hívó újrapróbálható hibaként kezeli, a
+ * fizetés létezéséről vagy állapotáról semmit nem mond.
+ */
+export function isBarionRateLimited(error: unknown): boolean {
+  return error instanceof BarionApiError && error.httpStatus === 429
 }
 
 /**
@@ -360,6 +381,9 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
   const url = `${config.apiUrl}${options.path}`
   const timeoutMs =
     options.method === 'GET' ? Math.min(config.timeoutMs, BARION_GET_TIMEOUT_MS) : config.timeoutMs
+  // A kérés naplózója: a hívó requestId-s loggere (ha adott), a 'barion'
+  // modul-jelöléssel, különben a modul saját loggere.
+  const log = options.logger ? options.logger.child({ module: 'barion' }) : barionLogger()
   // Minden naplósorba: melyik környezet és hoszt felé ment a hívás (a kulcs soha).
   const logContext = {
     endpoint,
@@ -389,7 +413,7 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
   } catch (error) {
     const durationMs = Date.now() - startedAt
     if (isAbortError(error)) {
-      barionLogger().error('Barion API hívás timeout', { ...logContext, timeoutMs, durationMs })
+      log.error('Barion API hívás timeout', { ...logContext, timeoutMs, durationMs })
       throw new BarionApiError({
         message: `A Barion API nem válaszolt ${timeoutMs} ms-en belül (${endpoint}).`,
         kind: 'timeout',
@@ -403,7 +427,7 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
       error instanceof Error ? error.message : String(error),
       config.posKey,
     )
-    barionLogger().error('Barion API hálózati hiba', { ...logContext, durationMs, errorMessage })
+    log.error('Barion API hálózati hiba', { ...logContext, durationMs, errorMessage })
     throw new BarionApiError({
       message: `A Barion API elérhetetlen (${endpoint}): ${errorMessage}`,
       kind: 'network',
@@ -416,7 +440,7 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
   const providerErrors = extractProviderErrors(parsed)
 
   if (!response.ok) {
-    barionLogger().error('Barion API HTTP-hiba', {
+    log.error('Barion API HTTP-hiba', {
       ...logContext,
       httpStatus: response.status,
       durationMs,
@@ -438,7 +462,7 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
 
   if (providerErrors.length > 0) {
     // A Barion bizonyos hibákat HTTP 200-zal, Errors tömbben jelez vissza.
-    barionLogger().error('Barion provider-hiba', {
+    log.error('Barion provider-hiba', {
       ...logContext,
       durationMs,
       providerErrorCodes: providerErrors.map((e) => e.ErrorCode),
@@ -454,7 +478,7 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
     })
   }
 
-  barionLogger().debug('Barion API hívás kész', {
+  log.debug('Barion API hívás kész', {
     ...logContext,
     httpStatus: response.status,
     durationMs,
@@ -467,14 +491,16 @@ export function barionPost<TResponse>(
   path: string,
   body: Record<string, unknown>,
   config?: BarionClientConfig,
+  options: BarionCallOptions = {},
 ): Promise<TResponse> {
-  return barionRequest<TResponse>({ method: 'POST', path, body, config })
+  return barionRequest<TResponse>({ method: 'POST', path, body, config, ...options })
 }
 
 /** GET-hívás a Barion API felé (a POSKey-t az x-pos-key headerbe teszi). */
 export function barionGet<TResponse>(
   path: string,
   config?: BarionClientConfig,
+  options: BarionCallOptions = {},
 ): Promise<TResponse> {
-  return barionRequest<TResponse>({ method: 'GET', path, config })
+  return barionRequest<TResponse>({ method: 'GET', path, config, ...options })
 }

@@ -1,53 +1,59 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import { CheckoutForm } from '../components/checkout/CheckoutForm'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
+
 /**
- * A CheckoutForm waiver-viselkedésének tesztjei (a komponens renderelése
- * nélkül, a logika szintjén — a komponens a waiverComplete szabályt használja):
- * - a két waiver-checkbox MINDKETTŐ kötelező a fizetős termékre;
- * - az ingyenes termék nem igényel waiver-t;
- * - a szövegek SZÓ SZERINT egyeznek a 45/2014. Korm. rend. 29. § (1) m) szövegeivel.
+ * A pénztár elállási blokkja — a RENDERELT felületen mérve (a korábbi
+ * változat saját konstansait vetette össze önmagukkal, tehát semmit nem
+ * bizonyított).
+ *
+ * Két szerződés:
+ *  - a két nyilatkozat SZÓ SZERINT a 45/2014. Korm. rendelet 29. § (1) m)
+ *    szerinti szöveg (a visszaigazoló levél ugyanezt idézi, őre az
+ *    order-paid-visszaigazolas.test.ts);
+ *  - a súgó nem ígérhet olyan utat, amit a rendszer nem ad (a-ux-7,
+ *    r-legal-7): a „14 nap elteltével éred el" alternatíva nem létezett, a
+ *    pénztár mindkét nyilatkozat nélkül nem indít fizetést. A tulajdonos és a
+ *    jogász által választott, igaz szöveg: online a kurzus csak azonnali
+ *    hozzáféréssel vehető meg, más kérés a kapcsolati címen.
  */
-
-// A komponens által használt szövegek (a CheckoutForm-ból, SZÓ SZERINT):
-const WAIVER_START_TEXT =
-  'Kifejezetten kérem, hogy a digitális tartalomhoz a hozzáférés azonnal megkezdődjön.'
-const WAIVER_LOSS_TEXT =
-  'Tudomásul veszem, hogy a teljesítés megkezdésével elveszítem a 14 napos elállási jogomat.'
-const WAIVER_ALTERNATIVE_TEXT =
-  'Ha nem járulsz hozzá az azonnali hozzáféréshez, a kurzust 14 nap elteltével éred el.'
-const SUBMIT_LABEL_PAID = 'Megrendelés és fizetés'
-const SUBMIT_LABEL_FREE = 'Hozzáférés megnyitása'
-
-function waiverComplete(isFree: boolean, start: boolean, loss: boolean): boolean {
-  return isFree ? true : start && loss
+function renderPaidCheckout(): string {
+  return renderToStaticMarkup(
+    createElement(CheckoutForm, {
+      product: { id: 42, sku: 'Kézrehab alapkurzus', priceHuf: 79500, isFree: false },
+      user: null,
+      alreadyPurchased: false,
+      turnstileSiteKey: null,
+    }),
+  ).replace(/\s+/g, ' ')
 }
 
-describe('a két waiver-checkbox szabálya (45/2014. 29. § (1) m)', () => {
-  it('a fizetős termékre MINDKETTŐ checkbox kötelező', () => {
-    expect(waiverComplete(false, false, false)).toBe(false)
-    expect(waiverComplete(false, true, false)).toBe(false)
-    expect(waiverComplete(false, false, true)).toBe(false)
-    expect(waiverComplete(false, true, true)).toBe(true)
-  })
-
-  it('az ingyenes termékre NEM kell waiver', () => {
-    expect(waiverComplete(true, false, false)).toBe(true)
-  })
-
-  it('a szövegek SZÓ SZERINT a jogszabály szerintiek', () => {
-    expect(WAIVER_START_TEXT).toBe(
+describe('elállási blokk a pénztárban (45/2014. 29. § (1) m))', () => {
+  it('a két nyilatkozat szó szerint a jogszabály szerinti, és egyik sincs előre bepipálva', () => {
+    const html = renderPaidCheckout()
+    expect(html).toContain(
       'Kifejezetten kérem, hogy a digitális tartalomhoz a hozzáférés azonnal megkezdődjön.',
     )
-    expect(WAIVER_LOSS_TEXT).toBe(
+    expect(html).toContain(
       'Tudomásul veszem, hogy a teljesítés megkezdésével elveszítem a 14 napos elállási jogomat.',
     )
-    expect(WAIVER_ALTERNATIVE_TEXT).toBe(
-      'Ha nem járulsz hozzá az azonnali hozzáféréshez, a kurzust 14 nap elteltével éred el.',
-    )
+    expect(html).not.toMatch(/id="waiver-(start|loss)"[^>]*checked/)
   })
 
-  it('a fizetési gomb felirata kötött', () => {
-    expect(SUBMIT_LABEL_PAID).toBe('Megrendelés és fizetés')
-    expect(SUBMIT_LABEL_FREE).toBe('Hozzáférés megnyitása')
+  it('a súgó nem ígér nem létező, késleltetett hozzáférést, hanem az igaz utat mondja', () => {
+    const html = renderPaidCheckout()
+    expect(html).not.toContain('14 nap elteltével')
+    expect(html).toContain('Online vásárlásnál a kurzus csak azonnali hozzáféréssel vehető meg.')
+    expect(html).toContain(`írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre`)
+  })
+
+  it('a bevezető az ÁSZF létező pontjára mutat, nem a 14 napos elállás „szabályaira"', () => {
+    const html = renderPaidCheckout()
+    expect(html).not.toContain('A 14 napos elállási jog szabályairól')
+    expect(html).toContain('„Elállási jog kizárása” pontja szól')
+    expect(html).toContain('href="/aszf"')
   })
 })

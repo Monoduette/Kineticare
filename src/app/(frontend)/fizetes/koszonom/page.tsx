@@ -5,6 +5,8 @@ import { Section } from '@/components/ui/Section'
 import { ThankYouView } from '@/components/checkout/ThankYouView'
 import { buildPrivatePageMetadata } from '@/lib/seo'
 
+import { scheduleThankYouPaymentStateCheck } from './payment-state-check'
+
 /**
  * A lap címe NEM állíthat sikert: a Barion ugyanerre a URL-re küld sikeres,
  * elutasított és megszakított fizetést is, vendéget és belépett vevőt.
@@ -54,6 +56,14 @@ export default async function KoszonjukPage({ searchParams }: KoszonjukPageProps
 
   const orderParam = params.order
   const orderNumber = typeof orderParam === 'string' ? normalizeOrderParam(orderParam) : null
+
+  // Barion-tartalék: a visszatéréskor EGY PaymentState-ellenőrzés a rendelés
+  // TÁROLT PaymentId-jére (a URL-es paymentId-ben nem bízunk), a válasz
+  // elküldése UTÁN. A lap tartalma nem függ tőle; a részletek és a korlátok a
+  // payment-state-check.ts fejkommentjében.
+  if (orderNumber !== null) {
+    scheduleThankYouPaymentStateCheck(orderNumber)
+  }
 
   return (
     <Section>

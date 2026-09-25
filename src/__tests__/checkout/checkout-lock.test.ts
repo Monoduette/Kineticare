@@ -1,7 +1,12 @@
 import type { Payload } from 'payload'
 import { afterEach, beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest'
 
-import { CheckoutError, startCheckout } from '../../lib/checkout/start-checkout'
+import { CHECKOUT_PAYMENT_STATE_UNAVAILABLE } from '../../lib/checkout/pending-payment'
+import {
+  CHECKOUT_REFUNDED_RETRY,
+  CheckoutError,
+  startCheckout,
+} from '../../lib/checkout/start-checkout'
 import type { Order, Product, User } from '../../payload-types'
 
 /**
@@ -252,10 +257,10 @@ describe('checkout-zár — sorosítás (TOCTOU)', () => {
     // A zár soros: egyszerre legfeljebb egy védett szakasz futott.
     expect(lockState.maxConcurrent).toBe(1)
     expect(lockState.events).toEqual([
-      'enter:checkout:7:42',
-      'exit:checkout:7:42',
-      'enter:checkout:7:42',
-      'exit:checkout:7:42',
+      'enter:checkout:7',
+      'exit:checkout:7',
+      'enter:checkout:7',
+      'exit:checkout:7',
     ])
 
     // Pontosan EGY rendelés jött létre; a második kérés 409-cel elhasalt.
@@ -271,13 +276,21 @@ describe('checkout-zár — sorosítás (TOCTOU)', () => {
     expect(reason.message).toContain('nemrég már indult egy fizetés')
   })
 
-  it('a zár kulcsa felhasználó–termék páronkénti (más termék nem várakozik)', async () => {
+  // Codex (PR #307): az e-mail-szintű visszaélési korlátok (abuse-limits.ts) a
+  // vevő összes rendelését számolják, ezért a zár vevőnkénti: ugyanannak a
+  // vevőnek két különböző kurzusa is sorba áll, különben mindkét párhuzamos
+  // kérés a korlát alatt látná a számot.
+  it('a zár kulcsa vevőnkénti: ugyanannak a vevőnek két különböző kurzusa is sorba áll', async () => {
     fetchMock.mockResolvedValue(barionStartSuccess())
     const { payload } = createStatefulPayload()
 
-    await startCheckout({ payload, user: mockUser, input: happyInput })
+    await Promise.allSettled([
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+      startCheckout({ payload, user: mockUser, input: { ...happyInput, productId: 43 } }),
+    ])
 
-    expect(lockState.events[0]).toBe('enter:checkout:7:42')
+    expect(lockState.maxConcurrent).toBe(1)
+    expect(new Set(lockState.events)).toEqual(new Set(['enter:checkout:7', 'exit:checkout:7']))
   })
 
   it('a Barion Payment/Start a záron KÍVÜL fut (a zár nem tart hálózati hívás alatt)', async () => {
@@ -293,7 +306,7 @@ describe('checkout-zár — sorosítás (TOCTOU)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchDuringLock).toBe(false)
     // A védett szakasz már lezárult, mire a Barion-hívás elindult.
-    expect(lockState.events).toEqual(['enter:checkout:7:42', 'exit:checkout:7:42'])
+    expect(lockState.events).toEqual(['enter:checkout:7', 'exit:checkout:7'])
   })
 })
 
@@ -328,10 +341,10 @@ describe('checkout-zár — VENDÉG (fiók nélküli) vásárlás', () => {
     // A zár soros, és a kulcs a VENDÉG e-mailjére szól (nincs fiókazonosító).
     expect(lockState.maxConcurrent).toBe(1)
     expect(lockState.events).toEqual([
-      'enter:checkout:guest:vendeg@example.test:42',
-      'exit:checkout:guest:vendeg@example.test:42',
-      'enter:checkout:guest:vendeg@example.test:42',
-      'exit:checkout:guest:vendeg@example.test:42',
+      'enter:checkout:guest:vendeg@example.test',
+      'exit:checkout:guest:vendeg@example.test',
+      'enter:checkout:guest:vendeg@example.test',
+      'exit:checkout:guest:vendeg@example.test',
     ])
 
     // Pontosan EGY rendelés jött létre — a második a fizetés ELŐTT elakadt.
@@ -347,13 +360,13 @@ describe('checkout-zár — VENDÉG (fiók nélküli) vásárlás', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('a vendég zárkulcsa e-mail + termék páronkénti (checkout:guest:<email>:<productId>)', async () => {
+  it('a vendég zárkulcsa az e-mail-cím (checkout:guest:<email>)', async () => {
     fetchMock.mockResolvedValue(barionStartSuccess())
     const { payload } = createStatefulPayload()
 
     await startCheckout({ payload, input: guestInput })
 
-    expect(lockState.events[0]).toBe('enter:checkout:guest:vendeg@example.test:42')
+    expect(lockState.events[0]).toBe('enter:checkout:guest:vendeg@example.test')
   })
 })
 
@@ -418,5 +431,128 @@ describe('checkout — rendelésszám-ütközés (23505) újrapróbálása', () 
     ).rejects.toThrowError(/duplicate key/)
     expect(calls.create).toBe(1)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * a-checkout-4 — a zárban NEM futhat Barion-hívás. Korábban a függő fizetés
+ * GetPaymentState-je (1–2 mp, a timeoutig akár 15 mp) és a paid-reject
+ * visszatérítés a zárban futott, és addig egy pool-kapcsolatot fogott. Most:
+ * olvasás a zárban → Barion a záron kívül → újra zárolva döntés és írás.
+ */
+describe('checkout-zár — Barion-hívás csak a záron KÍVÜL', () => {
+  const PENDING_PAYMENT_ID = 'aaaaaaaa-bbbb-cccc-dddd-000000000077'
+
+  function pendingRow(paymentId: string): Record<string, unknown> {
+    return {
+      id: 77,
+      status: 'payment_pending',
+      barionPaymentId: paymentId,
+      orderNumber: 'KH-2026-000077',
+      createdAt: new Date().toISOString(),
+      totalHufSnapshot: 5000,
+      customerSnapshot: {
+        name: 'Minta Mari',
+        billingName: 'Minta Mari',
+        billingZip: '1011',
+        billingCity: 'Budapest',
+        billingStreet: 'Fő utca 1.',
+        taxNumber: null,
+      },
+    }
+  }
+
+  function payloadWithPending(nextPaymentId: () => string) {
+    const payload = {
+      findByID: vi.fn(async () => publishedProduct),
+      find: vi.fn(async ({ where }: { where?: unknown }) =>
+        JSON.stringify(where ?? {}).includes('payment_pending') &&
+        !JSON.stringify(where ?? {}).includes('createdAt')
+          ? { docs: [pendingRow(nextPaymentId())], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+      ),
+      create: vi.fn(async () => {
+        throw new Error('TESZT: ebben az esetben rendelés nem jöhet létre')
+      }),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+    }
+    return payload
+  }
+
+  it('élő függő fizetés: a GetPaymentState a zárak KÖZÖTT fut, majd a második zárolt kör folytatja a fizetést', async () => {
+    const locksHeldDuringFetch: number[] = []
+    const fetchPaymentState = vi.fn(async () => {
+      locksHeldDuringFetch.push(lockState.current)
+      return { PaymentId: PENDING_PAYMENT_ID, Status: 'Prepared' } as never
+    })
+    const payload = payloadWithPending(() => PENDING_PAYMENT_ID)
+
+    const result = await startCheckout({
+      payload: payload as unknown as Payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState,
+    })
+
+    expect(result.gatewayUrl).toContain(PENDING_PAYMENT_ID)
+    expect(fetchPaymentState).toHaveBeenCalledTimes(1)
+    expect(locksHeldDuringFetch).toEqual([0])
+    // Két zárolt kör: olvasás, majd a lekérdezett állapottal döntés.
+    expect(lockState.events).toEqual([
+      'enter:checkout:7',
+      'exit:checkout:7',
+      'enter:checkout:7',
+      'exit:checkout:7',
+    ])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('kifizetett, de elutasított függő rendelés: a visszatérítés (Barion Refund) a záron KÍVÜL fut', async () => {
+    const locksHeldDuringRefund: number[] = []
+    const payload = payloadWithPending(() => PENDING_PAYMENT_ID)
+
+    const error = await startCheckout({
+      payload: payload as unknown as Payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: vi.fn(
+        async () => ({ PaymentId: PENDING_PAYMENT_ID, Status: 'Succeeded' }) as never,
+      ),
+      applyBarionStateTransition: vi.fn(async () => ({
+        action: 'rejected' as const,
+        reason: 'total-mismatch',
+      })),
+      recoverRejectedPaid: vi.fn(async () => {
+        locksHeldDuringRefund.push(lockState.current)
+        return { action: 'refunded' as const }
+      }),
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(CheckoutError)
+    expect((error as CheckoutError).status).toBe(409)
+    expect((error as CheckoutError).message).toBe(CHECKOUT_REFUNDED_RETRY)
+    expect(locksHeldDuringRefund).toEqual([0])
+  })
+
+  it('ha a körök alatt folyton újabb függő fizetés jelenik meg: korlátos számú kör után 503, rendelés NÉLKÜL', async () => {
+    let counter = 0
+    const payload = payloadWithPending(() => {
+      counter += 1
+      return `aaaaaaaa-bbbb-cccc-dddd-${String(counter).padStart(12, '0')}`
+    })
+    const fetchPaymentState = vi.fn(async () => ({ Status: 'Prepared' }) as never)
+
+    const error = await startCheckout({
+      payload: payload as unknown as Payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState,
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(CheckoutError)
+    expect((error as CheckoutError).status).toBe(503)
+    expect((error as CheckoutError).message).toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+    expect(fetchPaymentState).toHaveBeenCalledTimes(4)
+    expect(payload.create).not.toHaveBeenCalled()
   })
 })

@@ -1,9 +1,24 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { fixture, provider, store } from './refund-fixture'
+import { PAYMENT_STATE_MIN_INTERVAL_MS } from '../lib/barion/state'
 import { createRefundHandler } from '../lib/refund/route-handler'
 
+// A valódi fetchPaymentState PaymentId-nkénti kapuja (a-callback-8) modulszintű,
+// és a fixtúra PaymentId-je minden tesztben ugyanaz: minden refund-kérés előtt
+// a kapu idejét átugorjuk. Csak a Date hamis, a setTimeout valódi marad.
+let clock = Date.now()
+function skipPaymentStateGate() {
+  clock = Math.max(clock, Date.now()) + PAYMENT_STATE_MIN_INTERVAL_MS
+  vi.setSystemTime(clock)
+}
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 async function transportFixture() {
+  vi.useFakeTimers({ toFake: ['Date'] })
   const f = fixture()
   const actual = await vi.importActual<typeof import('../lib/barion')>('../lib/barion')
   vi.stubEnv('BARION_API_URL', 'https://api.test.barion.com')
@@ -49,8 +64,9 @@ async function transportFixture() {
     throw new Error('Unexpected synthetic transport destination')
   })
   vi.stubGlobal('fetch', wire)
-  const request = () =>
-    createRefundHandler({ getPayload: async () => f.payload })(
+  const request = () => {
+    skipPaymentStateGate()
+    return createRefundHandler({ getPayload: async () => f.payload })(
       new Request(`https://shop.example.test/api/admin/orders/${f.order.orderNumber}/refund`, {
         method: 'POST',
         headers: { origin: 'https://shop.example.test', 'content-type': 'application/json' },
@@ -58,6 +74,7 @@ async function transportFixture() {
       }),
       { params: Promise.resolve({ orderNumber: f.order.orderNumber! }) },
     )
+  }
   return { ...f, wire, request }
 }
 
@@ -155,6 +172,7 @@ describe('refund route through the real Barion transport contract', () => {
       expect(await f.status()).toMatchObject({ state: 'clear' })
 
       balanceTooLow = false
+      skipPaymentStateGate()
       const retry = await createRefundHandler({ getPayload: async () => f.payload })(
         new Request(`https://shop.example.test/api/admin/orders/${f.order.orderNumber}/refund`, {
           method: 'POST',

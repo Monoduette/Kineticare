@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 
 import { isAdmin } from '../access'
+import { PG_POOL_MAX } from '../lib/db-connection-budget'
 import { buildOriginAllowlist } from '../env'
 import {
   CONTACT_FORM_TITLE,
@@ -630,6 +631,8 @@ describe('payload.config', () => {
     expect(poolOptions.connectionTimeoutMillis).toBe(10_000)
     expect(poolOptions.statement_timeout).toBe(30_000)
     expect(poolOptions.query_timeout).toBe(30_000)
+    // A pool mérete ugyanaz, amit az induláskori max_connections-mérés számol.
+    expect(poolOptions.max).toBe(PG_POOL_MAX)
   })
 
   it('a request tranzakciók READ COMMITTED izolációt használnak', async () => {

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+
+import { initI18n } from '@payloadcms/translations'
 import { NextRequest } from 'next/server'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +12,8 @@ import {
   CHECKOUT_ALREADY_PURCHASED,
   CHECKOUT_PAID_UNDER_REVIEW,
   CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_PAYMENT_NOT_SAVED_RETRY,
+  CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE,
   CHECKOUT_REFUNDED_RETRY,
   CheckoutError,
   paymentWindowToMs,
@@ -26,6 +31,8 @@ import {
   CHECKOUT_PAYMENT_STATE_UNVERIFIED,
 } from '../lib/checkout/pending-payment'
 import { resetAlertThrottle } from '../lib/alert-throttle'
+import { resolveAlertCode } from '../lib/alerts/classify'
+import { ALERT_RUNBOOK_PATH, buildAlertMail, summarizeAlert } from '../lib/alerts/mail'
 import { formatPriceHuf } from '../lib/format-price'
 import type { Logger } from '../lib/logger'
 import type { PaidRejectRecoveryResult } from '../lib/order-status/recover-paid-reject'
@@ -250,6 +257,29 @@ function captureLogger(): { log: Logger; errors: CapturedLogEntry[]; warns: Capt
     child: () => log,
   }
   return { log, errors, warns }
+}
+
+/**
+ * A tulajdonosnak menő riasztás-levél szövege abból a naplósorból, amelyet a
+ * pénztár ténylegesen írt (a sink ugyanígy képzi: kód → összefoglaló → levél).
+ */
+function ownerAlertMail(entry: CapturedLogEntry): { alertCode: string | null; text: string } {
+  const alertCode = resolveAlertCode(entry.message, {}, entry.context)
+  const summary = summarizeAlert({
+    alertCode: alertCode ?? 'nincs-kod',
+    msg: entry.message,
+    ts: '2026-09-24T10:00:00.000Z',
+    bindings: {},
+    context: entry.context,
+  })
+  return { alertCode, text: buildAlertMail(summary, 0).text }
+}
+
+const RUNBOOK = readFileSync(new URL(`../../${ALERT_RUNBOOK_PATH}`, import.meta.url), 'utf8')
+
+/** A runbook riasztáskód-táblázatának sora a kódhoz; a táblázaton kívüli említés nem teendő. */
+function runbookRow(alertCode: string | null): string | undefined {
+  return RUNBOOK.split('\n').find((line) => line.startsWith(`| \`${String(alertCode)}\` `))
 }
 
 const savedEnv: Record<string, string | undefined> = {}
@@ -556,27 +586,304 @@ describe('startCheckout — számlázási adatok (B)', () => {
     await expect(promise).rejects.not.toThrowError(/hiányos/)
   })
 
-  it('KÜLFÖLDI irányítószámmal is létrejön a rendelés (a vásárlás nem vész el)', async () => {
-    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+  // K11 (tulajdonosi döntés, 2026-09-24): számla egyelőre csak magyarországi
+  // címre. A korábbi „külföldi irányítószámmal is létrejön" viselkedést ez
+  // váltja; a szerver ugyanúgy kikényszeríti, mint az űrlap (a kliens
+  // megkerülhető).
+  it('KÜLFÖLDI irányítószám → 400 a kapcsolati címmel, rendelés és Barion-hívás NÉLKÜL (K11)', async () => {
     const { payload, calls } = createMockPayload()
 
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: mockUser,
+        input: {
+          ...happyInput,
+          billing: { name: 'Kovács Béla', zip: '10115', city: 'Berlin', street: 'Torstraße 1.' },
+        },
+      }),
+    )
+
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('csak magyarországi címre')
+    expect(error.message).toContain('info@kineticare.hu')
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('„Cégként vásárolok": adószám nélkül 400, adószámmal a jelölés a rendelés snapshotjába kerül', async () => {
+    const missing = createMockPayload()
+    const missingError = await checkoutErrorFrom(
+      startCheckout({
+        payload: missing.payload,
+        user: mockUser,
+        input: { ...happyInput, billing: { ...PROFILE_BILLING, companyPurchase: true } },
+      }),
+    )
+    expect(missingError.status).toBe(400)
+    expect(missingError.message).toContain('Céges vásárláshoz add meg a cég adószámát')
+    expect(missing.calls.create).toHaveLength(0)
+
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls } = createMockPayload()
     await startCheckout({
       payload,
       user: mockUser,
-      input: {
-        ...happyInput,
-        billing: { name: 'Kovács Béla', zip: '10115', city: 'Berlin', street: 'Torstraße 1.' },
-      },
+      input: { ...happyInput, billing: { ...CHECKOUT_BILLING, companyPurchase: true } },
     })
-
     expect((calls.create[0] as Record<string, unknown>).customerSnapshot).toMatchObject({
-      billingZip: '10115',
-      billingCity: 'Berlin',
+      taxNumber: '12345676-1-42',
+      companyPurchase: true,
     })
   })
 })
 
 describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
+  /**
+   * a-cms-2: a Barion kártyás minimuma 10 Ft (docs.barion.com Troubleshooting:
+   * „HUF: 10 HUF or more"). Friss beírás ilyen árat már nem menthet (a plugin
+   * `validatePriceInHUF`-ja és `validatePromoPriceHuf`-ja a MIN_PRICE_HUF
+   * alatti új értéket elutasítja); az ág a validátorok előtt mentett, azóta
+   * változatlan publikált árakért és a validációt kihagyó főrekord-írásokért
+   * van. Ilyen áron a rendelés nem jöhet létre, és a tulajdonos RIASZTÁS-t kap
+   * (termékenként fojtva).
+   *
+   * A fizetendő ár élő akcióban az akciós ár (`coursePriceHuf`), és az akciós
+   * ár validátora a #283 és a #305 között 1 Ft-ot is elfogadott. Egy ilyen
+   * örökölt akció a riasztást akkor is kiváltja, ha a rendes ár rendben van,
+   * ezért a runbook-sornak az akciós ár mezőjét is meg kell neveznie: a rendes
+   * „Ár (Ft)” javítása itt semmin nem segítene.
+   */
+  it.each<[string, Partial<Product>, Array<'priceInHUF' | 'promoPriceHuf' | 'promoEnabled'>]>([
+    ['a rendes ár 10 Ft alatt', { priceInHUF: 5 }, ['priceInHUF']],
+    [
+      'élő akcióban az akciós ár 10 Ft alatt, a rendes ár rendben',
+      {
+        priceInHUF: 19990,
+        promoEnabled: true,
+        promoStart: null,
+        promoEnd: '2099-12-31T00:00:00.000Z',
+        promoPriceHuf: 5,
+      },
+      ['promoPriceHuf', 'promoEnabled'],
+    ],
+  ])(
+    '%s → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva; a levél megnevezi a terméket, a runbook-sor a kiváltó ármezőhöz, a valódi admin-menübe, a kurzus címére és a közzététel gombjához visz)',
+    async (_case, priceFields, fieldsToFix) => {
+      const product = { ...publishedProduct, ...priceFields } as unknown as Product
+      const { payload, calls } = createMockPayload({ product })
+      const { log, errors } = captureLogger()
+
+      const first = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+      )
+      const second = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+      )
+
+      for (const error of [first, second]) {
+        expect(error.status).toBe(400)
+        expect(error.message).toBe('A termékhez nem tartozik érvényes ár, így nem vásárolható meg.')
+      }
+      expect(calls.create).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+      const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS:'))
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.context).toMatchObject({ productId: 42, serverPriceHuf: 5, minimumHuf: 10 })
+
+      // W1A-2: a levél csak a SAFE_ALERT_FIELDS mezőit mutatja; a productId nincs
+      // köztük, a `source` igen.
+      const mail = ownerAlertMail(alerts[0] ?? { message: '', context: {} })
+      expect(mail.text).toContain('source: product-42')
+      expect(mail.alertCode).toBe('a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem')
+
+      // A riasztáskódnak saját sora van a runbook táblázatában, és a sor azzal a
+      // menüvel nevezi a helyet, amit a tulajdonos az admin oldalsávjában lát
+      // (csoport → gyűjtemény; WCAG 2.2 SC 3.2.4). A lista az azonosítóra nem
+      // keres (listSearchableFields), ezért a `product-<szám>` a kurzus admin-címén
+      // át vezet a kurzushoz.
+      const runbookLine = runbookRow(mail.alertCode)
+      expect(runbookLine, 'a runbook táblázatában nincs sor ehhez a riasztáskódhoz').toBeDefined()
+      const config = await configPromise
+      const products = config.collections.find((collection) => collection.slug === 'products')
+      expect(runbookLine?.replaceAll('**', '')).toContain(
+        `${String(products?.admin.group)} → ${String(products?.labels.plural)}`,
+      )
+      expect(runbookLine).toContain(
+        `${config.routes.admin}/collections/${String(products?.slug)}/<szám>`,
+      )
+      // A sor javító mondata (amelyik a riasztás minimumát kimondja) azt a
+      // mezőt nevezi meg, amelyik a riasztást kiváltja, azzal a felirattal, amit
+      // a kurzus szerkesztője mutat. A lista oszlopára utaló későbbi említés nem
+      // teendő, ezért nem számít.
+      const fixSentence = new RegExp(
+        `[^.]*legalább ${String(alerts[0]?.context.minimumHuf)} Ft[^.]*\\.`,
+      ).exec(runbookLine ?? '')?.[0]
+      expect(fixSentence, 'a sor nem mondja ki, legalább mennyi legyen az ár').toBeDefined()
+      for (const name of fieldsToFix) {
+        const field = products?.flattenedFields.find((candidate) => candidate.name === name)
+        const label =
+          field !== undefined && 'label' in field && typeof field.label === 'string'
+            ? field.label
+            : undefined
+        expect(label, `a(z) ${name} mezőnek nincs szöveges felirata`).toBeDefined()
+        expect(fixSentence).toContain(`„${String(label)}”`)
+      }
+      // A kurzusok automatikus mentése csak piszkozatot ír (versions.drafts.autosave),
+      // a pénztár viszont a fő sort olvassa (lásd a piszkozat-regresszió blokkot):
+      // közzététel nélkül az átírt ár nem hat, a riasztás tovább jön (valódi
+      // Payload 3.88 + Postgres mellett mérve). A sor ezért a közzététel gombját is
+      // megnevezi, betűre úgy, ahogy az admin mutatja: a Payload saját fordítója a
+      // config i18n-jével, ahogy az admin kérésenként (next/dist/utilities/initReq.js)
+      // is hívja.
+      const { t } = await initI18n({ config: config.i18n, context: 'client', language: 'hu' })
+      expect(runbookLine).toContain(`„${t('version:publishChanges')}”`)
+    },
+  )
+
+  it('pontosan 10 Ft-os ár még vásárolható (a Barion minimuma „10 HUF or more")', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const product = { ...publishedProduct, priceInHUF: 10 } as unknown as Product
+    const { payload } = createMockPayload({
+      product,
+      orderDoc: {
+        ...createdOrderDoc,
+        totalHufSnapshot: 10,
+        items: [{ product: 42, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 10 }],
+      } as unknown as Order,
+    })
+
+    const result = await startCheckout({ payload, user: mockUser, input: happyInput })
+    expect(result.gatewayUrl).toBe(GATEWAY_URL)
+    expect((lastBarionRequestBody().Transactions as Array<{ Total: number }>)[0]?.Total).toBe(10)
+  })
+
+  /**
+   * a-checkout-16: a hook a create pillanatában újraolvassa a terméket, és AZ
+   * lesz a Barion-összeg. Ha közben (akció vége, szerkesztés) az ár változott,
+   * a vevő mást fizetne, mint amit a pénztárban látott.
+   */
+  it('a létrehozott rendelés végösszege eltér az ellenőrzött ártól → 409, a rendelés cancelled, Barion NEM hívódik', async () => {
+    const row: OrderRow = { id: 101, status: 'payment_pending', orderNumber: ORDER_NUMBER }
+    const { payload } = createMockPayload({
+      orderRows: [row],
+      orderDoc: {
+        ...createdOrderDoc,
+        totalHufSnapshot: 4000,
+        items: [{ product: 42, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 4000 }],
+      } as unknown as Order,
+    })
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).toContain('Az ár közben megváltozott')
+    expect(error.message).toContain(formatPriceHuf(4000))
+    expect(row.status).toBe('cancelled')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Az ár nélküli 409 tartalmi szabályai (W1A-3, a jóváhagyott szöveg): mi
+   * történt, mi lett a pénzzel, mit tegyen a vevő. Összeget nem nevez, és nem
+   * ígéri, hogy az újraindítás működik: a frissített oldal mutatja, megvehető-e
+   * még a kurzus.
+   */
+  function expectPriceFreeConflictText(message: string): void {
+    expect(message).toContain('ára közben megváltozott')
+    expect(message).toContain('Pénzt nem vontunk le')
+    expect(message).toContain('Frissítsd az oldalt')
+    expect(message).not.toContain('a mostani ár')
+    expect(message).not.toMatch(/\d\s*Ft/)
+    expect(message).not.toMatch(/indítsd újra|próbáld újra|újraind/i)
+  }
+
+  /**
+   * W1A-3: a hook a törölt vagy kikapcsolt árat 0 Ft-ként snapshotolja
+   * (order-integrity.ts, `coursePriceHuf(product) ?? 0`). Ilyen árat nem
+   * nevezhetünk „mostani árnak", és az újraindítás sem működne. Az 5 Ft új
+   * értékként már nem menthető (validatePriceInHUF), itt a szerződés határát
+   * rögzíti: csak a Barion-minimumot elérő ár nevezhető meg.
+   */
+  it.each([[0], [5]])(
+    'a rendelés végösszege közben %i Ft lett → 409 ár és újraindítási ígéret nélküli szöveggel, a rendelés cancelled, Barion NEM hívódik',
+    async (snapshotHuf) => {
+      const row: OrderRow = { id: 101, status: 'payment_pending', orderNumber: ORDER_NUMBER }
+      const { payload } = createMockPayload({
+        orderRows: [row],
+        orderDoc: {
+          ...createdOrderDoc,
+          totalHufSnapshot: snapshotHuf,
+          items: [
+            {
+              product: 42,
+              quantity: 1,
+              titleSnapshot: 'KURZUS-ALAP',
+              priceHufSnapshot: snapshotHuf,
+            },
+          ],
+        } as unknown as Order,
+      })
+
+      const error = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput }),
+      )
+
+      expect(error.status).toBe(409)
+      expect(error.message).not.toContain(formatPriceHuf(snapshotHuf))
+      expect(error.message).toBe(CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE)
+      expectPriceFreeConflictText(error.message)
+      expect(row.status).toBe('cancelled')
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('a közben 10 Ft-ra (a Barion-minimumra) változott ár még megnevezhető', async () => {
+    const row: OrderRow = { id: 101, status: 'payment_pending', orderNumber: ORDER_NUMBER }
+    const { payload } = createMockPayload({
+      orderRows: [row],
+      orderDoc: {
+        ...createdOrderDoc,
+        totalHufSnapshot: 10,
+        items: [{ product: 42, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 10 }],
+      } as unknown as Order,
+    })
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).toContain(`a mostani ár ${formatPriceHuf(10)}`)
+    expect(row.status).toBe('cancelled')
+  })
+
+  it('a lezárás írása dob (0 Ft-os végösszegnél) → a hiba naplózva, a vevő mégis az ár nélküli 409-et kapja', async () => {
+    const { payload } = createMockPayload({
+      orderDoc: {
+        ...createdOrderDoc,
+        totalHufSnapshot: 0,
+        items: [{ product: 42, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 0 }],
+      } as unknown as Order,
+    })
+    vi.mocked(payload.update).mockRejectedValueOnce(new Error('db down'))
+    const { log, errors } = captureLogger()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE)
+    expectPriceFreeConflictText(error.message)
+    expect(errors.map((entry) => entry.message)).toContain(
+      'checkout-start: az árváltozás miatti lezárás sikertelen',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('eltérő kliens-ár → 400, rendelés NEM jön létre, Barion NEM hívódik', async () => {
     const { payload, calls } = createMockPayload()
 
@@ -1770,7 +2077,9 @@ describe('startCheckout — Barion-hibaág', () => {
    * MOSTANI státuszát látja, így a második kérés azt kapja, amit az első
    * hagyott maga után (mint az éles adatbázisban).
    */
-  const statefulSetup = (options: Pick<MockPayloadOptions, 'failStatusWrite'> = {}) => {
+  const statefulSetup = (
+    options: Pick<MockPayloadOptions, 'failStatusWrite' | 'persistBarionIdsFails'> = {},
+  ) => {
     // A sor a create-tel születik (előtte nincs függő rendelés).
     const row: OrderRow = { id: 101, status: 'nincs-meg', orderNumber: ORDER_NUMBER }
     const mock = createMockPayload({
@@ -1979,6 +2288,26 @@ describe('startCheckout — Barion-hibaág', () => {
     expect(row.status).toBe('payment_pending')
   })
 
+  it('bizonytalan kimenet (timeout) → RIASZTÁS az elsőnél, a további azonos hiba óránként fojtva (a-riasztas-3)', async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    })
+    const { log, errors } = captureLogger()
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { payload } = statefulSetup()
+      const error = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+      )
+      expect(error.status).toBe(502)
+    }
+
+    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS:'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toContain('bizonytalan')
+    expect(alerts[0]?.context).toMatchObject({ orderNumber: ORDER_NUMBER })
+  })
+
   it('elutasított Start, de a payment_failed írása elbukik → a vevő a várakozási időt kapja', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(401, {
@@ -1997,16 +2326,54 @@ describe('startCheckout — Barion-hibaág', () => {
     expect(row.status).toBe('payment_pending')
   })
 
-  it('Barion Start siker + persist-hiba: a rendelés pending marad, a gateway URL visszamegy', async () => {
+  /**
+   * a-callback-9 (fail-closed): ha a PaymentId nem kerül a rendelésre, a
+   * fizetés csak a callbackből volna párosítható, és egy elveszett callback
+   * után az order-poll 24 óra múlva GetState nélkül lezárná a kifizetett
+   * rendelést. Ezért a fizetési oldal NEM mehet ki. Korábban a gatewayUrl
+   * visszament (a régi teszt ezt állította), és csak egy error-sor jelezte.
+   */
+  it('Barion Start siker + persist-hiba: 503, NINCS gateway URL, RIASZTÁS, a rendelés payment_failed, az újrapróbálás nem vár', async () => {
+    fetchMock.mockImplementation(async () => barionStartSuccess())
+    const { payload, row } = statefulSetup({ persistBarionIdsFails: true })
+    const { log, errors } = captureLogger()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+    )
+
+    expect(error.status).toBe(503)
+    expect(error.message).toBe(CHECKOUT_PAYMENT_NOT_SAVED_RETRY)
+    expect(error.message).not.toContain('Pay?id=')
+    expect(row.status).toBe('payment_failed')
+    const alert = errors.find((entry) => entry.message.startsWith('RIASZTÁS:'))
+    expect(alert?.message).toContain('azonosítóját nem tudtuk a rendelésre menteni')
+    expect(alert?.context).toMatchObject({ orderNumber: ORDER_NUMBER, markedFailed: true })
+
+    // A vevő új próbálkozását nem fogja meg a „már indult egy fizetés"
+    // várakoztatás: a Start újra lefut.
+    const retry = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+    )
+    expect(retry.status).toBe(503)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('persist-hiba, és a payment_failed írása is elbukik: 503 a várakozási idővel, gateway URL nélkül', async () => {
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
-    const { payload, calls } = createMockPayload({ persistBarionIdsFails: true })
+    const { payload, row } = statefulSetup({
+      persistBarionIdsFails: true,
+      failStatusWrite: 'payment_failed',
+    })
 
-    const result = await startCheckout({ payload, user: mockUser, input: happyInput })
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
 
-    expect(result).toEqual({ orderNumber: ORDER_NUMBER, gatewayUrl: GATEWAY_URL })
-    expect(
-      calls.update.every((call) => (call.data as { status?: string }).status !== 'payment_failed'),
-    ).toBe(true)
+    expect(error.status).toBe(503)
+    expect(error.message).toContain('nem tudtuk rögzíteni a fizetést')
+    expect(error.message).toContain('30 perc múlva')
+    expect(row.status).toBe('payment_pending')
   })
 })
 

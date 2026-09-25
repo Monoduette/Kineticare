@@ -12,7 +12,7 @@ import {
   STALE_SCHEDULED_JOB_MS,
   STUCK_JOB_ALERT_COOLDOWN_MS,
 } from '../../jobs/schedule-guard'
-import { ORDER_MAINTENANCE_QUEUE } from '../../jobs/queues'
+import { ORDER_POLL_QUEUE } from '../../jobs/queues'
 import { resetAlertThrottle } from '../../lib/alert-throttle'
 import type { LogContext, Logger } from '../../lib/logger'
 
@@ -208,7 +208,7 @@ function createHarness(scenario: Scenario, clock: { now: number } = { now: NOW }
       defaultBeforeSchedule: async () => ({ shouldSchedule: false }),
       jobStats: null as never,
       queueable: {
-        scheduleConfig: { cron: '*/5 * * * *', queue: ORDER_MAINTENANCE_QUEUE },
+        scheduleConfig: { cron: '*/5 * * * *', queue: ORDER_POLL_QUEUE },
         waitUntil,
       } as never,
       req,
@@ -231,15 +231,15 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     expect(queueCalls).toHaveLength(1)
     expect(queueCalls[0]).toMatchObject({
       task: TASK_SLUG,
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       waitUntil,
       meta: { scheduled: true },
     })
     // A zár a queue+task szintű kulccsal jött létre, kötött paraméterként.
-    expect(scheduleLockKey(ORDER_MAINTENANCE_QUEUE, TASK_SLUG)).toBe(
-      `schedule:${ORDER_MAINTENANCE_QUEUE}:${TASK_SLUG}`,
+    expect(scheduleLockKey(ORDER_POLL_QUEUE, TASK_SLUG)).toBe(
+      `schedule:${ORDER_POLL_QUEUE}:${TASK_SLUG}`,
     )
-    expect(lockParams).toEqual([[`schedule:${ORDER_MAINTENANCE_QUEUE}:${TASK_SLUG}`]])
+    expect(lockParams).toEqual([[`schedule:${ORDER_POLL_QUEUE}:${TASK_SLUG}`]])
     // A sorba állítás NEM néma (a handleSchedules „skipped"-ként könyveli a
     // kört, ezért a tényleges queue-ról a hook ad info-sort).
     expect(entries).toHaveLength(1)
@@ -273,7 +273,7 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     const params = releaseStatements[0]?.params ?? []
     expect(params).toEqual(
       expect.arrayContaining([
-        ORDER_MAINTENANCE_QUEUE,
+        ORDER_POLL_QUEUE,
         TASK_SLUG,
         new Date(NOW - STALE_JOB_RELEASE_AFTER_MS).toISOString(),
         MAX_RELEASED_JOBS_PER_TICK,
@@ -297,7 +297,7 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     expect(alerts[0]?.context).toMatchObject({
       alert: true,
       alertCode: 'beragadt-job',
-      queue: ORDER_MAINTENANCE_QUEUE,
+      queue: ORDER_POLL_QUEUE,
       stuckJobs: 1,
       releasedJobs: 1,
     })
@@ -431,7 +431,7 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
   })
 
   /**
-   * A lezárás tartós hibája minden tickben előjön (az order-maintenance
+   * A lezárás tartós hibája minden tickben előjön (az order-poll
    * queue-n 5 percenként, a webhook-maintenance-en percenként). A riasztása a
    * „zárt le" riasztással közös, 6 órás fojtáson osztozik: egy queue+task
    * párról 6 óránként egy levél megy, akármelyik eset történt.
@@ -493,7 +493,7 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     expect(warnings).toHaveLength(2)
     for (const warning of warnings) {
       expect(warning.context).toMatchObject({
-        queue: ORDER_MAINTENANCE_QUEUE,
+        queue: ORDER_POLL_QUEUE,
         stuckJobs: 1,
         releaseAfterMs: STALE_JOB_RELEASE_AFTER_MS,
       })
@@ -578,7 +578,7 @@ describe('schedule-guard — a lekérdezések alakja', () => {
 
     expect(seenWheres).toHaveLength(2)
     for (const where of seenWheres) {
-      expect(where.and).toContainEqual({ queue: { equals: ORDER_MAINTENANCE_QUEUE } })
+      expect(where.and).toContainEqual({ queue: { equals: ORDER_POLL_QUEUE } })
       expect(where.and).toContainEqual({ taskSlug: { equals: TASK_SLUG } })
       expect(where.and).toContainEqual({ completedAt: { exists: false } })
       expect(where.and).toContainEqual({ error: { exists: false } })

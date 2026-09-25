@@ -230,7 +230,7 @@ describe('planCheckoutSubmission — a vendég-blokk a törzsben', () => {
     expect(plan.body.guest).toBeUndefined()
   })
 
-  it('hiányzó vendég-adatnál a beküldés meg sem indul, és a fókusz az e-mail mezőn áll', () => {
+  it('hiányzó vendég-adatnál a beküldés meg sem indul, és az első hiányzó elem az e-mail mező', () => {
     const plan = planCheckoutSubmission({ ...baseContext, guest: { email: '', name: '' } })
     expect(plan.kind).toBe('invalid')
     if (plan.kind !== 'invalid') {

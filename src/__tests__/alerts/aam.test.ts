@@ -564,8 +564,9 @@ describe('queryAamStatus: a nem teljes keret riasztása okonként naponta legfel
  * hiba), vagy a vihar-plafon miatt vár, a riasztás-csatorna a forrás
  * fojtását is feloldja, és a következő számolás (Irányítópult, napi
  * összesítő) újra riaszt. Korábban a levél 24 óráig nem pótlódott, miközben a
- * kijelzés a levélre mutatott. Ahol a levél kiment, vagy ki sem mehetne
- * (noop-szolgáltató, nincs címzett), a fojtás marad. Valódi logger és
+ * kijelzés a levélre mutatott. Ahol a levél kiment, ki sem mehetne
+ * (noop-szolgáltató, nincs címzett), vagy végleges hibával nem ment ki (Codex,
+ * PR #306: az ismétlés ugyanúgy elbukna), a fojtás marad. Valódi logger és
  * riasztás-csatorna; csak a levélküldő kapcsolható, hálózati hívás nincs.
  */
 describe('queryAamStatus: a ki nem ment riasztás-levelet a következő számolás pótolja (BRK-1)', () => {
@@ -581,12 +582,15 @@ describe('queryAamStatus: a ki nem ment riasztás-levelet a következő számol�
 
   /** A valódi csatorna a gyökér-loggeren; a levélküldő kiesett, működik vagy noop. */
   function realSink(clock: { now: number }) {
-    const provider: { state: 'kiesett' | 'mukodik' | 'noop' } = { state: 'kiesett' }
+    const provider: { state: 'kiesett' | 'vegleges' | 'mukodik' | 'noop' } = { state: 'kiesett' }
     const recipients: { list: readonly string[] } = { list: ['tulajdonos@example.com'] }
     const delivered: SendMailInput[] = []
     const sendMail = vi.fn(async (input: SendMailInput): Promise<SendResult> => {
       if (provider.state === 'kiesett') {
         return { ok: false, provider: 'resend', retryable: true, error: 'HTTP 503' }
+      }
+      if (provider.state === 'vegleges') {
+        return { ok: false, provider: 'resend', retryable: false, error: 'HTTP 422' }
       }
       if (provider.state === 'noop') {
         return { ok: true, provider: 'noop' }
@@ -660,6 +664,12 @@ describe('queryAamStatus: a ki nem ment riasztás-levelet a következő számol�
       'a levél kiment',
       (sink) => {
         sink.provider.state = 'mukodik'
+      },
+    ],
+    [
+      'a levél végleges hibával nem ment ki (pl. hibás beállítás, HTTP 422)',
+      (sink) => {
+        sink.provider.state = 'vegleges'
       },
     ],
     [

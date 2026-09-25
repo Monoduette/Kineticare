@@ -4,6 +4,7 @@ import {
   assertRequiredEnv,
   buildOriginAllowlist,
   DEFAULT_SERVER_URL,
+  JOB_WORKERS_OFF_CONFIRM_ENV,
   requiredEnvVars,
   resolveServerUrl,
   szamlazzVatModes,
@@ -202,7 +203,7 @@ describe('assertRequiredEnv — SZAMLAZZ_AFAKULCS induláskori ellenőrzése', (
     // A getSzamlazzConfig ilyenkor minden számlázási műveletnél dob: egyetlen
     // számla sem állna ki. A boltot nem állítjuk meg, de a hiba már induláskor
     // error-szintű riasztás, a kulcs ÉRTÉKE nélkül.
-    const DUMMY_AGENT_KEY = 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK'
+    const DUMMY_AGENT_KEY = 'dummy-agent-kulcs-nem-valodi-titok'
     vi.stubEnv('SZAMLAZZ_AGENT_KEY', DUMMY_AGENT_KEY)
     for (const nodeEnv of ['development', 'test', 'production']) {
       vi.stubEnv('NODE_ENV', nodeEnv)
@@ -227,7 +228,7 @@ describe('assertRequiredEnv — SZAMLAZZ_AFAKULCS induláskori ellenőrzése', (
 
   it('bekapcsolt számlázás megadott áfakulccsal: nincs riasztás', () => {
     vi.stubEnv('NODE_ENV', 'test')
-    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK')
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'dummy-agent-kulcs-nem-valodi-titok')
     for (const mode of szamlazzVatModes) {
       vi.stubEnv('SZAMLAZZ_AFAKULCS', mode)
       const alert = vi.fn()
@@ -239,7 +240,7 @@ describe('assertRequiredEnv — SZAMLAZZ_AFAKULCS induláskori ellenőrzése', (
   it('az alapértelmezett riasztás-kimenet error-szintű, RIASZTÁS-előtagú strukturált naplósor', () => {
     vi.stubEnv('NODE_ENV', 'test')
     vi.stubEnv('LOG_LEVEL', 'debug')
-    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK')
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'dummy-agent-kulcs-nem-valodi-titok')
     const written = vi.mocked(console.log)
     written.mockClear()
 
@@ -252,7 +253,7 @@ describe('assertRequiredEnv — SZAMLAZZ_AFAKULCS induláskori ellenőrzése', (
     const entry = JSON.parse(lines[0] ?? '{}') as { level?: string; msg?: string }
     expect(entry.level).toBe('error')
     expect(entry.msg).toMatch(/^RIASZTÁS: /)
-    expect(lines[0]).not.toContain('DUMMY-AGENT-KULCS-NEM-VALODI-TITOK')
+    expect(lines[0]).not.toContain('dummy-agent-kulcs-nem-valodi-titok')
   })
 
   it('üres/whitespace érték → nem dob (hiánynak számít)', () => {
@@ -457,20 +458,25 @@ describe('assertRequiredEnv — a Barion-konfiguráció induláskori ellenőrzé
     expect(() => assertRequiredEnv()).toThrowError(/BARION_ENVIRONMENT/)
   })
 
-  it('az éles oldal címén futó teszt-Barion → warn-riasztás (de elindul)', () => {
+  // a-egyeztetes-6: a warn RIASZTÁS-ra erősödött (számlázás nélkül elindul).
+  it('az éles oldal címén futó teszt-Barion, számlázás nélkül → RIASZTÁS (de elindul)', () => {
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
     vi.stubEnv('BARION_ENVIRONMENT', 'test')
-    const warn = vi.fn()
+    const alert = vi.fn()
 
     for (const liveUrl of ['https://www.kineticare.hu', 'https://kineticare.hu/']) {
-      warn.mockClear()
+      alert.mockClear()
       vi.stubEnv('NEXT_PUBLIC_SERVER_URL', liveUrl)
-      expect(() => assertRequiredEnv(warn), liveUrl).not.toThrow()
+      expect(() => assertRequiredEnv(undefined, alert), liveUrl).not.toThrow()
+      const messages = alert.mock.calls.map((call) => String(call[0]))
       expect(
-        warn.mock.calls.map((call) => call[0]),
+        messages.some((message) => message.startsWith('RIASZTÁS: az oldal az éles címen fut')),
         liveUrl,
-      ).toContain('barion_teszt_kornyezet_az_eles_oldalon')
+      ).toBe(true)
+      expect(alert.mock.calls.map((call) => call[1])).toContainEqual({
+        valtozo: 'BARION_ENVIRONMENT',
+      })
     }
   })
 
@@ -480,18 +486,14 @@ describe('assertRequiredEnv — a Barion-konfiguráció induláskori ellenőrzé
     vi.stubEnv('BARION_ENVIRONMENT', 'test')
     const warn = vi.fn()
 
-    assertRequiredEnv(warn)
-    expect(warn.mock.calls.map((call) => call[0])).not.toContain(
-      'barion_teszt_kornyezet_az_eles_oldalon',
-    )
+    const alert = vi.fn()
+    assertRequiredEnv(warn, alert)
+    expect(alert).not.toHaveBeenCalled()
 
     stubLiveBarion()
     vi.stubEnv('NEXT_PUBLIC_SERVER_URL', 'https://www.kineticare.hu')
-    warn.mockClear()
-    assertRequiredEnv(warn)
-    expect(warn.mock.calls.map((call) => call[0])).not.toContain(
-      'barion_teszt_kornyezet_az_eles_oldalon',
-    )
+    assertRequiredEnv(warn, alert)
+    expect(alert).not.toHaveBeenCalled()
   })
 
   it('NEM production: a részletes Barion-ellenőrzés elmarad (álértékekkel is indul, napló nélkül)', () => {
@@ -790,5 +792,142 @@ describe('EMAIL_FROM — levélküldő mellett kötelező', () => {
     // Fejlesztés és CI: a noop-provider fut, nincs mit elrontani.
     vi.stubEnv('EMAIL_FROM', '')
     expect(() => assertRequiredEnv()).not.toThrow()
+  })
+})
+
+/**
+ * w1-barion-platform (6): az éles címen (https://www.kineticare.hu) a
+ * veszélyes kombinációk nem indulhatnak. Az éles napló (2026-09-24) szerint a
+ * mai állapot egyiket sem sérti: barionEnvironment 'prod', a workerek futnak.
+ * Az üzenet a változókat nevezi meg, az értékeket soha.
+ */
+describe('assertRequiredEnv — indulási őrök az éles címen', () => {
+  const LIVE_URL = 'https://www.kineticare.hu'
+  const SECRETISH_AGENT_KEY = 'dummy-agent-kulcs-ertek-nem-kerulhet-az-uzenetbe'
+
+  function stubLiveTestBarion(): void {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', LIVE_URL)
+    vi.stubEnv('BARION_ENVIRONMENT', 'test')
+    vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
+  }
+
+  function thrownMessage(run: () => void): string {
+    try {
+      run()
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+    return ''
+  }
+
+  it('teszt-Barion + bekapcsolt számlázás az éles címen → nem indul; változónevek, érték nélkül', () => {
+    stubLiveTestBarion()
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', SECRETISH_AGENT_KEY)
+    vi.stubEnv('SZAMLAZZ_AFAKULCS', 'AAM')
+
+    const message = thrownMessage(() => assertRequiredEnv(vi.fn(), vi.fn()))
+
+    expect(message).toMatch(/nem indulhat el/)
+    expect(message).toContain('BARION_ENVIRONMENT')
+    expect(message).toContain('SZAMLAZZ_AGENT_KEY')
+    expect(message).not.toContain(SECRETISH_AGENT_KEY)
+    expect(message).not.toContain(DUMMY_GUID_POS_KEY)
+  })
+
+  it('ugyanez nem éles címen (staging) elindul', () => {
+    stubLiveTestBarion()
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', DUMMY_SERVER_URL)
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', SECRETISH_AGENT_KEY)
+    vi.stubEnv('SZAMLAZZ_AFAKULCS', 'AAM')
+
+    expect(() => assertRequiredEnv(vi.fn(), vi.fn())).not.toThrow()
+  })
+
+  it('kikapcsolt job-workerek az éles címen nyugtázás nélkül → nem indul, a nyugtázó változót megnevezi', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', LIVE_URL)
+    vi.stubEnv('BARION_ENVIRONMENT', 'prod')
+    vi.stubEnv('BARION_API_URL', DUMMY_BARION_PROD_API_URL)
+    vi.stubEnv('BARION_POSKEY_PROD', DUMMY_GUID_POS_KEY)
+
+    for (const value of [undefined, 'false', 'TRUE']) {
+      vi.stubEnv('ENABLE_JOB_WORKERS', value)
+      const message = thrownMessage(() => assertRequiredEnv(vi.fn(), vi.fn()))
+      expect(message, String(value)).toMatch(/nem indulhat el/)
+      expect(message).toContain('ENABLE_JOB_WORKERS')
+      expect(message).toContain(`${JOB_WORKERS_OFF_CONFIRM_ENV}=igen`)
+      expect(message).toContain('egyetlen számla sem áll ki')
+    }
+  })
+
+  it('nyugtázással (JOB_WORKERS_OFF_CONFIRM=igen) elindul, de RIASZTÁS megy; más érték nem nyugtáz', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', LIVE_URL)
+    vi.stubEnv('BARION_ENVIRONMENT', 'prod')
+    vi.stubEnv('BARION_API_URL', DUMMY_BARION_PROD_API_URL)
+    vi.stubEnv('BARION_POSKEY_PROD', DUMMY_GUID_POS_KEY)
+    vi.stubEnv('ENABLE_JOB_WORKERS', undefined)
+
+    vi.stubEnv(JOB_WORKERS_OFF_CONFIRM_ENV, 'true')
+    expect(() => assertRequiredEnv(vi.fn(), vi.fn())).toThrowError(/nem indulhat el/)
+
+    vi.stubEnv(JOB_WORKERS_OFF_CONFIRM_ENV, 'igen')
+    const alert = vi.fn()
+    expect(() => assertRequiredEnv(vi.fn(), alert)).not.toThrow()
+    expect(alert.mock.calls.map((call) => String(call[0]))).toContainEqual(
+      expect.stringMatching(
+        /^RIASZTÁS: a job-workerek az éles címen tudatosan ki vannak kapcsolva/,
+      ),
+    )
+  })
+
+  it('nem éles címen a job-worker figyelmeztetés kimondja, hogy számla sem áll ki', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('BARION_ENVIRONMENT', 'test')
+    vi.stubEnv('ENABLE_JOB_WORKERS', undefined)
+    const warn = vi.fn()
+
+    assertRequiredEnv(warn, vi.fn())
+
+    const call = warn.mock.calls.find((entry) => entry[0] === 'job_workerek_kikapcsolva')
+    expect(JSON.stringify(call?.[1])).toContain('egyetlen számla sem áll ki')
+  })
+})
+
+describe('assertRequiredEnv — a SZAMLAZZ_AGENT_KEY kisbetűs kell legyen (r-szamlazz-14)', () => {
+  it.each(['production', 'development'])(
+    '%s: nagybetűs kulcs → RIASZTÁS a változó nevével, az érték nélkül',
+    (nodeEnv) => {
+      vi.stubEnv('NODE_ENV', nodeEnv)
+      if (nodeEnv === 'production') {
+        vi.stubEnv('BARION_ENVIRONMENT', 'test')
+        vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
+      }
+      vi.stubEnv('SZAMLAZZ_AFAKULCS', 'AAM')
+      vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'dummy-Nagybetus-Kulcs-Nem-Valodi')
+      const alert = vi.fn()
+
+      assertRequiredEnv(vi.fn(), alert)
+
+      const matching = alert.mock.calls.filter((call) =>
+        String(call[0]).includes('nagybetűt tartalmaz'),
+      )
+      expect(matching).toHaveLength(1)
+      expect(String(matching[0]?.[0])).toMatch(/^RIASZTÁS/)
+      expect(matching[0]?.[1]).toEqual({ valtozo: 'SZAMLAZZ_AGENT_KEY' })
+      expect(JSON.stringify(alert.mock.calls)).not.toContain('Nagybetus')
+    },
+  )
+
+  it('kisbetűs kulcsnál nincs ilyen riasztás', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('SZAMLAZZ_AFAKULCS', 'AAM')
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'dummy-kisbetus-kulcs-nem-valodi')
+    const alert = vi.fn()
+
+    assertRequiredEnv(vi.fn(), alert)
+
+    expect(alert).not.toHaveBeenCalled()
   })
 })

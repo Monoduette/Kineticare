@@ -1,18 +1,25 @@
 import type { Payload } from 'payload'
 
+import { liveJobInputs } from '../../jobs/live-jobs'
 import type { Order } from '../../payload-types'
-import { shouldEmitThrottledAlert } from '../alert-throttle'
+import { releaseThrottledAlert, shouldEmitThrottledAlert } from '../alert-throttle'
+import { emitAlert } from '../alerts/emit'
 import {
+  BARION_DEFAULT_PAYMENT_WINDOW,
   BarionApiError,
   fetchPaymentState,
   mapBarionPaymentStatus,
   type BarionPaymentStateResponse,
 } from '../barion'
+import { isBarionRateLimited } from '../barion/client'
 import {
   isBarionAuthFailure,
   isPaymentDefinitelyNotFound,
   isUnverifiedNotFound,
 } from '../barion-callback/process-callback'
+import { canonicalBarionGuid } from '../barion/guid'
+import { runRefundReconciliation } from '../barion-callback/refund-reconciliation'
+import { webhookEventStore } from '../idempotency'
 import { logger as rootLogger, type Logger } from '../logger'
 import { onOrderPaid, queueInvoiceIssueJob, type OrderPaidAccount } from '../order-paid'
 import {
@@ -27,6 +34,7 @@ import {
   type PaidRejectRecoveryResult,
 } from '../order-status/recover-paid-reject'
 import { getSzamlazzConfig } from '../szamlazz'
+import { paymentWindowToMs } from '../checkout/start-checkout'
 
 /**
  * order-poll — payment_pending utánpollolás GetState v4-gyel (callback mentőháló).
@@ -57,39 +65,136 @@ export const STUCK_ORDER_WARN_MS = 24 * 60 * 60 * 1000 // 24 óra
  * marad örökre payment_pending — a checkout ugyanerre azonnal új Startot enged.
  * Fék: ha a futásban egyetlen GetState sem sikerült, a lezárás a futás végi
  * útvonal-próbától függ (lásd closeDeferredNotFound a pollPendingOrders-ben).
- * Ha a legutóbb frissült paid rendelés GetState-je is elbukik, vagy egy
- * futásban MAX_LEADING_FAILURES vagy több ilyen sor jön, egyik sem zárul le.
+ * Ha a legutóbb frissült paid rendelés GetState-je is elbukik, vagy (próba-
+ * jelölt nélkül) egy futásban MAX_LEADING_FAILURES vagy több ilyen sor jön az
+ * első sikeres GetState előtt, egyik sem zárul le.
  */
 export const UNKNOWN_PAYMENT_CANCEL_AFTER_MS = 60 * 60 * 1000 // 1 óra
 /**
  * Ennyi idő után zárjuk le azt a függő rendelést, amelynek GetState-je puszta
- * (vagy ismeretlen kódú) HTTP 404-et ad — de CSAK akkor, ha ugyanabban a
- * futásban egy MÁSIK GetState sikeres volt (vagy a futás végi útvonal-próba,
- * lásd probeBarionRoute a pollPendingOrders-ben). A siker bizonyítja, hogy az
- * útvonal és a POSKey működik, tehát a 404 ennek az egy fizetésnek szól (pl.
- * a másik Barion-környezetben indult). Globális útvonalhibánál (minden hívás
- * 404) nincs siker, így semmi nem zárul le.
+ * (vagy ismeretlen kódú) HTTP 404-et ad — de CSAK akkor, ha bizonyítható, hogy
+ * a rendelés a mostani Barion-környezetben és boltban indult: a mostani
+ * beállítással egy előtte és egy utána indult fizetés GetState-je is sikeres
+ * (PR #304, lásd provesSameConfig a pollPendingOrders-ben). Globális
+ * útvonalhibánál (minden hívás 404) nincs siker, így semmi nem zárul le;
+ * környezet- vagy boltváltás után sem, mert a régi szomszéd GetState-je is
+ * elbukik.
  *
  * A 24 óra a 30 perces PaymentWindow sokszorosa: ennyi idő után a fizetés a
- * Barionnál biztosan lejárt vagy lezárult. Ha a Barion később mégis
- * Succeeded-et ad rá (pl. a környezet visszaváltása után), a late-success scan
- * a lezárt rendelést paid-re viszi, de CSAK a létrehozástól számított 7 napon
- * belül (LATE_SUCCESS_LOOKBACK_MS); egy ennél régebbi rendelés késői
- * Succeeded-jét semmi nem veszi fel automatikusan. Enélkül a lezárás nélkül a
- * sor örökre payment_pending maradna, és a pénztár a vevőnek erre a kurzusra
- * minden próbálkozásra 503-at adna.
+ * Barionnál biztosan lejárt vagy lezárult. Bizonyítás nélkül a sor
+ * payment_pending marad (fojtott RIASZTÁS, kézi döntés): a pénztár a vevőnek
+ * erre a kurzusra addig 503-at ad, ami egy ügyfélszolgálati levél, míg egy
+ * téves lezárás második terhelést okozhatna.
  */
 export const UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS = 24 * 60 * 60 * 1000 // 24 óra
 /**
  * R-03: a checkout cancel-and-restart cancelled rendelést hagy, a poll
- * pedig csak payment_pending-et nézett. A késői Barion Succeeded-et
- * ennyi ideig keressük (a 30 perces PaymentWindow + banki késés +
- * másnapi újrapróbálás belefér).
+ * pedig csak payment_pending-et nézett. A lezárt (cancelled / payment_failed)
+ * rendeléseket legfeljebb ennyi ideig nézzük. Ez a paid-reject automatikus
+ * visszatérítés újrapróbálásának ablaka is (src/lib/refund/automatic-retry.ts,
+ * AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS; az egyezést teszt őrzi): a Barion
+ * szerint sikeres, de nálunk elutasított fizetés sorát a scan eddig minden
+ * futásban újra elővezeti.
+ *
+ * A Barion szerint VÉGLEGESEN meghiúsult fizetést viszont nem pollozzuk hét
+ * napig (r-barion-6, a-checkout-5): lásd lateSuccessPollDue.
  */
 export const LATE_SUCCESS_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
 export const LATE_SUCCESS_BATCH_SIZE = 10
-/** Expired/no-op sorfej után ennyi pótlap kérhető ugyanabban a futásban (RF-3). */
+/** Egy futás legfeljebb (1 + ennyi) × LATE_SUCCESS_BATCH_SIZE lezárt sorra hív GetState-et. */
 export const LATE_SUCCESS_REFILL_PAGES = 1
+/**
+ * Ennyi lezárt sort olvasunk be futásonként (csak DB-olvasás, Barion-hívás
+ * nélkül); a legfiatalabbak jönnek elöl, hiszen az ellenőrzési pontok a fizetési
+ * ablak vége után 15 és 60 perccel vannak.
+ */
+export const LATE_SUCCESS_CANDIDATE_LIMIT = 500
+/** A Barion PaymentWindow (a checkout ezzel indítja a fizetést, start.ts). */
+export const LATE_SUCCESS_PAYMENT_WINDOW_MS = paymentWindowToMs(BARION_DEFAULT_PAYMENT_WINDOW)
+/**
+ * A két ellenőrzési pont a fizetési ablak vége után. A Barion ajánlása: „the
+ * PaymentState API should be called approximately 15 minutes after the payment
+ * window expires … the payment process may still be completed by the customer,
+ * even if the window has officially closed” (docs.barion.com/Callback_mechanism,
+ * Wayback 20260122005429). A második, +60 perces pont a késői banki lezárás
+ * tartaléka; utána a Barion szerint végleges (Canceled, Expired, Failed:
+ * „This is a final status, the payment can no longer be completed”,
+ * PaymentStatus) fizetést többé nem kérdezzük.
+ */
+export const LATE_SUCCESS_FIRST_CHECK_AFTER_WINDOW_MS = 15 * 60 * 1000
+export const LATE_SUCCESS_FINAL_CHECK_AFTER_WINDOW_MS = 60 * 60 * 1000
+
+/**
+ * A rendelés sávba eső legutóbbi visszatérítési időpontja (ms): a rendelés
+ * `refundedAt`-je (teljes visszatérítés) és a `refunds[].refundedAt` elemek
+ * (részleges is) közül; null, ha egyik sem esik a [sinceMs, untilMs] sávba.
+ */
+function latestRefundTimeInBand(order: Order, sinceMs: number, untilMs: number): number | null {
+  const candidates: unknown[] = [order.refundedAt]
+  const entries: unknown[] = Array.isArray(order.refunds) ? order.refunds : []
+  for (const entry of entries) {
+    if (typeof entry === 'object' && entry !== null) {
+      candidates.push((entry as { refundedAt?: unknown }).refundedAt)
+    }
+  }
+  let latest: number | null = null
+  for (const raw of candidates) {
+    if (typeof raw !== 'string') continue
+    const ms = Date.parse(raw)
+    if (!Number.isFinite(ms) || ms < sinceMs || ms > untilMs) continue
+    if (latest === null || ms > latest) latest = ms
+  }
+  return latest
+}
+
+/**
+ * Kell-e MOST GetState egy lezárt (cancelled / payment_failed) sorra?
+ *
+ * Új mező nélkül, a meglévő időbélyegekből (r-barion-6): a fizetési ablak vége
+ * a rendelés létrehozása + PaymentWindow. Az `updatedAt` a sor utolsó
+ * „lezárt” ellenőrzése: a scan CSAK akkor forgatja (írja újra) a sort, ha a
+ * Barion végleges, negatív választ adott (Canceled, Expired, Failed), vagy a
+ * fizetést nem ismeri (not-found kód, puszta 404), vagy a paid-reject végleg
+ * leállt. Így:
+ * - az ablak vége + 15 perc előtt nincs hívás (a callback úgyis jön);
+ * - az első pont (+15 perc) addig esedékes, amíg a sor e pont után nem forgott;
+ * - a második pont (+60 perc) után addig esedékes, amíg e pont után nem forgott.
+ * Végleges negatív válasz a második pont után: a sor többé nem esedékes. Minden
+ * más kimenet (függő státusz, Barion szerint sikeres, de nálunk elutasított
+ * fizetés, átmeneti hiba) nem forgat, tehát a sor futásról futásra esedékes
+ * marad: a paid-reject visszatérítés újrapróbálása (automatic-retry.ts) és a még
+ * folyamatban lévő fizetés továbbra is sorra kerül a 7 napos ablakban.
+ */
+export function lateSuccessPollDue(
+  order: Pick<Order, 'createdAt' | 'updatedAt'>,
+  now: number,
+): boolean {
+  const createdAtMs = Date.parse(order.createdAt ?? '')
+  if (!Number.isFinite(createdAtMs)) {
+    return true
+  }
+  const windowEndMs = createdAtMs + LATE_SUCCESS_PAYMENT_WINDOW_MS
+  const firstCheckMs = windowEndMs + LATE_SUCCESS_FIRST_CHECK_AFTER_WINDOW_MS
+  const finalCheckMs = windowEndMs + LATE_SUCCESS_FINAL_CHECK_AFTER_WINDOW_MS
+  if (now < firstCheckMs) {
+    return false
+  }
+  const updatedAtMs = Date.parse(order.updatedAt ?? '')
+  if (!Number.isFinite(updatedAtMs)) {
+    return true
+  }
+  return updatedAtMs < (now < finalCheckMs ? firstCheckMs : finalCheckMs)
+}
+
+/**
+ * A paid-reject helyreállítás VÉGLEGES leállásai (recover-paid-reject.ts,
+ * automatic-retry.ts): utánuk nincs következő automatikus kísérlet.
+ */
+const TERMINAL_PAID_REJECT_DETAILS: ReadonlySet<string> = new Set([
+  'automatic-refund-rejected',
+  'automatic-refund-attempts-exhausted',
+  'automatic-refund-window-closed',
+])
 /**
  * A futásszintű (nem rendeléshez kötött) Barion-riasztások fojtása: a futás
  * eleji mennyezet (függő lapok, late-success scan) és a late-success scan
@@ -98,6 +203,129 @@ export const LATE_SUCCESS_REFILL_PAGES = 1
  * óránként egy elég, a közbeeső futások warn-sort kapnak.
  */
 export const RUN_LEVEL_ALERT_COOLDOWN_MS = 60 * 60 * 1000 // 1 óra
+/**
+ * Árva rendelés (barionPaymentId nélkül) lezárása előtt ennyi, a rendelés
+ * idejéből származó, gazdátlan Barion-callback eseményt nézünk meg GetState-tel
+ * (a-callback-9, a-egyeztetes-12): a fizetés létrejöhetett, csak az azonosító
+ * mentése bukott el.
+ */
+export const ORPHAN_WEBHOOK_LOOKUP_LIMIT = 5
+/**
+ * Ha a gazdátlan esemény(ek) GetState-je hibázik, az árva rendelést ennyi
+ * idős koráig nem zárjuk le (a következő futás újra megnézi); utána RIASZTÁS
+ * mellett igen, hogy a sor ne ragadjon örökre függőben.
+ */
+export const ORPHAN_UNVERIFIED_HOLD_MS = 48 * 60 * 60 * 1000
+/**
+ * Visszatérítés utáni újraellenőrzés (r-barion-8, a-egyeztetes-2): egy kártyás
+ * visszatérítés napokkal később is meghiúsulhat (StornoUnSuccessfulRefundToBankCard).
+ * Minden visszatérítést nagyjából ennyi idő után egyszer újra egyeztetünk.
+ */
+export const REFUND_RECHECK_AFTER_MS = 7 * 24 * 60 * 60 * 1000
+/** Az újraellenőrzés sávja: a visszatérítés után 7 és 8 nap között. */
+export const REFUND_RECHECK_BAND_MS = 24 * 60 * 60 * 1000
+/** Futásonként legfeljebb ennyi visszatérítés újraellenőrzése (GetState-hívás). */
+export const REFUND_RECHECK_BATCH_SIZE = 5
+/**
+ * Ennyi jelöltet olvasunk be futásonként (csak DB-olvasás). A már ellenőrzött
+ * (fojtott) sorok nem fogyasztják a GetState-keretet, így a sáv 6. és további
+ * visszatérítése is sorra kerül a következő futásokban; csak egy napon belüli,
+ * ennél több visszatérítésnél maradhat ki sor.
+ */
+export const REFUND_RECHECK_CANDIDATE_LIMIT = 100
+/**
+ * Egy visszatérítés sávbeli újraellenőrzésére legfeljebb ennyi kísérlet jut
+ * (az elsővel együtt), ha a hiba átmeneti (lásd isTransientRefundRecheckFailure).
+ * Utána a sort ebben a sávban feladjuk, és egyetlen RIASZTÁS kéri a kézi
+ * ellenőrzést: egy tartós hiba így nem hív GetState-et 24 órán át 5 percenként.
+ */
+export const REFUND_RECHECK_MAX_ATTEMPTS = 3
+/**
+ * Két kísérlet között legalább ennyi idő telik el (rev3 átnézés): enélkül a
+ * három kísérlet három egymást követő, 5 perces futásra esne, és egy negyedórás
+ * Barion-kiesés a sáv összes visszatérítését kézi munkává tenné. A sáv elején
+ * induló első kísérlettel a három kísérlet (0, 6 és 12 óra) a 24 órás sávba
+ * esik. Ha a sávból már ennél kevesebb van hátra, nem várunk: a sor így a
+ * sávból kiesés előtt feladásig (és RIASZTÁS-ig) jut, nem tűnik el némán.
+ */
+export const REFUND_RECHECK_RETRY_GAP_MS = REFUND_RECHECK_BAND_MS / 4
+/**
+ * Ha a futás újraellenőrzése globális ok miatt áll meg (hitelesítési hiba,
+ * útvonalhibára utaló puszta 404, szállítási hiba, vagy a futás már a függő
+ * soroknál megszakadt), a sávból ennyi időn belül kieső, még le nem zárt
+ * visszatérítés sor-szintű RIASZTÁS-t kap, és a sávban többet nem próbáljuk.
+ * Így egy hosszú kiesés sem viheti ki a visszatérítést némán a sávból
+ * (rev3-rev2, BRK-X1). Az egy óra fedi a futások közti legrosszabb szünetet: a
+ * cron 5 perces, de egy futás a schedule-guard modellje szerint nagyjából egy
+ * óráig is tarthat. Globális megállás nélkül (egy sorra szóló átmeneti hiba,
+ * pl. 429) a sor a sávban újrapróbálható marad; ha közben mégis kiesik a
+ * sávból, a következő futás utólag küld róla sor-szintű RIASZTÁS-t
+ * (reason: 'sav-lejart', lásd refundRecheckFailures).
+ */
+export const REFUND_RECHECK_LAST_CHANCE_MS = 60 * 60 * 1000
+/**
+ * Az átmeneti hibával elbukott vagy kísérlet nélkül hátrébb tett, újrapróbálásra
+ * váró újraellenőrzések: fojtás-kulcs → eddigi sikertelen kísérletek, az utolsó
+ * hiba ideje és osztálya, valamint a RIASZTÁS-hoz szükséges rendelésadatok. A
+ * fojtás-kulcshoz hasonlóan folyamat-szintű (numReplicas: 1): újraindulás után
+ * a számlálás elölről indul, ami legfeljebb REFUND_RECHECK_MAX_ATTEMPTS további
+ * hívást jelent. Sikeres egyeztetés és feladás után a bejegyzés törlődik. Ami
+ * mégis bent marad, és a visszatérítése közben kiesett a sávból, arról a
+ * következő futás eleje utólag RIASZTÁS-t küld (reason: 'sav-lejart'), és
+ * törli: így a tár csak sávbeli visszatérítéseket tart, és egy sorra szóló
+ * átmeneti hiba a sáv utolsó perceiben sem viheti ki a sort némán (rev3-rev3).
+ * Újraindulás (pl. deploy) után a tár és a fojtás is üres. Két ismert
+ * következménye: egy Barion-kiesés alatti deploy utáni első globális megállás
+ * a sáv utolsó órájában már ellenőrzött visszatérítésről is küldhet
+ * 'globalis-hiba' RIASZTÁS-t (hamis riasztás, a biztonságos irányban); és ha
+ * egy hibázott sor az újraindulás és a következő futás között esik ki a
+ * sávból, az utólagos 'sav-lejart' RIASZTÁS elmarad.
+ */
+type RefundRecheckFailure = {
+  failures: number
+  lastFailureAt: number
+  failureClass: string
+  refundedAtMs: number
+  orderId: number
+  orderNumber: string | null
+  paymentId: string | null
+}
+const refundRecheckFailures = new Map<string, RefundRecheckFailure>()
+
+/**
+ * Megismételhető-e a heti újraellenőrzés hibája a sávon belül. Átmeneti: a
+ * szállítási hiba, az időtúllépés (a proxy HTTP 408-a is), az 5xx, a 429 (a
+ * PaymentState-kapu újrapróbálása után is), az értelmezhetetlen válasz, és
+ * minden nem Barion-eredetű hiba (a GetState-en kívül a szándék és a rendelés
+ * olvasása, azaz az adatbázis). Végleges: a Barion érdemi 4xx-es vagy
+ * provider-válasza (ismert not-found kód, egyéb elutasítás), amely a következő
+ * futásban is ugyanaz volna. Tipikus eset a NotExistingPaymentId egy
+ * sandbox-kori fizetésre a BARION_ENVIRONMENT=prod váltás után. A
+ * hitelesítési hibát és a puszta 404-et a hívó külön kezeli, mert globális is
+ * lehet (lásd recheckRefundsAfterWeek).
+ */
+function isTransientRefundRecheckFailure(error: unknown): boolean {
+  if (!(error instanceof BarionApiError)) {
+    return true
+  }
+  if (error.httpStatus === 408) {
+    return true
+  }
+  const failureClass = classifyBarionFailure(error)
+  if (failureClass === 'transport' || failureClass === 'rate-limited') {
+    return true
+  }
+  return failureClass === 'unknown' && error.kind === 'invalid_response'
+}
+/**
+ * A late-success scan két futásszintű RIASZTÁS-a (a mennyezet és az
+ * útvonal-gyanú) ugyanazt az állapotot jelzi: a lezárt sorok GetState-je
+ * globálisan elbukik. Közös fojtás-kulcs: mióta a lezárt sor ellenőrzési
+ * pontja lezárul (r-barion-6), egy globális hiba első futása a mennyezetet, a
+ * következő a maradék sorokon az útvonal-gyanút érheti el — egy óra alatt
+ * ugyanarról a hibáról egy RIASZTÁS elég.
+ */
+const LATE_SCAN_GLOBAL_ALERT_KEY = 'late-scan-global'
 export const INVOICE_RESWEEP_BATCH_SIZE = 10
 export const INVOICE_PENDING_STALE_MS = 10 * 60 * 1000 // 10 perc
 
@@ -178,14 +406,25 @@ export interface OrderPollDeps {
  *   függő sor, ha a futásban MÁSIK GetState vagy az útvonal-próba sikeres volt
  *   (UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS).
  */
-export type BarionFailureClass = 'auth' | 'order' | 'unverified-404' | 'transport' | 'unknown'
+export type BarionFailureClass =
+  'auth' | 'order' | 'unverified-404' | 'transport' | 'rate-limited' | 'unknown'
 
+/**
+ * - `rate-limited`: HTTP 429 a PaymentState-kapu egyszeri, késleltetett
+ *   újrapróbálása után is (a-callback-8). Átmeneti, EGY fizetésre szóló fojtás:
+ *   nem szállítási hiba (nem számít a megszakítási sorozatba), nem
+ *   konfigurációs jel (nem számít a futás eleji mennyezetbe), a sor nem forog,
+ *   a következő futás újra megpróbálja.
+ */
 export function classifyBarionFailure(error: unknown): BarionFailureClass {
   if (!(error instanceof BarionApiError)) {
     return 'unknown'
   }
   if (isBarionAuthFailure(error)) {
     return 'auth'
+  }
+  if (isBarionRateLimited(error)) {
+    return 'rate-limited'
   }
   if (error.kind === 'timeout' || error.kind === 'network') {
     return 'transport'
@@ -258,6 +497,26 @@ async function resweepInvoices(
   const queueInvoice =
     deps.queueInvoice ?? ((orderId: number) => queueInvoiceIssueJob(deps.payload, orderId, log))
 
+  // Hibavadász B (PR #307): az order-poll a saját queue-jában minden tickben
+  // lefut, az order-maintenance queue viszont tickenként csak három jobot
+  // vesz fel. Ha a resweep a már élő (sorban álló, újrapróbáló vagy futó)
+  // számlajobú rendelést is újra sorba állítaná, egy Számlázz.hu-kimaradás
+  // alatt rendelésenként tucatnyi duplikátum gyűlne össze, és a helyesbítő- és
+  // stornójobok órákig várnának mögöttük. Ha az élő jobok nem olvashatók, a
+  // resweep szűrés nélkül fut: a számla-kiállítás maga idempotens.
+  const liveInvoiceOrderIds = new Set<unknown>()
+  if (candidates.docs.length > 0) {
+    try {
+      for (const input of await liveJobInputs(deps.payload, 'invoice-issue', now)) {
+        liveInvoiceOrderIds.add(input.orderId)
+      }
+    } catch (error) {
+      log.warn('order-poll: az élő számlajobok nem olvashatók, a resweep szűrés nélkül fut', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   // A megpróbált és az elbukott sorba állítások száma. A kettő egyezése az
   // EGYETLEN jel arról, hogy a job-sor maga nem működik: ilyenkor a
   // `invoiceRequeued: 0` NEM azt jelenti, hogy nem volt teendő.
@@ -270,6 +529,9 @@ async function resweepInvoices(
       if (Number.isFinite(updatedAtMs) && now - updatedAtMs < INVOICE_PENDING_STALE_MS) {
         continue // friss pending — valószínűleg most dolgozik rajta egy worker
       }
+    }
+    if (liveInvoiceOrderIds.has(order.id)) {
+      continue // már van élő számlajobja: az fut le, új nem kell mellé
     }
     attempted += 1
     const queued = await queueInvoice(order.id)
@@ -311,21 +573,16 @@ function pendingOrdersWhere(excludeIds: ReadonlyArray<number>):
   }
 }
 
-function lateSuccessOrdersWhere(
-  sinceIso: string,
-  excludeIds: ReadonlyArray<number>,
-): {
+function lateSuccessOrdersWhere(sinceIso: string): {
   and: Array<Record<string, unknown>>
 } {
-  const filters: Array<Record<string, unknown>> = [
-    { status: { in: ['cancelled', 'payment_failed'] } },
-    { createdAt: { greater_than_equal: sinceIso } },
-    { barionPaymentId: { exists: true } },
-  ]
-  if (excludeIds.length > 0) {
-    filters.push({ id: { not_in: [...excludeIds] } })
+  return {
+    and: [
+      { status: { in: ['cancelled', 'payment_failed'] } },
+      { createdAt: { greater_than_equal: sinceIso } },
+      { barionPaymentId: { exists: true } },
+    ],
   }
-  return { and: filters }
 }
 
 /**
@@ -356,13 +613,19 @@ interface DeferredNotFound {
  * - `proved`: a jelölt GetState-je sikeres, az útvonal és a POSKey működik;
  * - `failed`: van jelölt, de a GetState-je hibát adott;
  * - `no-candidate`: nincs Barion-azonosítós paid rendelés (új bolt);
- * - `unreadable`: a jelölt lekérdezése elbukott (DB-hiba), nem tudjuk, van-e.
+ * - `unreadable`: a jelölt lekérdezése elbukott (DB-hiba), nem tudjuk, van-e;
+ * - `inconclusive`: a jelölt GetState-je átmeneti hibát adott (timeout,
+ *   hálózat, 5xx, 429). Egyetlen átmeneti hiba nem bizonyít globális útvonal-
+ *   vagy konfigurációs hibát: döntés nincs, a sor marad, RIASZTÁS nem megy
+ *   (fix-404 breaker P-A, P-B).
  */
-type RouteProbeOutcome = 'proved' | 'failed' | 'no-candidate' | 'unreadable'
+type RouteProbeOutcome = 'proved' | 'failed' | 'no-candidate' | 'unreadable' | 'inconclusive'
 
 interface RouteProbeResult {
   outcome: RouteProbeOutcome
   probeOrderId: number | null
+  /** A bizonyító (sikeres) jelölt létrehozásának ideje (PR #304: környezet-bizonyítás). */
+  probeCreatedAtMs: number | null
   failureClass: BarionFailureClass | null
   httpStatus: number | null
 }
@@ -466,6 +729,25 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
   let lateUnverifiedNotFound = 0
   /** Az útvonal-próba eredménye; null, amíg nem futott (lásd probeBarionRoute). */
   let routeProbe: RouteProbeResult | null = null
+  /**
+   * Hány függő sorra jött not-found kód az első sikeres GetState ELŐTT ebben a
+   * futásban, a sor korától függetlenül (fix-404 X2). A próba-jelölt nélküli
+   * fék ezt számolja: globális félrekonfigurálásnál a fiatal sorok is ide
+   * esnek, így a szétszórt korú sorok sem csúsznak át futásonként egyenként.
+   */
+  let notFoundBeforeSuccess = 0
+  /**
+   * A futás sikeres GetState-jeinek rendelés-létrehozási ideje (PR #304): a
+   * puszta 404-es régi sor lezárásához ezekből kell bizonyítani, hogy a sor a
+   * mostani Barion-környezetben és boltban indult (lásd provesSameConfig).
+   */
+  const successCreatedAtMs: number[] = []
+  const recordSuccess = (order: Order): void => {
+    const createdAtMs = Date.parse(order.createdAt ?? '')
+    if (Number.isFinite(createdAtMs)) {
+      successCreatedAtMs.push(createdAtMs)
+    }
+  }
 
   const providerErrorCodesOf = (error: unknown): string[] =>
     error instanceof BarionApiError
@@ -487,14 +769,28 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         'a rendelést most NEM zárjuk le, a következő futás újrapróbálja. Ha minden rendelésnél ' +
         'ez jön, ellenőrizd a BARION_API_URL-t és a PaymentState-útvonalat. Ha csak ennél, a ' +
         'fizetés valószínűleg a másik Barion-környezetben indult (BARION_ENVIRONMENT-váltás): ' +
-        'a 24 óránál régebbi függő sort a poll lezárja, amint ugyanabban a futásban egy másik ' +
-        'GetState vagy az útvonal-próba sikeres.',
+        'a 24 óránál régebbi függő sort a poll csak akkor zárja le, ha bizonyítható, hogy a ' +
+        'mostani Barion-környezetben és boltban indult.',
       {
         orderStatus: order.status ?? null,
         httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
         providerErrorCodes: providerErrorCodesOf(error),
       },
     )
+  }
+
+  /**
+   * A futás hitelesítési / szállítási megszakításának RIASZTÁS-a futásszintű
+   * állapot: tartós oknál (lejárt kulcs, órás Barion-kiesés) minden 5 perces
+   * futás ide ér, ezért fojtott; a közbeeső futások warn-sort kapnak
+   * (fix-404 breaker, 5. pont).
+   */
+  const alertRunAbort = (key: string, message: string, context: Record<string, unknown>): void => {
+    if (shouldEmitThrottledAlert(key, RUN_LEVEL_ALERT_COOLDOWN_MS, now)) {
+      log.error(message, context)
+    } else {
+      log.warn('order-poll: a futás ismét megszakadt (a RIASZTÁS fojtva)', { key, ...context })
+    }
   }
 
   // Az updatedAt a meglévő sorforgatási óra. Egy sikertelen touch nem lehet
@@ -536,8 +832,10 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             )
           }
         }
+        await rotateOrder(order)
       }
-      await rotateOrder(order)
+      // Lezárt sornál a függő Barion-státusz nem forgat: a sor esedékes marad
+      // (lateSuccessPollDue), a következő futás újra rákérdez.
       return
     }
 
@@ -549,6 +847,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       log: orderLog,
     })
     let recoveryFailed = false
+    let terminalPaidReject = false
 
     if (transition.transitionedToPaid) {
       await onPaid(
@@ -595,12 +894,40 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         })
         orderLog.info('paid-reject recovery lefutott', recoveryCtx)
         if (recovery.action === 'failed') {
-          recoveryFailed = recovery.detail !== 'refund-pending-reconciliation'
-          if (recoveryFailed) {
-            orderLog.error(
-              'RIASZTÁS: paid-reject recovery sikertelen — a következő futás újra ellenőrzi',
-              recoveryCtx,
-            )
+          const detail = recovery.detail ?? 'unknown'
+          terminalPaidReject = TERMINAL_PAID_REJECT_DETAILS.has(detail)
+          recoveryFailed = detail !== 'refund-pending-reconciliation' && !terminalPaidReject
+          if (terminalPaidReject) {
+            // Végleges leállás (az automatika maga is riasztott róla): nincs
+            // következő futás, amely újrapróbálná. Rendelésenként és okonként
+            // fojtva, és a sor forog, hogy ne ragadjon a lap elején.
+            if (
+              shouldEmitThrottledAlert(`paid-reject-terminal:${order.id}:${detail}`, undefined, now)
+            ) {
+              orderLog.error(
+                'RIASZTÁS: paid-reject recovery véglegesen leállt — a rendszer ezt a rendelést ' +
+                  'automatikusan nem próbálja újra, kézi egyeztetés szükséges',
+                recoveryCtx,
+              )
+            }
+          } else if (recoveryFailed) {
+            // A következő futás valóban újra ellenőrzi, de a riasztás
+            // rendelésenként és okonként fojtott: egy tartós ok (pl.
+            // historical-refund-reconciliation-required) különben 5 percenként
+            // új error-sort írna ugyanarra a nyitott ügyre.
+            if (
+              shouldEmitThrottledAlert(`paid-reject-failed:${order.id}:${detail}`, undefined, now)
+            ) {
+              orderLog.error(
+                'RIASZTÁS: paid-reject recovery sikertelen — a következő futás újra ellenőrzi',
+                recoveryCtx,
+              )
+            } else {
+              orderLog.warn(
+                'paid-reject recovery továbbra is sikertelen (a riasztás fojtva) — a következő futás újra ellenőrzi',
+                recoveryCtx,
+              )
+            }
           } else if (shouldEmitThrottledAlert(`refund-reconcile:${order.id}`, undefined, now)) {
             // A tartós refund-egyeztetés állapota futásról futásra ugyanaz: a
             // riasztás FOJTOTT (mint a 24 órás beragadásé), különben 5
@@ -621,10 +948,14 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       })
     }
 
+    // Lezárt sor: CSAK a Barion végleges, negatív válasza (Canceled, Expired,
+    // Failed) és a véglegesen leállt paid-reject forgat — ez zárja a sor
+    // ellenőrzési pontját (lateSuccessPollDue). A Barion szerint sikeres, de
+    // elutasított fizetés sora esedékes marad a visszatérítés újrapróbálásáig.
     if (
-      !recoveryFailed &&
       isLateSuccessSourceStatus(statusBefore) &&
-      !transition.transitionedToPaid
+      !transition.transitionedToPaid &&
+      (mapped === 'cancelled' || terminalPaidReject)
     ) {
       await rotateOrder(order)
     }
@@ -663,6 +994,140 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     )
   }
 
+  /**
+   * Árva rendelés (barionPaymentId nélkül) lezárása ELŐTT: van-e a rendelés
+   * idejéből gazdátlan Barion-callback esemény, amelynek a (Barion által
+   * hitelesített) PaymentState-je szerint a PaymentRequestId épp ez a
+   * rendelésszám (a-callback-9). Ilyenkor a fizetés létrejött, csak az
+   * azonosító mentése bukott el a pénztárban: az azonosítót pótoljuk, és a
+   * rendelés a szokásos állapotgépen megy tovább (pl. Succeeded → paid).
+   * - 'adopted': pótolva és feldolgozva;
+   * - 'conflict': a fizetés már egy MÁSIK rendeléshez kötött (RIASZTÁS, nincs lezárás);
+   * - 'unverifiable': egy jelölt GetState-je hibázott, nem tudjuk eldönteni;
+   * - 'none': nincs ilyen fizetés, a lezárás mehet.
+   */
+  const findOrphanPayment = async (
+    order: Order,
+    orderLog: Logger,
+  ): Promise<'adopted' | 'conflict' | 'unverifiable' | 'none'> => {
+    const createdAtMs = Date.parse(order.createdAt ?? '')
+    const orderNumber = order.orderNumber
+    if (!Number.isFinite(createdAtMs) || typeof orderNumber !== 'string') {
+      return 'none'
+    }
+    const store = webhookEventStore(deps.payload)
+    let events: Array<{ externalId: string }>
+    try {
+      const found = await store.find({
+        collection: 'webhook-events',
+        where: {
+          and: [
+            { provider: { equals: 'barion' } },
+            { createdAt: { greater_than_equal: new Date(createdAtMs - 5 * 60_000).toISOString() } },
+            {
+              createdAt: {
+                less_than_equal: new Date(createdAtMs + ORPHAN_ORDER_GRACE_MS).toISOString(),
+              },
+            },
+            { or: [{ result: { not_in: ['paid', 'cancelled'] } }, { result: { exists: false } }] },
+          ],
+        },
+        sort: 'createdAt',
+        limit: ORPHAN_WEBHOOK_LOOKUP_LIMIT,
+        overrideAccess: true,
+      })
+      events = found.docs
+    } catch (error) {
+      orderLog.warn('árva rendelés: a Barion-callback események nem olvashatók', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return 'unverifiable'
+    }
+    let unverifiable = false
+    for (const event of events) {
+      const paymentId = canonicalBarionGuid(event.externalId)
+      if (paymentId === null) continue
+      const linked = await deps.payload.find({
+        collection: 'orders',
+        where: { barionPaymentId: { equals: paymentId } },
+        limit: 1,
+        depth: 0,
+        overrideAccess: true,
+      } as unknown as Parameters<Payload['find']>[0])
+      if (linked.docs.length > 0) continue
+      let state: BarionPaymentStateResponse
+      try {
+        state = await fetchState(paymentId)
+      } catch (error) {
+        // A Barion a JELENLEGI konfigurációval nem ismeri a fizetést (ismert
+        // not-found kód, pl. NotExistingPaymentId): hamis GUID, vagy egy másik
+        // Barion-környezet fizetése. Utóbbi egy BARION_ENVIRONMENT-váltás után
+        // akár épp ennek az árva rendelésnek a fizetése is lehet, ezt a
+        // jelenlegi konfigurációval nem tudjuk eldönteni. A jelölt kiesik, a
+        // lezárás nem vár miatta (a callback útja az esemény elutasításakor
+        // már RIASZTÁS-t adott); a warn-sor a kihagyás nyoma a kézi
+        // egyeztetéshez, rendelésenként és fizetésenként naponta egyszer.
+        if (error instanceof BarionApiError && isPaymentDefinitelyNotFound(error)) {
+          if (
+            shouldEmitThrottledAlert(
+              `orphan-candidate-not-found:${order.id}:${paymentId}`,
+              24 * 60 * 60 * 1000,
+              now,
+            )
+          ) {
+            orderLog.warn(
+              'árva rendelés: egy gazdátlan Barion-eseményt a Barion a jelenlegi ' +
+                'környezetben nem ismer — a jelölt kimarad (környezetváltás után a másik ' +
+                'környezet fizetése is lehet)',
+              { paymentId, failureClass: classifyBarionFailure(error) },
+            )
+          }
+          continue
+        }
+        unverifiable = true
+        orderLog.warn('árva rendelés: egy gazdátlan Barion-esemény GetState-je hibát adott', {
+          paymentId,
+          failureClass: classifyBarionFailure(error),
+        })
+        continue
+      }
+      if (state.PaymentRequestId !== orderNumber) continue
+      const fresh = await deps.payload.findByID({
+        collection: 'orders',
+        id: order.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      if ((fresh as Order).barionPaymentId) {
+        return 'adopted'
+      }
+      try {
+        await deps.payload.update({
+          collection: 'orders',
+          id: order.id,
+          data: { barionPaymentId: paymentId },
+          overrideAccess: true,
+        })
+      } catch (error) {
+        orderLog.error(
+          'RIASZTÁS: árva rendeléshez tartozó Barion-fizetés található, de az azonosító nem ' +
+            'menthető a rendelésre (valószínűleg egy másik rendeléshez kötött) — a rendelés NEM ' +
+            'zárul le, kézi egyeztetés szükséges',
+          { paymentId, error: error instanceof Error ? error.message : String(error) },
+        )
+        return 'conflict'
+      }
+      orderLog.warn(
+        'árva rendelés: a Barion-callback eseményéből a fizetés azonosítója pótolva (a pénztár ' +
+          'nem tudta menteni) — a rendelés a szokásos állapotgépen megy tovább',
+        { paymentId, barionStatus: state.Status },
+      )
+      await applyMappedState({ ...order, barionPaymentId: paymentId }, state, orderLog)
+      return 'adopted'
+    }
+    return unverifiable ? 'unverifiable' : 'none'
+  }
+
   const processPendingPage = async (pendingOrders: Order[]): Promise<PendingPageDecision> => {
     for (let index = 0; index < pendingOrders.length; index += 1) {
       const order = pendingOrders[index]
@@ -674,6 +1139,25 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         // rendelés létrehozása után, a paymentId mentése előtt állt le).
         const createdAtMs = Date.parse(order.createdAt ?? '')
         if (Number.isFinite(createdAtMs) && now - createdAtMs >= ORPHAN_ORDER_GRACE_MS) {
+          const lookup = barionAborted ? 'unverifiable' : await findOrphanPayment(order, orderLog)
+          if (lookup === 'adopted' || lookup === 'conflict') {
+            continue
+          }
+          if (lookup === 'unverifiable' && now - createdAtMs < ORPHAN_UNVERIFIED_HOLD_MS) {
+            summary.skipped += 1
+            orderLog.warn(
+              'árva rendelés: a gazdátlan Barion-események ellenőrzése nem sikerült — a lezárás a következő futásra marad',
+            )
+            continue
+          }
+          if (lookup === 'unverifiable') {
+            orderLog.error(
+              'RIASZTÁS: árva rendelés (barionPaymentId nélkül) lezárva, de a rendelés idejéből ' +
+                'származó Barion-callback esemény(ek) GetState-je nem volt ellenőrizhető. Nézd meg ' +
+                'a Barion felületén, van-e ehhez a rendelésszámhoz sikeres fizetés.',
+              { ageMs: now - createdAtMs },
+            )
+          }
           const cancelledWritten = await updateOrderStatusIfCurrent({
             payload: deps.payload,
             orderId: order.id,
@@ -701,6 +1185,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         state = await fetchState(order.barionPaymentId)
         consecutiveTransportFailures = 0
         hadSuccessfulCall = true
+        recordSuccess(order)
       } catch (error) {
         summary.failed += 1
         orderLog.warn('order-poll: GetState-hiba (a következő futás újrapollolja)', {
@@ -716,7 +1201,8 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
           // Hitelesítési hiba: a maradék hívás garantáltan ugyanígy elhasal.
           summary.skipped += remaining
           barionAborted = true
-          log.error(
+          alertRunAbort(
+            'barion-abort:auth',
             'RIASZTÁS: Barion hitelesítési hiba (rossz vagy lejárt POSKey) — a futás azonnal ' +
               'megszakadt, a maradék függő rendelés érintetlen. Ellenőrizd a Barion-környezetet ' +
               'és a POSKey-t; a következő ütemezett futás újrapróbálja.',
@@ -725,12 +1211,20 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
           return 'abort'
         }
 
+        if (failureClass === 'rate-limited') {
+          // Egy fizetésre szóló, átmeneti Barion-fojtás: a sor marad, a
+          // következő futás újra megpróbálja; se forgatás, se mennyezet.
+          consecutiveTransportFailures = 0
+          continue
+        }
+
         if (failureClass === 'transport') {
           consecutiveTransportFailures += 1
           if (consecutiveTransportFailures >= MAX_CONSECUTIVE_TRANSPORT_FAILURES) {
             summary.skipped += remaining
             barionAborted = true
-            log.error(
+            alertRunAbort(
+              'barion-abort:transport',
               `RIASZTÁS: ${MAX_CONSECUTIVE_TRANSPORT_FAILURES} egymást követő Barion-hiba ` +
                 '(timeout / hálózat / 5xx) — a futás megszakadt, a maradék függő rendelés ' +
                 'érintetlen. Valószínűleg szolgáltatói kimaradás; a következő ütemezett futás ' +
@@ -748,6 +1242,9 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
 
         if (failureClass === 'order') {
           consecutiveTransportFailures = 0
+          if (!hadSuccessfulCall && order.status === 'payment_pending') {
+            notFoundBeforeSuccess += 1
+          }
           const createdAtMs = Date.parse(order.createdAt ?? '')
           const ageMs = now - createdAtMs
           const definitelyUnknown =
@@ -803,7 +1300,17 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             }
             // Futásszintű állapot: tartós oknál (pl. öt, a másik
             // környezetből maradt függő sor) minden futás ide ér, ezért fojtott.
-            if (
+            // Ha az útvonal-próba bizonyítja, hogy az útvonal és a POSKey
+            // működik, a hibák ezekre a sorokra szólnak: warn, nem RIASZTÁS
+            // (fix-404 breaker P-D, a late-ceiling X1 párja).
+            if ((await probeBarionRoute()) === 'proved') {
+              log.warn(
+                'order-poll: a függő lapok elérték a futás eleji mennyezetet, de az útvonal-próba ' +
+                  'sikeres — a hibák ezekre a sorokra szólnak; a maradék függő rendelés erre a ' +
+                  'futásra kimarad',
+                { ...ceilingContext, ...routeProbeContext() },
+              )
+            } else if (
               shouldEmitThrottledAlert('leading-ceiling:pending', RUN_LEVEL_ALERT_COOLDOWN_MS, now)
             ) {
               log.error(
@@ -850,32 +1357,54 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       log.warn('order-poll: az útvonal-próba jelöltje nem olvasható', {
         error: error instanceof Error ? error.message : String(error),
       })
-      return { outcome: 'unreadable', probeOrderId: null, failureClass: null, httpStatus: null }
+      return {
+        outcome: 'unreadable',
+        probeOrderId: null,
+        probeCreatedAtMs: null,
+        failureClass: null,
+        httpStatus: null,
+      }
     }
     const probePaymentId = probeOrder?.barionPaymentId
     if (!probeOrder || typeof probePaymentId !== 'string' || probePaymentId.length === 0) {
-      return { outcome: 'no-candidate', probeOrderId: null, failureClass: null, httpStatus: null }
+      return {
+        outcome: 'no-candidate',
+        probeOrderId: null,
+        probeCreatedAtMs: null,
+        failureClass: null,
+        httpStatus: null,
+      }
     }
     try {
       await fetchState(probePaymentId)
       log.info('order-poll: útvonal-próba sikeres (egy paid rendelés GetState-je)', {
         probeOrderId: probeOrder.id,
       })
+      const probeCreatedAtMs = Date.parse(probeOrder.createdAt ?? '')
       return {
         outcome: 'proved',
         probeOrderId: probeOrder.id,
+        probeCreatedAtMs: Number.isFinite(probeCreatedAtMs) ? probeCreatedAtMs : null,
         failureClass: null,
         httpStatus: null,
       }
     } catch (error) {
+      // Egyszer osztályozunk: az átmeneti hiba (szállítás, 429) nem döntés.
+      const failureClass = classifyBarionFailure(error)
       const failed: RouteProbeResult = {
-        outcome: 'failed',
+        outcome:
+          failureClass === 'transport' || failureClass === 'rate-limited'
+            ? 'inconclusive'
+            : 'failed',
         probeOrderId: probeOrder.id,
-        failureClass: classifyBarionFailure(error),
+        probeCreatedAtMs: null,
+        failureClass,
         httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
       }
       log.warn(
-        'order-poll: útvonal-próba sikertelen (egy paid rendelés GetState-je is hibát adott)',
+        failed.outcome === 'inconclusive'
+          ? 'order-poll: útvonal-próba eldöntetlen (átmeneti hiba a paid rendelés GetState-jén)'
+          : 'order-poll: útvonal-próba sikertelen (egy paid rendelés GetState-je is hibát adott)',
         {
           probeOrderId: failed.probeOrderId,
           failureClass: failed.failureClass,
@@ -912,6 +1441,134 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     probeFailureClass: routeProbe?.failureClass ?? null,
     probeHttpStatus: routeProbe?.httpStatus ?? null,
   })
+
+  /**
+   * PR #304 (Codex P1): egy puszta 404 csak akkor zárhat le egy régi függő
+   * rendelést, ha bizonyítható, hogy a rendelés a MOSTANI Barion-környezetben és
+   * boltban indult. Ha a BARION_ENVIRONMENT vagy a POSKey / bolt a rendelés óta
+   * változott, a fizetés a mostani beállítással 404-et ad, holott a régiben
+   * sikeres lehetett; a lezárás újranyitná a pénztárat (második terhelés), és a
+   * late-success scan ugyanazzal a beállítással sem találná meg az elsőt.
+   *
+   * A rendelésen még nincs rögzítve az indítási környezet (w3-schema-fin:
+   * orders.barionEnvironment / barionPosId). Addig a meglévő adatból ez
+   * bizonyítható: a mostani beállítással SIKERES GetState egy fizetésre, amely a
+   * rendelés ELŐTT (vagy vele egy időben) indult, és egy másikra, amely UTÁNA.
+   * Egy fizetés GetState-je csak abban a környezetben és azzal a bolttal
+   * sikeres, amelyben indult, tehát mindkét szomszéd a mostani beállítással
+   * indult. Az egyetlen kimaradó eset, ha a beállítás a két szomszéd között
+   * oda-vissza váltott (A → B → A), és a rendelés épp a B-szakaszra esett.
+   *
+   * A mérlegelés: egy be nem zárt függő sor legfeljebb egy ügyfélszolgálati
+   * levelet és egy (fojtott) RIASZTÁS-t okoz, egy téves lezárás viszont második
+   * terhelést. Bizonyíték nélkül ezért a sor függő marad, és kézi döntés kell.
+   */
+  const provesSameConfig = (createdAtMs: number): boolean =>
+    Number.isFinite(createdAtMs) &&
+    successCreatedAtMs.some((successMs) => successMs <= createdAtMs) &&
+    successCreatedAtMs.some((successMs) => successMs >= createdAtMs)
+
+  /**
+   * A hiányzó szomszéd(ok) pótlása legfeljebb két GetState-tel: a legkorábbi
+   * érintett rendelés ELŐTT indult legutóbbi, és a legkésőbbi UTÁN indult első
+   * fizetett rendelés. Auth / szállítási megszakítás után nem fut.
+   */
+  const bracketSameConfigProof = async (targets: DeferredNotFound[]): Promise<void> => {
+    if (barionAborted) {
+      return
+    }
+    const createdAts = targets
+      .map(({ order }) => Date.parse(order.createdAt ?? ''))
+      .filter((value) => Number.isFinite(value))
+    const needBefore = createdAts.filter((t) => !successCreatedAtMs.some((s) => s <= t))
+    const needAfter = createdAts.filter((t) => !successCreatedAtMs.some((s) => s >= t))
+    const probeNeighbour = async (side: 'before' | 'after', boundaryMs: number): Promise<void> => {
+      let candidate: Order | undefined
+      try {
+        const result = await deps.payload.find({
+          collection: 'orders',
+          where: {
+            and: [
+              { status: { equals: 'paid' } },
+              { barionPaymentId: { exists: true } },
+              side === 'before'
+                ? { createdAt: { less_than_equal: new Date(boundaryMs).toISOString() } }
+                : { createdAt: { greater_than_equal: new Date(boundaryMs).toISOString() } },
+            ],
+          },
+          sort: side === 'before' ? '-createdAt' : 'createdAt',
+          limit: 1,
+          depth: 0,
+          overrideAccess: true,
+        } as unknown as Parameters<Payload['find']>[0])
+        candidate = (result.docs as Order[])[0]
+      } catch (error) {
+        log.warn('order-poll: a környezet-bizonyítás szomszédja nem olvasható', {
+          side,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return
+      }
+      const candidateCreatedAtMs = Date.parse(candidate?.createdAt ?? '')
+      const onRightSide =
+        Number.isFinite(candidateCreatedAtMs) &&
+        (side === 'before'
+          ? candidateCreatedAtMs <= boundaryMs
+          : candidateCreatedAtMs >= boundaryMs)
+      const paymentId = candidate?.barionPaymentId
+      if (!candidate || !onRightSide || typeof paymentId !== 'string' || paymentId.length === 0) {
+        return
+      }
+      // Az útvonal-próba ugyanezt a rendelést már megkérdezte ebben a futásban:
+      // a sikere már a bizonyítékok között van, a hibáját nem ismételjük.
+      if (candidate.id === routeProbe?.probeOrderId) {
+        return
+      }
+      try {
+        await fetchState(paymentId)
+        successCreatedAtMs.push(candidateCreatedAtMs)
+      } catch (error) {
+        log.warn('order-poll: a környezet-bizonyítás szomszédjának GetState-je hibát adott', {
+          side,
+          probeOrderId: candidate.id,
+          failureClass: classifyBarionFailure(error),
+        })
+      }
+    }
+    if (needBefore.length > 0) {
+      await probeNeighbour('before', Math.min(...needBefore))
+    }
+    if (needAfter.length > 0) {
+      await probeNeighbour('after', Math.max(...needAfter))
+    }
+  }
+
+  /** Bizonyíték nélküli, puszta 404-es régi függő sor: marad, rendelésenként fojtott RIASZTÁS. */
+  const alertUnprovenBareNotFound = (
+    order: Order,
+    orderLog: Logger,
+    error: unknown,
+    ageMs: number,
+  ): void => {
+    if (!shouldEmitThrottledAlert(`barion-unverified-404-unproven:${order.id}`, undefined, now)) {
+      return
+    }
+    orderLog.error(
+      'RIASZTÁS: 24 óránál régebbi függő rendelés: a Barion HTTP 404-et ad a fizetésére, de nem ' +
+        'bizonyítható, hogy a rendelés a mostani Barion-környezetben és boltban indult (a ' +
+        'BARION_ENVIRONMENT vagy a POSKey azóta változhatott). A rendelést NEM zárjuk le, mert ' +
+        'egy téves lezárás újranyitná a pénztárat, és második terhelést okozhatna. Nézd meg a ' +
+        'fizetést a Barion felületén (mindkét környezetben); ha nem fizették ki, a rendelés ' +
+        'lezárásáról kézzel kell dönteni.',
+      {
+        orderNumber: order.orderNumber ?? null,
+        ageMs,
+        httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
+        providerErrorCodes: providerErrorCodesOf(error),
+        ...routeProbeContext(),
+      },
+    )
+  }
 
   /**
    * A futás végén eldőlő lezárások. A sorrend mindegy (a bizonyító sikeres
@@ -952,7 +1609,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
 
     if (deferredDefinitiveNotFound.length > 0) {
       const closeWithoutProof =
-        probe === 'no-candidate' && deferredDefinitiveNotFound.length < MAX_LEADING_FAILURES
+        probe === 'no-candidate' && notFoundBeforeSuccess < MAX_LEADING_FAILURES
       if (routeProof !== null || closeWithoutProof) {
         for (const { order, orderLog, error, ageMs } of deferredDefinitiveNotFound) {
           try {
@@ -994,7 +1651,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
               : 'Ennyi ismeretlen fizetés valószínűleg konfigurációs hibára utal.'
           log.error(
             `RIASZTÁS: ebben a futásban ${deferredDefinitiveNotFound.length} függő rendelésre a ` +
-              'Barion azt válaszolta, hogy nem ismeri a fizetést, és a futásban egyetlen ' +
+              'Barion azt válaszolta, hogy nem ismeri a fizetést, és egyetlen ' +
               `GetState sem sikerült. ${reason} Ezért a rendeléseket most NEM zárjuk le. ` +
               'Ellenőrizd a BARION_ENVIRONMENT-et és a POSKey-t (abban a környezetben és azzal ' +
               'a bolttal indultak-e a fizetések); ha rendben vannak, a sorok az első olyan ' +
@@ -1011,9 +1668,18 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       }
     }
 
+    if (agedUnverifiedNotFound.length === 0) {
+      return
+    }
+    if (routeProbe?.outcome === 'proved' && routeProbe.probeCreatedAtMs !== null) {
+      successCreatedAtMs.push(routeProbe.probeCreatedAtMs)
+    }
+    await bracketSameConfigProof(agedUnverifiedNotFound)
+
     for (const { order, orderLog, error, ageMs } of agedUnverifiedNotFound) {
-      if (routeProof === null) {
-        alertUnverifiedNotFound(order, orderLog, error)
+      const createdAtMs = Date.parse(order.createdAt ?? '')
+      if (!provesSameConfig(createdAtMs)) {
+        alertUnprovenBareNotFound(order, orderLog, error, ageMs)
         continue
       }
       let cancelledWritten: boolean
@@ -1043,17 +1709,14 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       summary.cancelled += 1
       orderLog.error(
         'RIASZTÁS: 24 óránál régebbi függő rendelés lezárva (cancelled) — a Barion erre a ' +
-          'fizetésre HTTP 404-et ad, miközben ebben a futásban egy másik GetState sikeres volt, ' +
-          'tehát az útvonal működik. Tipikus ok: a fizetés a másik Barion-környezetben indult. ' +
-          'Pénzmozgás nem történt, a vevő új fizetést indíthat. Ha a Barion később mégis ' +
-          'Succeeded-et ad rá, a late-success scan csak a rendelés létrehozásától számított 7 ' +
-          'napon belül viszi paid-re; egy ennél régebbi rendelés késői Succeeded-jét semmi nem ' +
-          'veszi fel automatikusan (lásd lateSuccessRecoverable).',
+          'fizetésre HTTP 404-et ad, miközben a mostani beállítással egy ELŐTTE és egy UTÁNA ' +
+          'indult fizetés GetState-je is sikeres, tehát a rendelés ugyanabban a Barion-' +
+          'környezetben és boltban indult, és a Barion ott nem ismeri a fizetését. Pénzmozgás ' +
+          'nem történt, a vevő új fizetést indíthat.',
         {
           orderNumber: order.orderNumber ?? null,
           ageMs,
-          lateSuccessRecoverable: ageMs < LATE_SUCCESS_LOOKBACK_MS,
-          routeProof,
+          routeProof: 'bracket',
           httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
           providerErrorCodes: providerErrorCodesOf(error),
         },
@@ -1087,7 +1750,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       return
     }
     const suspectContext = { lateUnverifiedNotFound, ...routeProbeContext() }
-    if (shouldEmitThrottledAlert('late-scan-route', RUN_LEVEL_ALERT_COOLDOWN_MS, now)) {
+    if (shouldEmitThrottledAlert(LATE_SCAN_GLOBAL_ALERT_KEY, RUN_LEVEL_ALERT_COOLDOWN_MS, now)) {
       log.error(
         `RIASZTÁS: a late-success scan ${lateUnverifiedNotFound} lezárt rendelésére a Barion ` +
           'PaymentState HTTP 404-et adott, és egyetlen GetState sem sikerült: a ' +
@@ -1104,6 +1767,381 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
           'elbukott (a riasztás fojtva)',
         suspectContext,
       )
+    }
+  }
+
+  /**
+   * r-barion-8: minden visszatérítést nagyjából egy héttel később egyszer
+   * újra egyeztetünk a Barionnal (runRefundReconciliation): egy kártyás
+   * visszatérítés később is meghiúsulhat (StornoUnSuccessfulRefundToBankCard).
+   * Csak jelez, pénzt nem mozgat. A visszatérítés ideje a meglévő
+   * `refundedAt` (a teljes visszatérítésé) VAGY a `refunds[].refundedAt` (a
+   * részleges visszatérítés a rendelést paid-en hagyja, a rendelés
+   * `refundedAt`-je ilyenkor üres); a sávba eső legutóbbi időpont számít.
+   * Rendelésenként és időpontonként egyszer fut le sikeresen a sávban (a
+   * fojtás-kulcs a folyamatban él: újraindulás után legfeljebb egy ismételt
+   * hívás). A már ellenőrzött sorok nem fogyasztják a futásonkénti
+   * GetState-keretet.
+   *
+   * Hibás egyeztetésnél (rev3): csak az átmeneti hiba után szabadul fel a
+   * kulcs, legfeljebb REFUND_RECHECK_MAX_ATTEMPTS kísérletig, a kísérletek
+   * között legalább REFUND_RECHECK_RETRY_GAP_MS-mal; a végleges hiba (pl.
+   * NotExistingPaymentId környezetváltás után) és a kimerült keret a sávban
+   * feladja a sort, egyetlen RIASZTÁS-sal. Az újrapróbálásra váró sorok a még
+   * nem próbáltak mögé kerülnek, egymás között a legrégebben hibázott elöl, így
+   * néhány hibás sor nem éheztetheti ki a sáv többi visszatérítését. A globális
+   * hibák (hitelesítés, útvonalhibára utaló puszta 404, szállítási hiba)
+   * megállítják a futás újraellenőrzését; a hitelesítési hiba és a
+   * bizonyítatlan útvonalú 404 kísérletet sem számol, mert nem a sorról szól,
+   * de a sort ilyenkor is hátrébb teszi. Globális
+   * megállásnál a sávból hamarosan kieső sorok sor-szintű RIASZTÁS-t kapnak
+   * (REFUND_RECHECK_LAST_CHANCE_MS); a lezáratlanul mégis kiesett, már hibázott
+   * sorokról a következő futás utólag küld RIASZTÁS-t ('sav-lejart').
+   */
+  const recheckRefundsAfterWeek = async (): Promise<void> => {
+    const untilMs = now - REFUND_RECHECK_AFTER_MS
+    const sinceMs = untilMs - REFUND_RECHECK_BAND_MS
+    const alertGaveUp = (
+      target: {
+        orderId: number
+        orderNumber: string | null
+        paymentId: string | null
+        refundedAtMs: number
+      },
+      details: {
+        reason: 'kiserletek-elfogytak' | 'vegleges-hiba' | 'globalis-hiba' | 'sav-lejart'
+        attempts: number
+        failureClass: string
+        error: unknown
+      },
+    ): void => {
+      emitAlert(
+        log,
+        'visszaterites-ujraellenorzes-elmaradt',
+        'RIASZTÁS: a visszatérítés egy héttel későbbi ellenőrzése ennél a rendelésnél nem ' +
+          'futott le, és a rendszer többet nem próbálja. Nézd meg kézzel a fizetést a Barion ' +
+          'adminban: ha ott a visszatérítés sikertelen, vagy sztornózták ' +
+          '(StornoUnSuccessfulRefundToBankCard), a vevő nem kapta meg a pénzt.',
+        {
+          orderId: target.orderId,
+          orderNumber: target.orderNumber,
+          paymentId: target.paymentId,
+          refundedAt: new Date(target.refundedAtMs).toISOString(),
+          reason: details.reason,
+          attempts: details.attempts,
+          failureClass: details.failureClass,
+          httpStatus:
+            details.error instanceof BarionApiError ? (details.error.httpStatus ?? null) : null,
+          providerErrorCodes: providerErrorCodesOf(details.error),
+        },
+      )
+    }
+    // Rev3-rev3: a hibázott (vagy hátrébb tett), de le nem zárt sor kieshet a
+    // sávból globális megállás nélkül is, pl. ha a sáv utolsó futásában kapott
+    // 429-et. A bejegyzés ilyenkor megmaradt: most utólag RIASZTÁS-t kap, és a
+    // tárból törlődik. Adatbázis és Barion nélkül fut, így a jelöltek olvasási
+    // hibája és a futás megszakadása sem akadályozza. Ha a kulcsot épp egy
+    // átfedő futás tartja, az dönt a sorról (siker, feladás vagy új bejegyzés).
+    for (const [key, entry] of refundRecheckFailures) {
+      if (entry.refundedAtMs >= sinceMs) {
+        continue
+      }
+      if (!shouldEmitThrottledAlert(key, 2 * REFUND_RECHECK_BAND_MS, now)) {
+        continue
+      }
+      refundRecheckFailures.delete(key)
+      alertGaveUp(entry, {
+        reason: 'sav-lejart',
+        attempts: entry.failures,
+        failureClass: entry.failureClass,
+        error: null,
+      })
+    }
+    // A részleges visszatérítés ideje a `refunds` JSON-oszlopban él. A Payload
+    // postgres JSON-lekérdezése (createJSONQuery) csak az equals, in, like,
+    // contains, exists és not_* operátorokat ismeri: a greater_than_equal és a
+    // less_than_equal érvénytelen jsonpath-t ad, a Postgres elutasítja, és az
+    // EGÉSZ jelöltlekérdezés dob (valódi Postgresen bizonyítva). Ezért a JSON-ágon
+    // a sáv UTC-napjaira szűrünk (`like` → like_regex, a nap-előtag az ISO-
+    // időbélyeg elején áll), a pontos [sinceMs, untilMs] sávot pedig a
+    // latestRefundTimeInBand dönti el memóriában. A 24 órás sáv legfeljebb két
+    // UTC-napra esik. A `refunds[].refundedAt`-et minden író a szándék
+    // providerResolvedAt-jéből veszi (refund-recovery, auto-refund-recovery),
+    // amelyet az intent-store mindig toISOString()-gel (UTC, `Z`) normalizál;
+    // más alakú (pl. kézzel írt, eltolásos) időbélyeg a JSON-ágon kimaradhat.
+    const refundBandUtcDays = [
+      ...new Set([sinceMs, untilMs].map((ms) => new Date(ms).toISOString().slice(0, 10))),
+    ]
+    let candidates: Order[]
+    try {
+      candidates = (
+        await deps.payload.find({
+          collection: 'orders',
+          where: {
+            and: [
+              { status: { in: ['paid', 'refunded'] } },
+              { barionPaymentId: { exists: true } },
+              {
+                or: [
+                  {
+                    and: [
+                      { refundedAt: { greater_than_equal: new Date(sinceMs).toISOString() } },
+                      { refundedAt: { less_than_equal: new Date(untilMs).toISOString() } },
+                    ],
+                  },
+                  {
+                    or: refundBandUtcDays.map((day) => ({
+                      'refunds.refundedAt': { like: day },
+                    })),
+                  },
+                ],
+              },
+            ],
+          },
+          sort: 'refundedAt',
+          limit: REFUND_RECHECK_CANDIDATE_LIMIT,
+          depth: 0,
+          overrideAccess: true,
+        } as unknown as Parameters<Payload['find']>[0])
+      ).docs as Order[]
+    } catch (error) {
+      log.warn('order-poll: a visszatérítések heti újraellenőrzésének jelöltjei nem olvashatók', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return
+    }
+    const inBand = candidates.flatMap((order) => {
+      const refundedAtMs = latestRefundTimeInBand(order, sinceMs, untilMs)
+      return refundedAtMs === null
+        ? []
+        : [{ order, refundedAtMs, recheckKey: `refund-week-recheck:${order.id}:${refundedAtMs}` }]
+    })
+    // Éheztetés ellen: a már elbukott vagy hátrébb tett, újrapróbálásra váró
+    // sorok a még nem próbáltak MÖGÉ kerülnek, és egymás között a legrégebben
+    // hibázott áll elöl. Enélkül a refundedAt szerint elöl álló, tartósan hibás
+    // sorok minden futásban elfoglalnák az 5-ös GetState-keretet, és egy
+    // futásonként hátrébb tett, a sáv utolsó 6 órájában várakozás nélkül
+    // újrapróbált sor (pl. tartós puszta 404, sikertelen próbával) minden futást
+    // elsőként megállítana: a mögötte várakozó sorok sosem kapnának újabb
+    // kísérletet, és kézi RIASZTÁS lenne belőlük (rev3-rev3, BRK-R2-1). Így a
+    // hibázó sorok körbeforognak.
+    const lastFailureAtOf = (candidate: (typeof inBand)[number]): number =>
+      refundRecheckFailures.get(candidate.recheckKey)?.lastFailureAt ?? 0
+    const ordered = [
+      ...inBand.filter((candidate) => !refundRecheckFailures.has(candidate.recheckKey)),
+      ...inBand
+        .filter((candidate) => refundRecheckFailures.has(candidate.recheckKey))
+        .sort((a, b) => lastFailureAtOf(a) - lastFailureAtOf(b)),
+    ]
+    const gaveUpTarget = ({ order, refundedAtMs }: (typeof inBand)[number]) => ({
+      orderId: order.id,
+      orderNumber: order.orderNumber ?? null,
+      paymentId: order.barionPaymentId ?? null,
+      refundedAtMs,
+    })
+    /**
+     * BRK-X1: a futás globális ok miatt nem ellenőrzi a sáv többi sorát. Amelyik
+     * még le nem zárt sor REFUND_RECHECK_LAST_CHANCE_MS-on belül kiesik a
+     * sávból, az most kap RIASZTÁS-t (a kulcs foglalt marad), különben egy
+     * hosszú kiesés alatt némán kimaradna. A már ellenőrzött vagy feladott sor
+     * kulcsa foglalt, azt a fojtás kiszűri.
+     */
+    const giveUpRowsLeavingBand = (failureClass: string): void => {
+      for (const candidate of ordered) {
+        if (candidate.refundedAtMs - sinceMs >= REFUND_RECHECK_LAST_CHANCE_MS) {
+          continue
+        }
+        if (!shouldEmitThrottledAlert(candidate.recheckKey, 2 * REFUND_RECHECK_BAND_MS, now)) {
+          continue
+        }
+        const attempts = refundRecheckFailures.get(candidate.recheckKey)?.failures ?? 0
+        refundRecheckFailures.delete(candidate.recheckKey)
+        alertGaveUp(gaveUpTarget(candidate), {
+          reason: 'globalis-hiba',
+          attempts,
+          failureClass,
+          error: null,
+        })
+      }
+    }
+    // A függő sorok hitelesítési vagy szállítási megszakítása után a GetState
+    // ugyanúgy elhasalna: nincs hívás, csak a sávból kieső sorok RIASZTÁS-a.
+    if (barionAborted) {
+      giveUpRowsLeavingBand('futas-megszakadt')
+      return
+    }
+    let checked = 0
+    /** Volt-e sikeres GetState az újraellenőrzésben (az útvonalat bizonyítja). */
+    let recheckFetchSucceeded = false
+    /** A futás újraellenőrzését megállító globális hiba osztálya (lásd giveUpRowsLeavingBand). */
+    let globalStopClass: string | null = null
+    for (const candidate of ordered) {
+      const { order, refundedAtMs, recheckKey } = candidate
+      if (checked >= REFUND_RECHECK_BATCH_SIZE) {
+        break
+      }
+      const previous = refundRecheckFailures.get(recheckKey)
+      if (
+        previous !== undefined &&
+        now - previous.lastFailureAt < REFUND_RECHECK_RETRY_GAP_MS &&
+        refundedAtMs - sinceMs >= REFUND_RECHECK_RETRY_GAP_MS
+      ) {
+        continue
+      }
+      if (!shouldEmitThrottledAlert(recheckKey, 2 * REFUND_RECHECK_BAND_MS, now)) {
+        continue
+      }
+      checked += 1
+      // A GetState hibáját elkapjuk (a runRefundReconciliation csak 'error'-t
+      // ad vissza), hogy eldönthessük: átmeneti vagy végleges. Ha nem a
+      // GetState bukott, a szándék vagy a rendelés olvasása (adatbázis) volt.
+      const fetchFailure: { failed: boolean; error: unknown } = { failed: false, error: null }
+      const recheckOutcome = await runRefundReconciliation({
+        payload: deps.payload,
+        order,
+        trigger: 'order-poll',
+        logger: log,
+        fetchState: async (paymentId) => {
+          try {
+            const state = await fetchState(paymentId)
+            recheckFetchSucceeded = true
+            return state
+          } catch (error) {
+            fetchFailure.failed = true
+            fetchFailure.error = error
+            throw error
+          }
+        },
+        now,
+      })
+      if (recheckOutcome !== 'error') {
+        // Az egyeztetés a fizetés egészét nézi, így a rendelés egy korábbi,
+        // közben újabb visszatérítés mögé került (még hibázott) időpontját is
+        // lefedi: arról nem kell utólagos RIASZTÁS ('sav-lejart').
+        for (const [key, entry] of refundRecheckFailures) {
+          if (entry.orderId === order.id) {
+            refundRecheckFailures.delete(key)
+          }
+        }
+        continue
+      }
+      const failureClass = fetchFailure.failed
+        ? classifyBarionFailure(fetchFailure.error)
+        : 'adatbazis'
+      const httpStatus =
+        fetchFailure.error instanceof BarionApiError
+          ? (fetchFailure.error.httpStatus ?? null)
+          : null
+      /**
+       * Globális hibánál (hitelesítés, bizonyítatlan útvonalú 404) a sor nem
+       * hibás: kísérletet nem számolunk, a sort nem adjuk fel. A sor viszont a
+       * még nem próbáltak mögé kerül, és REFUND_RECHECK_RETRY_GAP_MS-ig nem
+       * kérdezzük újra: egy sorra szóló, tartós puszta 404 így nem állhat
+       * futásról futásra a lista elején a sáv többi visszatérítése előtt
+       * (rev3-rev2, major). A futás többi sorát nem égetjük el.
+       */
+      const rememberFailure = (failures: number): void => {
+        refundRecheckFailures.set(recheckKey, {
+          failures,
+          lastFailureAt: now,
+          failureClass,
+          ...gaveUpTarget(candidate),
+        })
+      }
+      const deferWithoutAttempt = (): void => {
+        releaseThrottledAlert(recheckKey)
+        rememberFailure(previous?.failures ?? 0)
+      }
+      // A hitelesítési hiba nem sorfüggő (rossz vagy lejárt, esetleg épp
+      // forgatott POSKey). A következő futás újrapróbálja.
+      if (failureClass === 'auth') {
+        deferWithoutAttempt()
+        alertRunAbort(
+          'barion-abort:auth',
+          'RIASZTÁS: Barion hitelesítési hiba (rossz vagy lejárt POSKey) a visszatérítések ' +
+            'egy héttel későbbi ellenőrzésében: ebben a futásban az ellenőrzés leállt. ' +
+            'Ellenőrizd a Barion-környezetet és a POSKey-t; a következő ütemezett futás ' +
+            'újrapróbálja. Ha egy visszatérítés ellenőrzési ideje közben lejárna, arról ' +
+            'külön RIASZTÁS megy.',
+          { source: 'refund-recheck', httpStatus },
+        )
+        globalStopClass = failureClass
+        break
+      }
+      let transient = !fetchFailure.failed || isTransientRefundRecheckFailure(fetchFailure.error)
+      // A puszta 404 (not-found kód nélkül) globális útvonalhiba is lehet
+      // (isUnverifiedNotFound). Csak akkor végleges erre a sorra, ha a futásban
+      // bizonyított, hogy az útvonal működik (másik sikeres GetState vagy az
+      // útvonal-próba). Ha a próba is elbukik vagy eldöntetlen, a sor kísérlet
+      // nélkül hátrébb kerül, és a futás újraellenőrzése megáll: az útvonal
+      // javítása után a sáv minden visszatérítése sorra kerül. Jelölt nélkül
+      // (vagy olvashatatlan jelöltnél) nincs bizonyíték egyik irányba sem:
+      // átmeneti kísérletként számít, így a sor a kísérlet-plafonnál RIASZTÁS-sal
+      // zárul. Ugyanez áll, ha a próba jelöltje maga ez a sor (a legutóbb frissült
+      // paid rendelés lehet egy részlegesen visszatérített is): a saját 404-e
+      // semmit nem bizonyít az útvonalról, és ha a saját fizetésére a próba
+      // sikeres, az első 404 bizonyítottan nem végleges (rev3-rev3, BRK-R2-2),
+      // tehát ilyenkor is átmeneti kísérlet.
+      if (failureClass === 'unverified-404' && !hadSuccessfulCall && !recheckFetchSucceeded) {
+        const probe = await probeBarionRoute()
+        const probedThisOrder = routeProbe?.probeOrderId === order.id
+        if (
+          !probedThisOrder &&
+          (probe === 'failed' || probe === 'inconclusive' || probe === null)
+        ) {
+          deferWithoutAttempt()
+          if (probe === 'failed') {
+            // Ugyanaz a globális hiba, mint a late-success scan útvonal-gyanúja:
+            // közös fojtás-kulcs, egy óra alatt egy RIASZTÁS (BRK-X2).
+            alertRunAbort(
+              LATE_SCAN_GLOBAL_ALERT_KEY,
+              'RIASZTÁS: a Barion PaymentState HTTP 404-et adott a visszatérítések egy héttel ' +
+                'későbbi ellenőrzésében, és egy fizetett rendelés GetState-je is elbukott. ' +
+                'Valószínűleg a PaymentState-útvonal hibás: ellenőrizd a BARION_API_URL-t. ' +
+                'Amíg a hiba tart, a visszatérítéseket nem tudjuk ellenőrizni; ha egy ' +
+                'visszatérítés ellenőrzési ideje közben lejárna, arról külön RIASZTÁS megy.',
+              { source: 'refund-recheck', httpStatus, ...routeProbeContext() },
+            )
+          } else {
+            log.warn(
+              'order-poll: a visszatérítés-újraellenőrzés 404-e után az útvonal nem ' +
+                'bizonyítható (a következő futás újrapróbálja)',
+              { orderId: order.id, ...routeProbeContext() },
+            )
+          }
+          globalStopClass = failureClass
+          break
+        }
+        transient = probedThisOrder || probe !== 'proved'
+      }
+      const failures = (previous?.failures ?? 0) + 1
+      refundRecheckFailures.delete(recheckKey)
+      if (transient && failures < REFUND_RECHECK_MAX_ATTEMPTS) {
+        // BRK-R2-1: átmeneti hiba után a kulcs felszabadul, és legalább
+        // REFUND_RECHECK_RETRY_GAP_MS múlva egy későbbi futás a sávon belül újra
+        // megpróbálja (legfeljebb REFUND_RECHECK_MAX_ATTEMPTS-ig).
+        rememberFailure(failures)
+        releaseThrottledAlert(recheckKey)
+      } else {
+        // Végleges hiba vagy elfogyott kísérletek: a kulcs foglalt marad, így a
+        // sávban nincs több hívás, és ez a RIASZTÁS kulcsonként egyszer megy ki.
+        alertGaveUp(gaveUpTarget(candidate), {
+          reason: transient ? 'kiserletek-elfogytak' : 'vegleges-hiba',
+          attempts: failures,
+          failureClass,
+          error: fetchFailure.error,
+        })
+      }
+      // Szállítási hiba (időtúllépés, hálózat, 5xx) jellemzően a Barion egészét
+      // érinti: a futás többi sorát nem égetjük el vele. A többi sor a
+      // következő futásban kerül sorra (a hibázott sor a még nem próbáltak mögé).
+      if (failureClass === 'transport') {
+        globalStopClass = failureClass
+        break
+      }
+    }
+    if (globalStopClass !== null) {
+      giveUpRowsLeavingBand(globalStopClass)
     }
   }
 
@@ -1154,157 +2192,158 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       leadingFailures = 0
     }
     const sinceIso = new Date(now - LATE_SUCCESS_LOOKBACK_MS).toISOString()
-    const fetchLatePage = async (excludeIds: ReadonlyArray<number>): Promise<Order[]> => {
-      const page = await deps.payload.find({
+    // A legfiatalabbak elöl: az ellenőrzési pontok (lateSuccessPollDue) a
+    // fizetési ablak vége után 15 és 60 perccel vannak. A nem esedékes sorok
+    // csak DB-olvasást jelentenek, Barion-hívást nem.
+    const candidates = (
+      await deps.payload.find({
         collection: 'orders',
-        where: lateSuccessOrdersWhere(sinceIso, excludeIds),
-        sort: 'updatedAt',
-        limit: LATE_SUCCESS_BATCH_SIZE,
+        where: lateSuccessOrdersWhere(sinceIso),
+        sort: '-createdAt',
+        limit: LATE_SUCCESS_CANDIDATE_LIMIT,
         depth: 0,
         overrideAccess: true,
       } as unknown as Parameters<Payload['find']>[0])
-      return page.docs as Order[]
-    }
-
-    const lateSeen = new Set<number>()
-    let latePage = await fetchLatePage([])
-    let lateExtraPages = 0
+    ).docs as Order[]
+    const dueRows = candidates
+      .filter(
+        (order) =>
+          typeof order.barionPaymentId === 'string' &&
+          order.barionPaymentId.length > 0 &&
+          lateSuccessPollDue(order, now),
+      )
+      .slice(0, LATE_SUCCESS_BATCH_SIZE * (1 + LATE_SUCCESS_REFILL_PAGES))
     let lateAborted = false
 
-    while (latePage.length > 0) {
-      summary.lateSuccessScanned += latePage.length
-      const pageLength = latePage.length
-
-      for (let index = 0; index < latePage.length; index += 1) {
-        const order = latePage[index]
-        lateSeen.add(order.id)
-        const orderLog = log.child({ orderId: order.id, orderNumber: order.orderNumber ?? null })
-        if (typeof order.barionPaymentId !== 'string' || order.barionPaymentId.length === 0) {
-          continue
+    for (let index = 0; index < dueRows.length && !lateAborted; index += 1) {
+      const order = dueRows[index]
+      summary.lateSuccessScanned += 1
+      const orderLog = log.child({ orderId: order.id, orderNumber: order.orderNumber ?? null })
+      if (typeof order.barionPaymentId !== 'string' || order.barionPaymentId.length === 0) {
+        continue
+      }
+      let state: BarionPaymentStateResponse
+      try {
+        state = await fetchState(order.barionPaymentId)
+        consecutiveTransportFailures = 0
+        hadSuccessfulCall = true
+        recordSuccess(order)
+      } catch (error) {
+        summary.failed += 1
+        orderLog.warn('order-poll: late-success GetState-hiba (a következő futás újrapollolja)', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        const failureClass = classifyBarionFailure(error)
+        const remaining = dueRows.length - (index + 1)
+        if (failureClass === 'auth') {
+          summary.skipped += remaining
+          alertRunAbort(
+            'barion-abort:auth',
+            'RIASZTÁS: Barion hitelesítési hiba a late-success scan közben — a maradék cancelled rendelés erre a futásra kimarad',
+            { failureClass, skippedOrders: remaining },
+          )
+          lateAborted = true
+          barionAborted = true
+          break
         }
-        let state: BarionPaymentStateResponse
-        try {
-          state = await fetchState(order.barionPaymentId)
-          consecutiveTransportFailures = 0
-          hadSuccessfulCall = true
-        } catch (error) {
-          summary.failed += 1
-          orderLog.warn('order-poll: late-success GetState-hiba (a következő futás újrapollolja)', {
-            error: error instanceof Error ? error.message : String(error),
-          })
-          const failureClass = classifyBarionFailure(error)
-          const remaining = latePage.length - (index + 1)
-          if (failureClass === 'auth') {
+        if (failureClass === 'transport') {
+          consecutiveTransportFailures += 1
+          if (consecutiveTransportFailures >= MAX_CONSECUTIVE_TRANSPORT_FAILURES) {
             summary.skipped += remaining
-            log.error(
-              'RIASZTÁS: Barion hitelesítési hiba a late-success scan közben — a maradék cancelled rendelés erre a futásra kimarad',
-              { failureClass, skippedOrders: remaining },
+            alertRunAbort(
+              'barion-abort:transport',
+              'RIASZTÁS: egymást követő Barion-hiba a late-success scan közben — a maradék cancelled rendelés erre a futásra kimarad',
+              { failureClass, consecutiveTransportFailures, skippedOrders: remaining },
             )
             lateAborted = true
             barionAborted = true
             break
           }
-          if (failureClass === 'transport') {
-            consecutiveTransportFailures += 1
-            if (consecutiveTransportFailures >= MAX_CONSECUTIVE_TRANSPORT_FAILURES) {
-              summary.skipped += remaining
-              log.error(
-                'RIASZTÁS: egymást követő Barion-hiba a late-success scan közben — a maradék cancelled rendelés erre a futásra kimarad',
-                { failureClass, consecutiveTransportFailures, skippedOrders: remaining },
-              )
-              lateAborted = true
-              barionAborted = true
-              break
-            }
-          }
-          if (failureClass === 'order') {
-            consecutiveTransportFailures = 0
-            await rotateOrder(order)
-          }
-          if (failureClass === 'unverified-404') {
-            // NINCS rendelésenkénti RIASZTÁS: a late-success scan csak lezárt
-            // (cancelled / payment_failed) sorokat néz, a függő sorokra szóló
-            // „most NEM zárjuk le … a poll lezárja" szöveg itt nem igaz, és a
-            // poll által épp lezárt régi sorra a 7 napos ablak végéig 6
-            // óránként téves riasztás menne. A lezárt sorral nincs teendő (a
-            // fenti warn-sor rögzíti a hibát). Globális útvonalhibát a futás
-            // eleji mennyezet, a függő sorok riasztása, csendes boltban pedig a
-            // futás végi útvonal-gyanú riasztás jelez (alertLateScanRouteSuspect).
-            lateUnverifiedNotFound += 1
-            await rotateOrder(order)
-          }
-          if (
-            !hadSuccessfulCall &&
-            (failureClass === 'unknown' || failureClass === 'unverified-404')
-          ) {
-            leadingFailures += 1
-            if (leadingFailures >= MAX_LEADING_FAILURES) {
-              summary.skipped += remaining
-              lateCeilingHit = true
-              const ceilingContext = { failureClass, leadingFailures, skippedOrders: remaining }
-              if (pendingCeilingHit) {
-                // Ugyanebben a futásban a függő lapok mennyezete már RIASZTÁS-t
-                // írt ugyanerről a (valószínűleg globális) állapotról: a második
-                // sor csak warn, különben globális hibánál futásonként két
-                // riasztás menne.
-                log.warn(
-                  'order-poll: a late-success scan is elérte a futás eleji mennyezetet (a ' +
-                    'RIASZTÁS a függő rendeléseknél már kiment) — a maradék cancelled rendelés ' +
-                    'erre a futásra kimarad',
-                  ceilingContext,
-                )
-              } else if ((await probeBarionRoute()) === 'proved') {
-                // Az útvonal működik (egy paid rendelés GetState-je sikeres):
-                // a hibák ezekre a lezárt sorokra szólnak (pl. a poll által
-                // lezárt, a másik Barion-környezetből maradt fizetések), nem a
-                // Barion-környezetre vagy a POSKey-re. Ezekkel a 7 napos ablak
-                // végéig 5 percenként téves RIASZTÁS menne.
-                log.warn(
-                  'order-poll: a late-success scan elérte a futás eleji mennyezetet, de az ' +
-                    'útvonal-próba sikeres — a hibák ezekre a lezárt sorokra szólnak; a maradék ' +
-                    'cancelled rendelés erre a futásra kimarad',
-                  { ...ceilingContext, ...routeProbeContext() },
-                )
-              } else if (
-                shouldEmitThrottledAlert('leading-ceiling:late', RUN_LEVEL_ALERT_COOLDOWN_MS, now)
-              ) {
-                log.error(
-                  `RIASZTÁS: ${MAX_LEADING_FAILURES} tisztázatlan Barion-hiba a futás elején ` +
-                    '(egyetlen sikeres válasz sem érkezett) — a late-success scan megszakadt, a ' +
-                    'maradék cancelled rendelés érintetlen. Ellenőrizd a Barion-környezetet, a ' +
-                    'POSKey-t és a szolgáltatás állapotát; a következő ütemezett futás újrapróbálja.',
-                  { ...ceilingContext, ...routeProbeContext() },
-                )
-              } else {
-                log.warn(
-                  'order-poll: a late-success scan ismét elérte a futás eleji mennyezetet (a ' +
-                    'RIASZTÁS fojtva) — a maradék cancelled rendelés erre a futásra kimarad',
-                  { ...ceilingContext, ...routeProbeContext() },
-                )
-              }
-              lateAborted = true
-              break
-            }
-          }
+        }
+        if (failureClass === 'rate-limited') {
+          // Egy fizetésre szóló átmeneti fojtás: a sor esedékes marad.
+          consecutiveTransportFailures = 0
           continue
         }
-        await applyMappedState(order, state, orderLog)
+        if (failureClass === 'order') {
+          // A Barion nem ismeri a fizetést: ez a sor ellenőrzési pontját zárja.
+          consecutiveTransportFailures = 0
+          await rotateOrder(order)
+        }
+        if (failureClass === 'unverified-404') {
+          // NINCS rendelésenkénti RIASZTÁS: a late-success scan csak lezárt
+          // (cancelled / payment_failed) sorokat néz, a függő sorokra szóló
+          // „most NEM zárjuk le … a poll lezárja" szöveg itt nem igaz. A
+          // lezárt sorral nincs teendő (a fenti warn-sor rögzíti a hibát), a
+          // sor forog, tehát ez az ellenőrzési pontja lezárul. Globális
+          // útvonalhibát a futás eleji mennyezet, a függő sorok riasztása,
+          // csendes boltban pedig a futás végi útvonal-gyanú riasztás jelez
+          // (alertLateScanRouteSuspect).
+          lateUnverifiedNotFound += 1
+          await rotateOrder(order)
+        }
+        if (
+          !hadSuccessfulCall &&
+          (failureClass === 'unknown' || failureClass === 'unverified-404')
+        ) {
+          leadingFailures += 1
+          if (leadingFailures >= MAX_LEADING_FAILURES) {
+            summary.skipped += remaining
+            lateCeilingHit = true
+            const ceilingContext = { failureClass, leadingFailures, skippedOrders: remaining }
+            if (pendingCeilingHit) {
+              // Ugyanebben a futásban a függő lapok mennyezete már RIASZTÁS-t
+              // írt ugyanerről a (valószínűleg globális) állapotról: a második
+              // sor csak warn, különben globális hibánál futásonként két
+              // riasztás menne.
+              log.warn(
+                'order-poll: a late-success scan is elérte a futás eleji mennyezetet (a ' +
+                  'RIASZTÁS a függő rendeléseknél már kiment) — a maradék cancelled rendelés ' +
+                  'erre a futásra kimarad',
+                ceilingContext,
+              )
+            } else if ((await probeBarionRoute()) === 'proved') {
+              // Az útvonal működik (egy paid rendelés GetState-je sikeres):
+              // a hibák ezekre a lezárt sorokra szólnak (pl. a poll által
+              // lezárt, a másik Barion-környezetből maradt fizetések), nem a
+              // Barion-környezetre vagy a POSKey-re. Ezekkel a sorok ellenőrzési pontjain
+              // végéig 5 percenként téves RIASZTÁS menne.
+              log.warn(
+                'order-poll: a late-success scan elérte a futás eleji mennyezetet, de az ' +
+                  'útvonal-próba sikeres — a hibák ezekre a lezárt sorokra szólnak; a maradék ' +
+                  'cancelled rendelés erre a futásra kimarad',
+                { ...ceilingContext, ...routeProbeContext() },
+              )
+            } else if (
+              shouldEmitThrottledAlert(LATE_SCAN_GLOBAL_ALERT_KEY, RUN_LEVEL_ALERT_COOLDOWN_MS, now)
+            ) {
+              log.error(
+                `RIASZTÁS: ${MAX_LEADING_FAILURES} tisztázatlan Barion-hiba a futás elején ` +
+                  '(egyetlen sikeres válasz sem érkezett) — a late-success scan megszakadt, a ' +
+                  'maradék cancelled rendelés érintetlen. Ellenőrizd a Barion-környezetet, a ' +
+                  'POSKey-t és a szolgáltatás állapotát; a következő ütemezett futás újrapróbálja.',
+                { ...ceilingContext, ...routeProbeContext() },
+              )
+            } else {
+              log.warn(
+                'order-poll: a late-success scan ismét elérte a futás eleji mennyezetet (a ' +
+                  'RIASZTÁS fojtva) — a maradék cancelled rendelés erre a futásra kimarad',
+                { ...ceilingContext, ...routeProbeContext() },
+              )
+            }
+            lateAborted = true
+            break
+          }
+        }
+        continue
       }
-
-      if (
-        lateAborted ||
-        pageLength < LATE_SUCCESS_BATCH_SIZE ||
-        lateExtraPages >= LATE_SUCCESS_REFILL_PAGES
-      ) {
-        break
-      }
-      lateExtraPages += 1
-      latePage = await fetchLatePage([...lateSeen])
+      await applyMappedState(order, state, orderLog)
     }
   }
 
   await closeDeferredNotFound()
   await alertLateScanRouteSuspect()
+  await recheckRefundsAfterWeek()
 
   await resweepInvoices(deps, log, summary)
 

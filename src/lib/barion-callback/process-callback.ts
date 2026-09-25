@@ -1,11 +1,21 @@
 import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
-import { BarionApiError, fetchPaymentState, mapBarionPaymentStatus } from '../barion'
+import { withSessionAdvisoryLock } from '../advisory-lock'
+import {
+  BarionApiError,
+  fetchPaymentState,
+  mapBarionPaymentStatus,
+  type BarionPaymentStateResponse,
+} from '../barion'
+import { isBarionRateLimited } from '../barion/client'
 import { canonicalBarionGuid, sameBarionGuid } from '../barion/guid'
 import {
+  isTerminallyProcessed,
+  processWebhook,
   registerWebhookProcessor,
   webhookEventStore,
+  type ProcessWebhookOutcome,
   type WebhookEventDoc,
   type WebhookEventStore,
   type WebhookHandler,
@@ -31,11 +41,37 @@ import {
  * és a Barion-hibajelzés nélküli HTTP 404 dob → retry.
  */
 
+/**
+ * A zár ELŐTT lekért PaymentState (vagy a lekérés hibája). A callback-úton a
+ * Barion-hívás nem mehet a callback-zár alá (a-callback-7): a futtató
+ * (runBarionCallbackEvent) előbb lekéri, a feldolgozó ezt használja.
+ */
+export type PrefetchedPaymentState =
+  { ok: true; state: BarionPaymentStateResponse } | { ok: false; error: unknown }
+
 export interface BarionCallbackProcessorDeps {
   payload: Payload
   /** Injektálható tár (teszteléshez); alapból a valódi Payload-adapter. */
   store?: WebhookEventStore
+  /** A kérés naplózója (requestId-vel); nélküle a gyökér-logger. */
   logger?: Logger
+  /** Ha megadott, a feldolgozó NEM hív Bariont, ezt az eredményt használja. */
+  prefetchedState?: PrefetchedPaymentState
+  /**
+   * Ha megadott, a friss paid-átmenet mellékhatását (onOrderPaid: e-mail,
+   * számla-job) nem futtatja, hanem átadja: a futtató a zár elengedése UTÁN
+   * indítja (a Resend-hívás ne tartsa a callback-zárat).
+   */
+  deferPaidSideEffect?: (run: () => Promise<void>) => void
+  /**
+   * true: a hibaágon a feldolgozó NEM jelöli az eseményt `result: 'failed'`-re.
+   * A lezárt (cancelled) esemény újraellenőrzése (r-barion-7) használja: egy
+   * lezárt rekord eredményét egy átmeneti hiba nem írhatja át, különben a
+   * rekord `processed` + `failed` alakban többé nem lenne újraellenőrizhető
+   * (minden későbbi callback duplikátum lenne), és a naplóból eltűnne az
+   * eredeti `cancelled` kimenetel.
+   */
+  preserveResultOnError?: boolean
   /**
    * Injektálható (teszteléshez); alapból a valódi recoverRejectedSucceededPayment.
    * Tesztből élő Barion-refund tilos.
@@ -238,8 +274,15 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
     const eventLog = log.child({ paymentId, eventId: event.id })
 
     try {
-      // 1. Szerver-szerver verifikáció (v4) — az EGYETLEN bizonyíték.
-      const state = await fetchPaymentState(paymentId)
+      // 1. Szerver-szerver verifikáció (v4) — az EGYETLEN bizonyíték. A
+      //    callback-úton a futtató a zár ELŐTT kéri le (prefetchedState).
+      const prefetched = deps.prefetchedState
+      if (prefetched && !prefetched.ok) {
+        throw prefetched.error
+      }
+      const state = prefetched
+        ? prefetched.state
+        : await fetchPaymentState(paymentId, undefined, { logger: eventLog })
       const mapped = mapBarionPaymentStatus(state.Status)
       eventLog.info('barion-callback: fizetésállapot verifikálva', {
         barionStatus: state.Status,
@@ -333,20 +376,26 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
       //    A feloldott fiók (vendég-vásárlásnál MOST létrehozott vagy megtalált)
       //    dönti el a levél változatát: jelszó-beállító link vagy belépés.
       if (transition.transitionedToPaid) {
-        await onOrderPaid({
-          payload: deps.payload,
-          order,
-          logger: orderLog,
-          ...(transition.customer
-            ? {
-                account: {
-                  passwordSetupPending: transition.customer.passwordSetupPending,
-                  alreadyLinked: transition.customer.alreadyLinked,
-                  email: transition.customer.email,
-                },
-              }
-            : {}),
-        })
+        const runPaidSideEffect = () =>
+          onOrderPaid({
+            payload: deps.payload,
+            order,
+            logger: orderLog,
+            ...(transition.customer
+              ? {
+                  account: {
+                    passwordSetupPending: transition.customer.passwordSetupPending,
+                    alreadyLinked: transition.customer.alreadyLinked,
+                    email: transition.customer.email,
+                  },
+                }
+              : {}),
+          })
+        if (deps.deferPaidSideEffect) {
+          deps.deferPaidSideEffect(runPaidSideEffect)
+        } else {
+          await runPaidSideEffect()
+        }
       }
 
       // 5. Esemény-lezárás az akcióhoz rendelt result-tal.
@@ -439,17 +488,31 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
 
       // Hibaág: a result='failed' best-effort jelölés (a státuszt/lastErrort a
       // processWebhook állítja); a processedAt SZÁNDÉKOSAN NULL marad — az
-      // esemény a webhook-retry jobbal újrapróbálható.
-      await store
-        .update({
-          collection: 'webhook-events',
-          id: event.id,
-          data: { result: 'failed' },
-          overrideAccess: true,
-        })
-        .catch(() => undefined)
+      // esemény a webhook-retry jobbal újrapróbálható. A lezárt esemény
+      // újraellenőrzésénél (preserveResultOnError) nincs jelölés: a rekord
+      // lezárt és cancelled marad.
+      if (!deps.preserveResultOnError) {
+        await store
+          .update({
+            collection: 'webhook-events',
+            id: event.id,
+            data: { result: 'failed' },
+            overrideAccess: true,
+          })
+          .catch(() => undefined)
+      }
       if (error instanceof BarionApiError) {
-        if (isUnverifiedNotFound(error)) {
+        if (isBarionRateLimited(error)) {
+          // HTTP 429 (a kapu egy késleltetett újrapróbálása után is): átmeneti
+          // fojtás, a fizetésről nem mond semmit. A webhook-retry backoffal
+          // újrapróbálja; nem riasztás.
+          eventLog.warn(
+            'barion-callback: a Barion fojtotta a PaymentState-et (HTTP 429) — újrapróbálható',
+            {
+              httpStatus: error.httpStatus ?? null,
+            },
+          )
+        } else if (isUnverifiedNotFound(error)) {
           // Puszta 404 (Barion-hibajelzés nélkül): nem bizonyítja, hogy nincs
           // ilyen fizetés. Az esemény újrapróbálható marad (a callback-úton
           // SOSEM zárunk le heurisztikára), és riasztunk: ha minden callback
@@ -493,6 +556,166 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
         })
       }
       throw error
+    }
+  }
+}
+
+/** A callback-feldolgozás (GetState-átmenet) sorosító advisory-zárának kulcsa egy PaymentId-re. */
+export function callbackLockKey(paymentId: string): string {
+  return `barion-callback:${paymentId}`
+}
+
+export interface RunBarionCallbackEventParams {
+  payload: Payload
+  /** KANONIKUS (kisbetűs, kötőjeles) PaymentId — a webhook-events externalId-ja. */
+  paymentId: string
+  store?: WebhookEventStore
+  requestId?: string
+  logger?: Logger
+  recoverRejectedPaid?: BarionCallbackProcessorDeps['recoverRejectedPaid']
+  /**
+   * 'recheck-cancelled': a terminálisan `cancelled`-re zárt eseményt is
+   * újrafeldolgozza (r-barion-7: egy fiatal rendelés lezárt fizetésére érkező
+   * újabb callback a késői sikert hozhatja). A kísérletszám nem nő.
+   */
+  mode?: 'process' | 'recheck-cancelled'
+}
+
+/**
+ * EGY callback-esemény teljes feldolgozása a route-on (`after`). A
+ * webhook-retry NEM ezt hívja: ott a regisztrált feldolgozó ugyanazon a
+ * callback-záron (callbackLockKey, session-szintű zár) fut, a GetState és a
+ * paid-mellékhatás tehát a retry-úton a záron BELÜL marad (tétlen tranzakció
+ * nincs, de egy dedikált kapcsolat a HTTP idejére foglalt; lásd
+ * jobs/tasks/webhook-retry.ts).
+ *
+ * Sorrend (a-callback-7: kimenő HTTP nem tart adatbázis-zárat):
+ * 1. PaymentState a zár ELŐTT (a PaymentId-nkénti kapun át; hibája is
+ *    eredmény, a zár alatt a státuszgép rögzíti);
+ * 2. session-szintű callback-zár (dedikált kapcsolat, nincs tétlen
+ *    tranzakció) → processWebhook friss olvasással: ha közben egy másik futás
+ *    lezárta, no-op. Kivétel a közben cancelled-re zárt esemény sikeres
+ *    előre-lekérés mellett: azt a lezárt fizetés újraellenőrzéseként
+ *    feldolgozzuk (Codex, PR #307);
+ * 3. a zár elengedése UTÁN a paid-mellékhatás (onOrderPaid, soha nem dob).
+ *
+ * Egy elavult előre-lekérés nem árt: az állapotgép monoton (paid-ről nincs
+ * visszalépés), a már lezárt eseményt a processWebhook nem futtatja újra, egy
+ * függő (Prepared) eredmény pedig nem terminális — a következő callback vagy a
+ * webhook-retry friss állapottal újra feldolgozza.
+ */
+export async function runBarionCallbackEvent(
+  params: RunBarionCallbackEventParams,
+): Promise<ProcessWebhookOutcome> {
+  const store = params.store ?? webhookEventStore(params.payload)
+  const log = params.logger ?? logger
+  let prefetchedState: PrefetchedPaymentState
+  try {
+    prefetchedState = {
+      ok: true,
+      state: await fetchPaymentState(params.paymentId, undefined, { logger: log }),
+    }
+  } catch (error) {
+    prefetchedState = { ok: false, error }
+  }
+
+  const deferred: { paidSideEffect: (() => Promise<void>) | null } = { paidSideEffect: null }
+  const createHandler = (preserveResultOnError: boolean) =>
+    createBarionCallbackProcessor({
+      payload: params.payload,
+      store,
+      logger: log,
+      prefetchedState,
+      deferPaidSideEffect: (run) => {
+        deferred.paidSideEffect = run
+      },
+      preserveResultOnError,
+      ...(params.recoverRejectedPaid ? { recoverRejectedPaid: params.recoverRejectedPaid } : {}),
+    })
+
+  try {
+    return await withSessionAdvisoryLock(
+      params.payload,
+      callbackLockKey(params.paymentId),
+      async () => {
+        // A lezárt (cancelled) eseményt akkor is újraértékeljük, ha a route
+        // normál futást ütemezett, de a zár előtti GetState sikeres fizetést
+        // hozott (Codex, PR #307). Két átfedő callbacknél az első futás
+        // Canceled-et kérhet le, és lezárhatja az eseményt, mielőtt a második
+        // (még nem lezárt eseményre ütemezett) futás a zárhoz ér; a
+        // processWebhook a lezárt eseményt duplikátumként kezelné, és a friss
+        // Succeeded elveszne a késői-siker ellenőrzésig, miközben a
+        // köszönőoldal újabb fizetésre hív. A 'Succeeded' az egyetlen paid-re
+        // képzett státusz (mapBarionPaymentStatus).
+        const prefetchedPaid = prefetchedState.ok && prefetchedState.state.Status === 'Succeeded'
+        if (params.mode === 'recheck-cancelled' || prefetchedPaid) {
+          const existing = await store.find({
+            collection: 'webhook-events',
+            where: {
+              and: [
+                { provider: { equals: 'barion' } },
+                { externalId: { equals: params.paymentId } },
+              ],
+            },
+            limit: 1,
+            overrideAccess: true,
+          })
+          const record = existing.docs[0]
+          if (record && isTerminallyProcessed(record) && record.result === 'cancelled') {
+            const attempts = record.attempts ?? 0
+            if (!prefetchedState.ok) {
+              // A GetState nem sikerült (átmeneti hiba, 429): nincs új
+              // bizonyíték, a lezárt esemény érintetlen marad (status, result,
+              // processedAt). A következő Barion-callback a fojtási ablak után
+              // újra ellenőriz; a mentőháló a late-success scan.
+              const error = prefetchedState.error
+              log.warn(
+                'barion-callback: a lezárt fizetés újraellenőrzése nem sikerült (GetState-hiba) — az esemény cancelled marad',
+                {
+                  eventId: record.id,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              )
+              return {
+                kind: 'failed',
+                eventId: record.id,
+                attempts,
+                retryable: false,
+                error: error instanceof Error ? error.message : String(error),
+              }
+            }
+            try {
+              const result = await createHandler(true)(record)
+              return { kind: 'processed', eventId: record.id, attempts, result }
+            } catch (error) {
+              // A lezárt esemény lezárt és cancelled marad (preserveResultOnError);
+              // a mentőháló a következő callback és a late-success scan.
+              return {
+                kind: 'failed',
+                eventId: record.id,
+                attempts,
+                retryable: false,
+                error: error instanceof Error ? error.message : String(error),
+              }
+            }
+          }
+        }
+        return processWebhook({
+          store,
+          provider: 'barion',
+          externalId: params.paymentId,
+          ...(params.requestId ? { requestId: params.requestId } : {}),
+          handler: createHandler(false),
+        })
+      },
+      log,
+    )
+  } finally {
+    // A paid-átmenet megtörtént: a mellékhatás a feldolgozás további
+    // kimenetelétől (pl. a lezárás írásának hibájától) függetlenül fut, mert
+    // egy újrapróbálás már paid rendelést lát, és nem indítaná újra.
+    if (deferred.paidSideEffect !== null) {
+      await deferred.paidSideEffect()
     }
   }
 }

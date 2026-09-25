@@ -9,9 +9,14 @@ import {
   BILLING_SUMMARY_MISSING,
   BILLING_SUMMARY_MIXED,
   BILLING_SUMMARY_TOO_LONG,
+  BILLING_TAX_NUMBER_COMPANY_ERROR,
+  BILLING_TAX_NUMBER_COMPANY_STRUCTURE_ERROR,
   BILLING_TAX_NUMBER_ERROR,
   BILLING_TAX_NUMBER_EU_ERROR,
+  BILLING_TAX_NUMBER_REQUIRED_ERROR,
   BILLING_TAX_NUMBER_STRUCTURE_ERROR,
+  BILLING_ZIP_ERROR,
+  BILLING_ZIP_FOREIGN_ERROR,
   billingErrorMap,
   billingSummaryMessage,
   isValidTaxNumberCoreChecksum,
@@ -116,43 +121,148 @@ describe('validateBilling — elfogadott, VALÓS magyar címek', () => {
         city: 'Budapest',
         street: 'Fő utca 1.',
         taxNumber: null,
+        companyPurchase: false,
       },
     })
   })
 
-  it('az irányítószám H- előtaggal is elfogadott', () => {
-    expect(validateBilling({ ...VALID, zip: 'H-1011' })).toMatchObject({
-      ok: true,
-      value: { zip: '1011' },
-    })
-    expect(validateBilling({ ...VALID, zip: 'H1011' })).toMatchObject({
-      ok: true,
-      value: { zip: '1011' },
-    })
-  })
+  // Őr az elgépelés-felismerés bővítéséhez: az érvényes magyar alak továbbra
+  // is átmegy, és a számlára csak a négy számjegy kerül.
+  it.each(['1011', ' 1011 ', 'H-1011', 'H1011', 'h-1011'])(
+    'az irányítószám elfogadott, a számlára a négy számjegy kerül (%s)',
+    (zip) => {
+      expect(validateBilling({ ...VALID, zip })).toMatchObject({
+        ok: true,
+        value: { zip: '1011' },
+      })
+    },
+  )
 })
 
-describe('validateBilling — külföldi cím (a vásárlás nem vész el)', () => {
+describe('validateBilling — csak magyar cím (K11, tulajdonosi döntés 2026-09-24)', () => {
   /**
-   * A korábbi szabály KIZÁRÓLAG magyar irányítószámot fogadott el, tehát a
-   * határon túli magyar vevő innentől egyáltalán nem tudott volna fizetni.
-   * ⚠️ A számla-XML `<vevo>` blokkja ma nem tartalmaz `<orszag>` taget — az
-   * országmező felvétele önálló, TULAJDONOSI döntést igénylő ticket.
+   * K11: számlát egyelőre csak magyarországi címre állítunk ki (a számla-XML
+   * `<vevo>` blokkja nem hordoz országot, és a külföldi vevő áfa-kezelése
+   * nincs rendezve, r-ado-7, a-ux-18). A korábbi, országmező nélküli „szabad
+   * alak" enyhítést ez váltja. A külföldi vevő nem néma elutasítást kap: az
+   * üzenet (mező- és összefoglaló-szinten is) a kapcsolati címre irányít.
    */
   it.each([
     ['berlini (5 számjegy)', '10115'],
     ['malackai (belső szóközzel)', '900 01'],
-    ['reykjavíki (3 számjegy)', '101'],
     ['londoni (betű+számjegy)', 'SW1A 1AA'],
     ['kötőjeles (pl. lengyel)', '00-950'],
-  ])('átmegy és VÁLTOZATLAN marad: %s', (_label, zip) => {
+    // Négy számjeggyel kezdődő külföldi alakok: az elgépelés-szabály
+    // („négy számjegy + farok") nem veheti el tőlük a K11-es kiutat.
+    ['holland (négy számjegy + két betű)', '1011 AB'],
+    ['portugál (négy számjegy + kötőjel + három számjegy)', '1000-001'],
+  ])('elutasítva, a kapcsolati címre irányít: %s', (_label, zip) => {
     const result = validateBilling({ ...VALID, zip, city: 'Berlin' })
-    expect(result.ok && result.value.zip).toBe(zip)
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ field: 'zip', kind: 'invalid', message: BILLING_ZIP_FOREIGN_ERROR }],
+    })
+    expect(BILLING_ZIP_FOREIGN_ERROR).toContain('info@kineticare.hu')
+    // Az élő hibarégió az összefoglalót mutatja: a kiút ott is látszik.
+    expect(billingSummaryMessage(result.ok ? [] : result.errors)).toBe(BILLING_ZIP_FOREIGN_ERROR)
   })
 
-  it('a belső szóközre NEM találgat: a 10 11 nem lesz csendben 1011', () => {
-    const result = validateBilling({ ...VALID, zip: '10 11' })
-    expect(result.ok && result.value.zip).toBe('10 11')
+  it.each([
+    ['három számjegy', '101'],
+    ['nullával kezdődő négy számjegy', '0111'],
+    ['belső szóközzel tagolt négy számjegy', '10 11'],
+    ['HU országelőtag kötőjellel', 'HU-1011'],
+    ['HU országelőtag szóközzel', 'HU 1011'],
+    ['kisbetűs hu országelőtag', 'hu1011'],
+    ['pont a végén', '1011.'],
+    ['vessző a végén', '1011,'],
+    ['kötőjel a végén', '1011-'],
+    ['a településnév is a mezőben', '1011 Budapest'],
+  ])('magyar elgépelés: a négyjegyű alakot kéri, nem találgat (%s)', (_label, zip) => {
+    const result = validateBilling({ ...VALID, zip })
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ field: 'zip', kind: 'invalid', message: BILLING_ZIP_ERROR }],
+    })
+  })
+
+  /**
+   * W1A-4: a magyar címmel vásárló vevő elgépelése (dupla leütés, `HU`
+   * előtag, írásjel vagy településnév a mezőben, betű O a nulla helyén) nem
+   * kaphat olyan üzenetet, amely csak a „magyarországi címre" korlátot mondja
+   * ki: az első mondatnak a teendőt kell megmondania, a mezőnél és az élő
+   * hibarégió összefoglalójában is. A `10111` és a `1O11` külföldi osztályú
+   * marad (a `10115`-től nem választható szét), ott az üzenet sorrendje véd.
+   */
+  it.each(['10111', 'HU-1011', 'HU 1011', '1011 Budapest', '1011.', '1O11'])(
+    'magyar vevő elgépelése: a hiba a négyjegyű alak kérésével kezdődik (%s)',
+    (zip) => {
+      const result = validateBilling({
+        name: 'Teszt Elek',
+        city: 'Budapest',
+        street: 'Fő utca 1.',
+        zip,
+      })
+      const errors = result.ok ? [] : result.errors
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toMatchObject({ field: 'zip', kind: 'invalid' })
+      expect(errors[0].message).toMatch(/^Add meg a négyjegyű magyar irányítószámot/)
+      expect(billingSummaryMessage(errors)).toMatch(/^Add meg a négyjegyű magyar irányítószámot/)
+    },
+  )
+})
+
+describe('validateBilling — „Cégként vásárolok" (K11, r-ado-13)', () => {
+  it('céges jelölés adószám nélkül: az adószám kötelező, saját üzenettel', () => {
+    const result = validateBilling({ ...VALID, companyPurchase: true })
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ field: 'taxNumber', kind: 'missing', message: BILLING_TAX_NUMBER_REQUIRED_ERROR }],
+    })
+    expect(billingSummaryMessage(result.ok ? [] : result.errors)).toBe(
+      BILLING_TAX_NUMBER_REQUIRED_ERROR,
+    )
+  })
+
+  it('céges jelölés érvényes adószámmal: átmegy, a jelölés a normalizált adatban marad', () => {
+    expect(
+      validateBilling({ ...VALID, companyPurchase: true, taxNumber: VALID_TAX_NUMBER }),
+    ).toEqual({
+      ok: true,
+      value: { ...VALID, taxNumber: VALID_TAX_NUMBER, companyPurchase: true },
+    })
+  })
+
+  it.each([
+    ['formai hiba', '1234', BILLING_TAX_NUMBER_COMPANY_ERROR],
+    ['szerkezeti (CDV) hiba', '12345678-1-42', BILLING_TAX_NUMBER_COMPANY_STRUCTURE_ERROR],
+  ])(
+    'céges jelölésnél a hibás adószám üzenete nem küldi a vevőt a mező ürítésére (%s)',
+    (_label, taxNumber, message) => {
+      const result = validateBilling({ ...VALID, companyPurchase: true, taxNumber })
+      expect(result).toEqual({
+        ok: false,
+        errors: [{ field: 'taxNumber', kind: 'invalid', message }],
+      })
+      expect(message).not.toContain('Magánszemélyként')
+    },
+  )
+
+  it.each([
+    ['szöveges "true"', 'true'],
+    ['szám 1', 1],
+  ])('csak a szó szerinti true jelöl cégest (%s): adószám nélkül magánszemély', (_label, flag) => {
+    expect(validateBilling({ ...VALID, companyPurchase: flag })).toEqual({
+      ok: true,
+      value: { ...VALID, taxNumber: null, companyPurchase: false },
+    })
+  })
+
+  it('a hálózati törzsbe a jelölés csak céges vásárlásnál kerül', () => {
+    expect(
+      toBillingPayload({ ...VALID, taxNumber: VALID_TAX_NUMBER, companyPurchase: true }),
+    ).toEqual({ ...VALID, taxNumber: VALID_TAX_NUMBER, companyPurchase: true })
+    expect(toBillingPayload({ ...VALID, taxNumber: null, companyPurchase: false })).toEqual(VALID)
   })
 })
 
@@ -246,9 +356,8 @@ describe('validateBilling — elutasított, hiányos adatok', () => {
     }
     const map = billingErrorMap(result.errors)
     expect(map.name).toBe('Add meg a számlázási nevet (legalább 2 karakter).')
-    expect(map.zip).toBe(
-      'Adj meg érvényes irányítószámot (magyar cím esetén négyjegyű szám, például 1011).',
-    )
+    // K11: az irányítószám kizárólag magyar, a „magyar cím esetén" kitétel elavult.
+    expect(map.zip).toBe('Add meg a négyjegyű magyar irányítószámot (például 1011).')
     expect(map.city).toBe('Add meg a települést.')
     expect(map.street).toBe('Add meg az utcát és a házszámot.')
   })
@@ -484,7 +593,7 @@ describe('planCheckoutSubmission — a beküldés a MÓDOSÍTOTT állapotból é
     expect(plan.focusElementId).toBe('kc-field-billingCity')
   })
 
-  it('több hibás mezőnél az ELSŐ (megjelenítési sorrend szerinti) kapja a fókuszt', () => {
+  it('több hibás mezőnél az első hiányzó elem a megjelenítési sorrend szerinti első mező', () => {
     let values = withBillingValue(prefillBillingForm(PROFILE), 'zip', '')
     values = withBillingValue(values, 'street', '')
     const plan = planCheckoutSubmission(context(values))
@@ -510,7 +619,7 @@ describe('planCheckoutSubmission — a beküldés a MÓDOSÍTOTT állapotból é
     })
   })
 
-  it('hiányzó elállási nyilatkozat: a hiányzó jelölőnégyzet kapja a fókuszt', () => {
+  it('hiányzó elállási nyilatkozat: az első hiányzó elem a hiányzó jelölőnégyzet', () => {
     const base = context(prefillBillingForm(PROFILE))
     expect(
       planCheckoutSubmission({ ...base, waiverStartAccepted: false, waiverLossAccepted: false }),

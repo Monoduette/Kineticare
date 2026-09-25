@@ -41,6 +41,52 @@ describe('orderNumber formátum (egység)', () => {
   })
 })
 
+/**
+ * a-checkout-16: az évszám a magyar naptár szerinti. Az éles szerver UTC-ben
+ * fut, és a `getFullYear()` (a folyamat helyi ideje) szilveszter éjjel 00:00
+ * és 01:00 (CET) között még az előző évet adta. A folyamat időzónáját a
+ * blokk UTC-re állítja (mint élesben és a CI-ben), hogy a teszt gépfüggetlen
+ * legyen; a lekérdezett évet a generátor `like` feltétele mutatja.
+ */
+describe('orderNumber év — Europe/Budapest (egység)', () => {
+  const originalTz = process.env.TZ
+  beforeAll(() => {
+    process.env.TZ = 'UTC'
+  })
+  afterAll(() => {
+    if (originalTz === undefined) {
+      delete process.env.TZ
+    } else {
+      process.env.TZ = originalTz
+    }
+  })
+
+  function yearProbe(): { payload: Payload; likes: string[] } {
+    const likes: string[] = []
+    const payload = {
+      find: async (args: { where?: { orderNumber?: { like?: string } } }) => {
+        likes.push(String(args.where?.orderNumber?.like))
+        return { docs: [], totalDocs: 0 }
+      },
+    } as unknown as Payload
+    return { payload, likes }
+  }
+
+  it.each([
+    [
+      'szilveszter éjjel, 00:30 Budapesten (23:30 UTC)',
+      '2026-12-31T23:30:00.000Z',
+      'KH-2027-000001',
+    ],
+    ['január 1., 00:59:59 Budapesten', '2026-12-31T23:59:59.000Z', 'KH-2027-000001'],
+    ['szilveszter 23:59 Budapesten (22:59 UTC)', '2026-12-31T22:59:00.000Z', 'KH-2026-000001'],
+  ])('%s', async (_label, instant, expected) => {
+    const { payload, likes } = yearProbe()
+    expect(await generateOrderNumber(payload, new Date(instant))).toBe(expected)
+    expect(likes).toEqual([expected.slice(0, 8)])
+  })
+})
+
 // A DB-kapcsoló tényleges TCP-elérhetőséget néz — a CI álértékű DATABASE_URI-ja
 // mellett az env-alapú feltétel hamis pozitívot adna (helpers/db-available.ts).
 const hasDb = await isDatabaseAvailable()

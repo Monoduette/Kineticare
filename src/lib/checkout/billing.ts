@@ -1,8 +1,11 @@
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../contact-email'
+
 /**
  * Checkout — a számlázási adatok szerződése és validációja (KÖZÖS modul).
  *
- * A modul SZÁNDÉKOSAN függőségmentes (nincs benne payload-, next- vagy
- * react-import), mert két, egymástól független helyen fut le:
+ * A modul SZÁNDÉKOSAN keretrendszer-független (nincs benne payload-, next-
+ * vagy react-import; az egyetlen importja a tiszta `contact-email.ts`, a
+ * kapcsolati cím egyetlen forrása), mert két, egymástól független helyen fut le:
  *  - a /penztar űrlapján (kliens-bundle) — hogy a beküldés hiányos adattal el
  *    se induljon, magyar, mezőhöz kötött hibaüzenettel;
  *  - a POST /api/checkout/start szolgáltatásában — mert a kliens MEGKERÜLHETŐ,
@@ -16,10 +19,10 @@
  * DOBÁS NÉLKÜL zár — tehát nincs újrapróbálás, és a számla soha nem áll ki.
  * Ezt az utat itt, a rendelés létrejötte ELŐTT kell elzárni.
  *
- * A SZERZŐDÉS: a bemenet minden mezője STRING. Számként küldött irányítószám
- * vagy adószám (`{ zip: 1011 }`) érvénytelen — a vezető nullát a JSON
- * szám-típusa elnyelné (`0111` → `111`), ezért a konverziót szándékosan nem
- * végezzük el helyette.
+ * A SZERZŐDÉS: a bemenet szöveges mezői STRING-ek, a `companyPurchase` boolean.
+ * Számként küldött irányítószám vagy adószám (`{ zip: 1011 }`) érvénytelen — a
+ * vezető nullát a JSON szám-típusa elnyelné (`0111` → `111`), ezért a
+ * konverziót szándékosan nem végezzük el helyette.
  *
  * A szigorúság mezőnként MÁS, és mindegyik választás mögött ugyanaz a mérce
  * áll: mit utasítana vissza a Számla Agent (= néma, kiállítatlan számla),
@@ -27,11 +30,17 @@
  *
  *  - **név / település / cím**: nem üres, ésszerű alsó és felső hosszkorlát;
  *    formai megkötés (házszám-kényszer, ékezet- vagy karakter-szűrés) NINCS.
- *  - **irányítószám**: magyar alak esetén szigorú (négy számjegy, 1000–9999),
- *    egyébként SZABAD formátum — lásd a `normalizeZip` fejlécét és a benne
- *    rögzített, TULAJDONOSI DÖNTÉST igénylő megjegyzést.
- *  - **adószám**: OPCIONÁLIS, de ha megadják, SZERKEZETILEG is ellenőrizzük
- *    (CDV + áfakód + megyekód) — lásd a `normalizeTaxNumber` fejlécét.
+ *  - **irányítószám**: KIZÁRÓLAG magyar alak (négy számjegy, 1000–9999,
+ *    opcionális `H-` előtag) — tulajdonosi döntés, K11 (2026-09-24): számlát
+ *    egyelőre csak magyarországi címre állítunk ki, mert a számla-XML `<vevo>`
+ *    blokkja nem hordoz országot, és a külföldi vevő áfa-kezelése
+ *    (teljesítési hely, r-ado-7) nincs rendezve. A külföldi címről érkező
+ *    vevőt nem hagyjuk szó nélkül: az üzenet a kapcsolati címre irányít.
+ *  - **adószám**: magánszemélynek OPCIONÁLIS; a „Cégként vásárolok"
+ *    (`companyPurchase`) jelölés mellett KÖTELEZŐ (K11, r-ado-13: a céges
+ *    vevő adószám nélkül elszámolhatatlan magánszemélyes számlát kapna). Ha
+ *    megadják, SZERKEZETILEG is ellenőrizzük (CDV + áfakód + megyekód) — lásd
+ *    a `normalizeTaxNumber` fejlécét.
  */
 
 /** A pénztárból érkező, nyers számlázási adatok (a hálózati törzs alakja). */
@@ -41,6 +50,8 @@ export interface CheckoutBillingInput {
   city: string
   street: string
   taxNumber?: string
+  /** „Cégként vásárolok": true esetén az adószám kötelező. Hiánya = magánszemély. */
+  companyPurchase?: boolean
 }
 
 /** A validált, normalizált számlázási adatok — ez kerül a rendelés snapshotjába. */
@@ -51,6 +62,8 @@ export interface NormalizedBilling {
   street: string
   /** Hiányzó vagy üres adószám esetén null (magánszemély vásárló). */
   taxNumber: string | null
+  /** A vevő cégként vásárol (adószámmal); a snapshotba és a számla vevőblokkjába megy. */
+  companyPurchase: boolean
 }
 
 export type BillingFieldName = 'name' | 'zip' | 'city' | 'street' | 'taxNumber'
@@ -59,7 +72,7 @@ export type BillingFieldName = 'name' | 'zip' | 'city' | 'street' | 'taxNumber'
  * A hiba OSZTÁLYA — ebből származtatjuk a felhasználónak szóló összefoglalót.
  * A korábbi egyetlen, mindenre azonos „a számlázási adatok hiányosak" szöveg
  * félrevezetett: a túl HOSSZÚ érték nem hiányzik, a hibás ADÓSZÁM mezője pedig
- * nem is kötelező.
+ * (magánszemélynél) nem is kötelező.
  */
 export type BillingErrorKind = 'missing' | 'tooLong' | 'invalid'
 
@@ -73,7 +86,11 @@ export interface BillingFieldError {
 export type BillingValidationResult =
   { ok: true; value: NormalizedBilling } | { ok: false; errors: BillingFieldError[] }
 
-/** A szabad szöveges mezők hosszkorlátai (alsó = elgépelés-szűrő, felső = épesz-határ). */
+/**
+ * A szabad szöveges mezők hosszkorlátai (alsó = elgépelés-szűrő, felső =
+ * épesz-határ). Az irányítószám felső korlátja a `H-1011` alaknál is bőven
+ * elég; a pontos alakot a `HUNGARIAN_ZIP_PATTERN` dönti el.
+ */
 export const BILLING_LIMITS = {
   name: { min: 2, max: 200 },
   city: { min: 2, max: 100 },
@@ -125,14 +142,55 @@ const TEXT_RULES: readonly TextRule[] = [
   },
 ]
 
-export const BILLING_ZIP_ERROR =
-  'Adj meg érvényes irányítószámot (magyar cím esetén négyjegyű szám, például 1011).'
+/**
+ * Hiányzó vagy elgépelt magyar irányítószám (nem négyjegyű, nullával kezdődő,
+ * `HU` előtagú, vagy a négy számjegy után írásjel, településnév áll). A
+ * szöveg a teendőt mondja meg egy példával (GOV.UK, Error message: „tell the
+ * user what to do", https://design-system.service.gov.uk/components/error-message/).
+ */
+export const BILLING_ZIP_ERROR = 'Add meg a négyjegyű magyar irányítószámot (például 1011).'
+/**
+ * Külföldi alakú irányítószám (K11: számla egyelőre csak magyarországi címre).
+ *
+ * MIÉRT A TEENDŐVEL KEZDŐDIK: a magyar vevő elgépelése és a valódi külföldi
+ * irányítószám alakra gyakran nem választható szét (a dupla leütéses `10111`
+ * és a berlini `10115` egyaránt öt számjegy, a `1O11` betűs O-ja is csak
+ * külföldinek látszik). Ha az üzenet csak a korlátot mondaná ki, a magyar
+ * címmel vásárló vevő hamis állítást kapna, és nem tudná, mit javítson. Ezért
+ * először a négyjegyű alakot kéri (ugyanazzal a mondattal, mint az elgépelés
+ * üzenete), utána mondja ki a K11-es korlátot és a kiutat a kapcsolati
+ * címmel.
+ *
+ * Források: GOV.UK Design System, Error message („Describe what has happened
+ * and tell them how to fix it", https://design-system.service.gov.uk/components/error-message/);
+ * NN/g, Error-Message Guidelines („offer some potential remedies",
+ * https://www.nngroup.com/articles/error-message-guidelines/); WCAG 2.2
+ * SC 3.3.3 Error Suggestion (https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html).
+ * Két önálló állítás két mondat, nem pontosvessző (docs/ui-sztenderdek.md
+ * 3.1). A cím egyetlen forrása a contact-email.ts (K14).
+ */
+export const BILLING_ZIP_FOREIGN_ERROR =
+  `${BILLING_ZIP_ERROR} Számlát jelenleg csak magyarországi címre tudunk kiállítani. ` +
+  `Ha külföldi címre kérnéd, írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
 export const BILLING_TAX_NUMBER_ERROR =
   'Az adószám 11 számjegyből áll (például 12345676-1-42). Magánszemélyként hagyd üresen.'
 export const BILLING_TAX_NUMBER_STRUCTURE_ERROR =
   'Ez az adószám elírásnak tűnik: ellenőrizd a számjegyeket. Magánszemélyként hagyd üresen.'
 export const BILLING_TAX_NUMBER_EU_ERROR =
   'A közösségi adószám (HU + 8 számjegy) helyett a teljes, 11 jegyű magyar adószámot add meg (például 12345676-1-42).'
+/** „Cégként vásárolok" jelölés adószám nélkül (K11): a mező ilyenkor kötelező. */
+export const BILLING_TAX_NUMBER_REQUIRED_ERROR =
+  'Céges vásárláshoz add meg a cég adószámát (11 számjegy, például 12345676-1-42).'
+/**
+ * Céges vásárlásnál a formai és szerkezeti hiba szövegéből kimarad a
+ * „Magánszemélyként hagyd üresen." mondat: a jelölés mellett a mező kötelező,
+ * az ürítés csak egy újabb hibához vezetne (GOV.UK, Error message: „tell the
+ * user what to do", https://design-system.service.gov.uk/components/error-message/).
+ */
+export const BILLING_TAX_NUMBER_COMPANY_ERROR =
+  'Az adószám 11 számjegyből áll (például 12345676-1-42).'
+export const BILLING_TAX_NUMBER_COMPANY_STRUCTURE_ERROR =
+  'Ez az adószám elírásnak tűnik: ellenőrizd a számjegyeket.'
 
 /** Összefoglaló üzenetek — a `billingSummaryMessage` a hibahalmazból választ. */
 export const BILLING_SUMMARY_MISSING =
@@ -146,8 +204,28 @@ export const BILLING_SUMMARY_MIXED = 'Ellenőrizd a pirossal jelölt számlázá
  * opcionális `H` / `H-` országelőtaggal.
  */
 const HUNGARIAN_ZIP_PATTERN = /^(?:[Hh]-?)?([1-9]\d{3})$/
-/** Nemzetközi irányítószám: betű/számjegy/szóköz/kötőjel, legalább egy számjeggyel. */
-const FOREIGN_ZIP_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 -]*[A-Za-z0-9]$/
+/**
+ * Magyar ELGÉPELÉS alakjai (mindegyiket a szóközök elhagyása után vizsgáljuk,
+ * opcionális `H`, `H-`, `HU` vagy `HU-` előtaggal):
+ *  - csak számjegyek, legfeljebb négy (`101`, `0111`, `10 11`, `HU-1011`,
+ *    `HU 1011`, `hu1011`);
+ *  - érvényes négyjegyű irányítószám, utána nem számjegy (`1011.`, `1011,`,
+ *    `1011-`, `1011 Budapest`).
+ * Egyiket sem fogadjuk el csendben (a `HU-1011` sem lesz `1011`): a vevő a
+ * négyjegyű alakot kéri vissza, nem találgatunk helyette, és a számlára
+ * kerülő adat útja nem változik.
+ */
+const HUNGARIAN_ZIP_TYPO_PATTERN = /^(?:[Hh][Uu]?-?)?\d{1,4}$/
+const HUNGARIAN_ZIP_WITH_TAIL_PATTERN = /^(?:[Hh][Uu]?-?)?[1-9]\d{3}\D/
+/**
+ * Négy számjeggyel kezdődő, de VALÓDI külföldi alakok, amelyeket a fenti
+ * „négy számjegy + farok" szabály elgépelésnek látna: holland (`1011 AB`,
+ * négy számjegy + két betű) és portugál (`1000-001`). Ezek maradnak
+ * külföldiek, hogy a vevő a K11-es kiutat (a kapcsolati címet) megkapja.
+ * A kétbetűs magyar rövidítés (`1011 Bp`) így szintén külföldinek számít, de
+ * a külföldi üzenet is a négyjegyű alakot kéri elsőként.
+ */
+const FOREIGN_FOUR_DIGIT_ZIP_PATTERN = /^\d{4}(?:[A-Za-z]{2}|-\d{3})$/
 /** Az adószám nyers alakja a szóközök, kötőjelek és a `HU` előtag elhagyása után. */
 const TAX_NUMBER_DIGITS_PATTERN = /^\d{11}$/
 /** A CDV-súlyok az adószám törzsszámának első HÉT jegyére (a 8. a képzett ellenőrző jegy). */
@@ -264,54 +342,59 @@ const TAX_NUMBER_FAILURE_MESSAGE: Record<TaxNumberFailure, string> = {
   'eu-only': BILLING_TAX_NUMBER_EU_ERROR,
 }
 
+const TAX_NUMBER_COMPANY_FAILURE_MESSAGE: Record<TaxNumberFailure, string> = {
+  format: BILLING_TAX_NUMBER_COMPANY_ERROR,
+  structure: BILLING_TAX_NUMBER_COMPANY_STRUCTURE_ERROR,
+  'eu-only': BILLING_TAX_NUMBER_EU_ERROR,
+}
+
+type ZipFailure = 'missing' | 'typo' | 'foreign'
+
+type ZipResult = { ok: true; value: string } | { ok: false; failure: ZipFailure }
+
 /**
- * Irányítószám-normalizálás.
+ * Irányítószám-normalizálás — KIZÁRÓLAG magyar alak (K11).
  *
- * ⚠️ **TULAJDONOSI DÖNTÉST IGÉNYEL — a külföldi cím kezelése.** A szabály
- * korábban KIZÁRÓLAG magyar irányítószámot fogadott el, vagyis a berlini
- * (`10115`) és a malackai (`900 01`) vevő innentől egyáltalán nem tudott volna
- * fizetni — pedig egy magyar nyelvű platformon a határon túli magyar vevő
- * reális, és eddig tudott. Ezért az itteni szabály ORSZÁGMEZŐ NÉLKÜL enged
- * szabadabb alakot:
+ * A tulajdonos 2026-09-24-i döntése: számlát egyelőre csak magyarországi
+ * címre állítunk ki. Ez a korábbi, országmező nélküli „szabad alak" enyhítést
+ * VÁLTJA: az addig elfogadott berlini (`10115`) vagy malackai (`900 01`)
+ * irányítószám országa nem került a számlára, és a külföldi vevő áfa-kezelése
+ * sem volt rendezett (r-ado-7, a-ux-18). A külföldi alakot ezért elutasítjuk,
+ * de saját üzenettel, amely a kapcsolati címre irányít.
  *
  *  - magyar alak (opcionális `H-` előtag + négy számjegy, 1000–9999) →
  *    normalizálva, csak a négy számjegy kerül a számlára;
- *  - minden más → 3–12 karakter a [betű, számjegy, szóköz, kötőjel]
- *    készletből, legalább egy számjeggyel, ÉS ÚGY, AHOGY BEÍRTÁK (a belső
- *    szóköz megmarad: a `900 01` alak Szlovákiában így helyes). Korábban a
- *    normalizálás a belső szóközt is elnyelte, tehát TALÁLGATOTT — a `10 11`
- *    csendben `1011` lett; ez megszűnt.
- *
- * Egyetlen szigorúság maradt a magyar elgépelés miatt: a PONTOSAN négy
- * számjegyből álló érték nem kezdődhet nullával (`0111` → hiba). Ez elvben
- * kizárja a néhány dán, nullával kezdődő céges irányítószámot — tudatos csere,
- * mert a magyar elgépelés nagyságrendekkel gyakoribb.
- *
- * ⚠️ **AMI EMBERI DÖNTÉS NÉLKÜL NEM OLDHATÓ MEG:** a számla-XML `<vevo>`
- * blokkja ma NEM tartalmaz `<orszag>` taget (src/lib/szamlazz/invoice.ts), így
- * a külföldi címről leadott rendelés számlájára ország nem kerül. Az `<orszag>`
- * felvétele + a pénztár országmezője ÖNÁLLÓ, tulajdonosi döntést igénylő
- * ticket; addig a fenti enyhítés a kisebbik kockázat (vásárlás nem vész el,
- * a számla ország nélkül, de kiállítható marad).
+ *  - üres → `missing`;
+ *  - magyar elgépelés → `typo` (a négyjegyű példát kapja vissza): szóközök
+ *    nélkül csupa számjegy, legfeljebb négy (`101`, `0111`, `10 11`), `HU`
+ *    előtaggal is (`HU-1011`, `HU 1011`, `hu1011`), vagy érvényes négy
+ *    számjegy után írásjel, szöveg (`1011.`, `1011,`, `1011-`,
+ *    `1011 Budapest`), kivéve a holland és a portugál alakot;
+ *  - minden más (öt számjegy, betű a számjegyek között, `1011 AB`,
+ *    `1000-001`) → `foreign`, amelynek üzenete szintén a négyjegyű alakkal
+ *    kezdődik, mert az öt számjegyű elgépelés (`10111`) a berlini
+ *    irányítószámtól (`10115`) nem választható szét.
  */
-function normalizeZip(value: unknown): string | null {
+function normalizeZip(value: unknown): ZipResult {
   const normalized = normalizeText(value)
-  if (normalized.length < BILLING_LIMITS.zip.min || normalized.length > BILLING_LIMITS.zip.max) {
-    return null
+  if (normalized.length === 0) {
+    return { ok: false, failure: 'missing' }
   }
-
   const hungarian = HUNGARIAN_ZIP_PATTERN.exec(normalized)
   if (hungarian) {
-    return hungarian[1]
+    return { ok: true, value: hungarian[1] }
   }
-  if (!FOREIGN_ZIP_PATTERN.test(normalized) || !/\d/u.test(normalized)) {
-    return null
-  }
-  // A magyar elgépelés-szűrő: négy számjegy csak 1000–9999 lehet.
-  if (/^\d{4}$/.test(normalized)) {
-    return null
-  }
-  return normalized
+  const compact = normalized.replace(/ /g, '')
+  const typo =
+    HUNGARIAN_ZIP_TYPO_PATTERN.test(compact) ||
+    (HUNGARIAN_ZIP_WITH_TAIL_PATTERN.test(compact) && !FOREIGN_FOUR_DIGIT_ZIP_PATTERN.test(compact))
+  return { ok: false, failure: typo ? 'typo' : 'foreign' }
+}
+
+const ZIP_FAILURE: Record<ZipFailure, { kind: BillingErrorKind; message: string }> = {
+  missing: { kind: 'missing', message: BILLING_ZIP_ERROR },
+  typo: { kind: 'invalid', message: BILLING_ZIP_ERROR },
+  foreign: { kind: 'invalid', message: BILLING_ZIP_FOREIGN_ERROR },
 }
 
 /**
@@ -341,28 +424,32 @@ export function validateBilling(input: unknown): BillingValidationResult {
   }
 
   const zip = normalizeZip(source.zip)
-  if (zip === null) {
-    errors.push({
-      field: 'zip',
-      kind: normalizeText(source.zip).length === 0 ? 'missing' : 'invalid',
-      message: BILLING_ZIP_ERROR,
-    })
+  if (!zip.ok) {
+    errors.push({ field: 'zip', ...ZIP_FAILURE[zip.failure] })
   }
+
+  // A „Cégként vásárolok" jelölés CSAK a szó szerinti `true`: a kliens
+  // megkerülhető, és egy `"true"` string vagy `1` nem tehet cégessé egy vevőt.
+  const companyPurchase = source.companyPurchase === true
 
   const taxNumber = normalizeTaxNumber(source.taxNumber)
   if (!taxNumber.ok) {
     errors.push({
       field: 'taxNumber',
       kind: 'invalid',
-      message: TAX_NUMBER_FAILURE_MESSAGE[taxNumber.failure],
+      message: (companyPurchase ? TAX_NUMBER_COMPANY_FAILURE_MESSAGE : TAX_NUMBER_FAILURE_MESSAGE)[
+        taxNumber.failure
+      ],
     })
+  } else if (companyPurchase && taxNumber.value === null) {
+    errors.push({ field: 'taxNumber', kind: 'missing', message: BILLING_TAX_NUMBER_REQUIRED_ERROR })
   }
 
   // A három disjunkt HÁROM KÜLÖN mezőcsoport kapuja (irányítószám, adószám,
   // szöveges mezők) — egyik sem redundáns, és a sikeres ágon így nem marad
   // olyan „nem fordulhat elő" tartalék, ami hiba esetén csendben rossz értéket
   // (üres irányítószámot) engedne a számlára.
-  if (zip === null || !taxNumber.ok || errors.length > 0) {
+  if (!zip.ok || !taxNumber.ok || errors.length > 0) {
     // A hibák a megjelenítési sorrendben menjenek vissza — a hívó az ELSŐ
     // hibás mezőre viszi a fókuszt.
     errors.sort(
@@ -376,10 +463,11 @@ export function validateBilling(input: unknown): BillingValidationResult {
     ok: true,
     value: {
       name: text.name,
-      zip,
+      zip: zip.value,
       city: text.city,
       street: text.street,
       taxNumber: taxNumber.value,
+      companyPurchase,
     },
   }
 }
@@ -390,12 +478,18 @@ export function validateBilling(input: unknown): BillingValidationResult {
  * Korábban minden számlázási hibára ugyanaz a „hiányosak" szöveg ment ki, ami
  * hibás ADÓSZÁM esetén tényszerűen hamis volt (a mező nem is kötelező, és ki
  * volt töltve), túl HOSSZÚ érték esetén pedig épp az ellenkezőjét állította.
+ * Az egyetlen mezőre szűkülő irányítószám- és adószám-hibánál a mező saját
+ * üzenete az összefoglaló is: a külföldi cím K11-es kiútja csak így ér el a
+ * vevőhöz az élő hibarégióban.
  */
 export function billingSummaryMessage(errors: readonly BillingFieldError[]): string {
   if (errors.length === 0) {
     return ''
   }
   if (errors.every((item) => item.field === 'taxNumber')) {
+    return errors[0].message
+  }
+  if (errors.every((item) => item.field === 'zip' && item.kind === 'invalid')) {
     return errors[0].message
   }
   if (errors.every((item) => item.kind === 'missing')) {
@@ -409,7 +503,8 @@ export function billingSummaryMessage(errors: readonly BillingFieldError[]): str
 
 /**
  * A normalizált adatok visszaképzése a hálózati törzs alakjára: az üres
- * (null) adószám KIMARAD, hogy a szerver felé se menjen ki üres mező.
+ * (null) adószám és a hamis céges jelölés KIMARAD, hogy a szerver felé se
+ * menjen ki üres vagy alapértelmezett mező (a magánszemély törzse változatlan).
  */
 export function toBillingPayload(value: NormalizedBilling): CheckoutBillingInput {
   return {
@@ -418,6 +513,7 @@ export function toBillingPayload(value: NormalizedBilling): CheckoutBillingInput
     city: value.city,
     street: value.street,
     ...(value.taxNumber ? { taxNumber: value.taxNumber } : {}),
+    ...(value.companyPurchase ? { companyPurchase: true } : {}),
   }
 }
 

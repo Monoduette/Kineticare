@@ -8,6 +8,7 @@ import { generateRequestId, getRequestId } from '../request-id'
 import { DEFAULT_JSON_BODY_MAX_BYTES, readBodyWithCap } from '../security/request-body'
 import { assertSameOrigin } from '../security/same-origin'
 import { RefundError, refundOrder, type RefundOrderInput } from './refund-order'
+import { readRefundPanelContext } from './panel-context'
 import { getRefundRecoveryStatus, recoverRefundOrder } from './refund-recovery'
 
 /** POST /api/admin/orders/[orderNumber]/refund — owner-only, a refundOrder szolgáltatást hívja. */
@@ -130,6 +131,7 @@ export function createRefundHandler(
           actor: user,
           headers: request.headers,
           ipAddress: resolveClientIp(request.headers),
+          logger: log,
         })
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } })
       }
@@ -141,6 +143,7 @@ export function createRefundHandler(
         actor: user,
         headers: request.headers,
         ipAddress: resolveClientIp(request.headers),
+        requestId,
         logger: log,
       })
 
@@ -209,12 +212,15 @@ export function createRefundRecoveryStatusHandler(deps: RefundHandlerDeps) {
         return Response.json({ error: 'Hiányzó rendelésszám.' }, { status: 400, headers })
       }
       const operationKey = request.headers.get('X-Refund-Operation-Key')
+      const status = await getRefundRecoveryStatus({
+        payload,
+        orderNumber,
+        ...(operationKey === null ? {} : { operationKey }),
+      })
+      // A panel összefüggése (számla-kapu, a fizetés óta eltelt napok) külön
+      // kulcson: a mentett állapot szerkezete változatlan marad.
       return Response.json(
-        await getRefundRecoveryStatus({
-          payload,
-          orderNumber,
-          ...(operationKey === null ? {} : { operationKey }),
-        }),
+        { ...status, panel: await readRefundPanelContext(payload, orderNumber) },
         { headers },
       )
     } catch (error) {

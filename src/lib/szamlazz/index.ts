@@ -53,14 +53,20 @@ export {
 } from './storno'
 export {
   buildCorrectiveInvoiceXml,
-  CORRECTIVE_KULSO_AZON_INFIX,
-  correctiveKulsoAzon,
   isRetryableCorrectiveError,
   issueCorrectiveInvoiceForOrder,
   MAX_CORRECTIVE_ATTEMPTS,
   type BuildCorrectiveInvoiceXmlInput,
   type IssueCorrectiveInvoiceDeps,
 } from './corrective'
+export {
+  CORRECTIVE_KULSO_AZON_INFIX,
+  correctiveKulsoAzon,
+  invoiceKulsoAzon,
+  STORNO_KULSO_AZON_SUFFIX,
+  stornoKulsoAzon,
+} from './kulso-azon'
+export { queryInvoiceData, type InvoiceDataResult } from './invoice-data'
 export { earliestOrderGrantMoment, resolveOrderPaidMoment, type OrderPaidMoment } from './paid-date'
 export { queueCorrectiveInvoiceJob, queueStornoIssueJob } from './queue'
 export { writeOrderInvoicingState } from './order-state'

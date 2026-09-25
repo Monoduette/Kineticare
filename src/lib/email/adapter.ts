@@ -1,7 +1,9 @@
 import type { EmailAdapter } from 'payload'
 
+import { kapcsolatiEmailPayloadbol } from '../contact-email-server'
 import { parseFromAddress } from './mask'
 import { sendMail } from './provider'
+import { isUsableReplyToAddress } from './reply-to'
 import type { SendResult } from './types'
 
 /**
@@ -49,7 +51,7 @@ export function plainTextFromHtml(html: string): string {
     .trim()
 }
 
-export const kineticareEmailAdapter: EmailAdapter<SendResult> = () => {
+export const kineticareEmailAdapter: EmailAdapter<SendResult> = ({ payload }) => {
   const from = parseFromAddress(process.env.EMAIL_FROM)
   return {
     name: 'kineticare-provider',
@@ -59,11 +61,17 @@ export const kineticareEmailAdapter: EmailAdapter<SendResult> = () => {
       const to = Array.isArray(message.to) ? message.to : [message.to]
       const html = typeof message.html === 'string' ? message.html : ''
       const givenText = typeof message.text === 'string' ? message.text.trim() : ''
+      // A Payload levelei (jelszó-visszaállítás, fiók-megerősítés) is a
+      // Kapcsolat oldalon beállított címre kérik a választ, mint a rendelés- és
+      // a visszatérítés-levelek (K14; Codex, PR #307). A feloldó hibánál a
+      // kódtartalékot adja, a levél ettől még kimegy.
+      const supportEmail = await kapcsolatiEmailPayloadbol(payload)
       return sendMail({
         to: to.filter((recipient): recipient is string => typeof recipient === 'string'),
         subject: message.subject,
         html,
         text: givenText.length > 0 ? givenText : plainTextFromHtml(html),
+        ...(isUsableReplyToAddress(supportEmail) ? { replyTo: supportEmail } : {}),
       })
     },
   }

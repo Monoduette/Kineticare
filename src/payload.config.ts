@@ -51,6 +51,8 @@ import {
 } from './lib/appointment/validation'
 import { validateContactSubmissionData } from './lib/contact-submission'
 import { budapestDateTimeString } from './lib/date/budapest'
+import { kapcsolatiEmailPayloadbol } from './lib/contact-email-server'
+import { checkConnectionBudget, PG_POOL_MAX } from './lib/db-connection-budget'
 import {
   appointmentCustomerEmail,
   appointmentStaffEmail,
@@ -387,12 +389,15 @@ const notifyStaffOnSubmission = async ({
   operation,
   formKind,
   headers,
+  payload,
 }: {
   doc: unknown
   operation: string
   formKind: unknown
   /** A beküldő kérés fejlécei: a napló request ID-jéhez. */
   headers?: Headers
+  /** A kérés Payloadja: a visszaigazolás válaszcíme a Kapcsolat oldalról jön. */
+  payload?: Payload
 }): Promise<unknown> => {
   const log = requestScopedLogger(headers)
   if (operation !== 'create') {
@@ -479,7 +484,17 @@ const notifyStaffOnSubmission = async ({
         availability: fieldValue(APPOINTMENT_AVAILABILITY_FIELD),
         ...(serverUrl ? { contactUrl: `${serverUrl}/kapcsolat` } : {}),
       })
-      const vissza = await sendMail({ to: beküldőEmail, ...visszaigazolas })
+      // A válaszcím a Kapcsolat oldalon beállított cím, mint a rendelés- és a
+      // visszatérítés-leveleknél (K14; Codex, PR #307). A feloldó hibánál a
+      // kódtartalékot adja.
+      const supportEmail = payload ? await kapcsolatiEmailPayloadbol(payload) : null
+      const vissza = await sendMail({
+        to: beküldőEmail,
+        ...visszaigazolas,
+        ...(supportEmail !== null && isUsableReplyToAddress(supportEmail)
+          ? { replyTo: supportEmail }
+          : {}),
+      })
       if (!vissza.ok) {
         log.warn('időpontkérés-visszaigazoló küldése sikertelen (best-effort)', {
           retryable: vissza.retryable,
@@ -656,6 +671,9 @@ async function ensureContactForm(payload: Payload): Promise<void> {
 async function onInit(payload: Payload): Promise<void> {
   registerPoolErrorHandler(payload)
   registerWebhookProcessors(payload)
+  // A pool mérete csak a mért max_connections-höz képest állítható (AGENTS.md);
+  // nem dob, a mérés hibája csak figyelmeztetés.
+  await checkConnectionBudget(payload.db.pool, logger)
   await ensureHomeBaseline(payload)
   await ensureContactForm(payload)
   // C9: a lábléc hírlevél-űrlapja UGYANOLYAN telepítési előfeltétel, mint a
@@ -901,10 +919,11 @@ export default buildConfig({
         // A statement_timeout a futó lekérdezést öli; ez a tétlen sessiont.
         // Aktív hosszú migrate/seed nem esik bele.
         idle_in_transaction_session_timeout: 60_000,
-        // W3 (2026-08-22): `pool.max` SZÁNDÉKOSAN nincs beállítva. A default 10
-        // a `pg` értéke. Railway `max_connections` × replikaszám nélkül a cap
-        // vagy kimeríti a DB-t, vagy hamis biztonságot ad. A beágyazott zár
-        // (rendelés → e-mail) a sorrenden múlik, nem a pool méretén.
+        // Pool-méret (a-callback-7, a-szamlazz-11): az indoklás és a
+        // max_connections induláskori mérése (onInit) a
+        // src/lib/db-connection-budget.ts-ben. Replikaszám-emelésnél a mérési
+        // sort újra meg kell nézni.
+        max: PG_POOL_MAX,
       },
       // Dev drizzle-push ki: interaktív TÁBLATÖRLÉS-prompt, amin a nem-interaktív
       // futás örökre megakad; rossz DATABASE_URI mellett adatot törölne.
@@ -1016,6 +1035,7 @@ export default buildConfig({
                 operation,
                 formKind: req.context[FORM_KIND_CONTEXT_KEY],
                 headers: req.headers,
+                payload: req.payload,
               }),
           ],
         },

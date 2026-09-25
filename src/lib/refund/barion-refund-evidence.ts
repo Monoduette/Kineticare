@@ -117,6 +117,41 @@ export function hasRelatedRefundActivity(
   return reversals.length > 0 || refunds.length > 0
 }
 
+/**
+ * A forrástranzakcióból a Barion szerint már visszatérített összeg: a hozzá
+ * kapcsolódó (RelatedId) Refund, RefundToBankCard és RefundToBankAccount
+ * tranzakciók Total értékének összege (r-barion-8: a fizetésnek nincs
+ * „Refunded” vagy „PartiallyRefunded” státusza, TransactionStatus oldid 2547;
+ * az összeget a visszatérítés-tranzakciók adják).
+ *
+ * Null, ha az összeg nem dönthető el: van sztornózott (sikertelen)
+ * visszatérítés, vagy egy kapcsolódó visszatérítés nem Succeeded, vagy az
+ * összege nem pozitív egész. A hívó ilyenkor nem indíthat új visszatérítést,
+ * mert nem tudja, mennyi pénz ment már vissza.
+ */
+export function relatedRefundTotalHuf(
+  state: BarionPaymentStateResponse,
+  sourceTransactionId: string,
+): number | null {
+  const { reversals, refunds } = relatedRefundTransactions(
+    transactionRecords(state),
+    sourceTransactionId,
+  )
+  if (reversals.length > 0) return null
+  let sum = 0
+  for (const refund of refunds) {
+    if (
+      refund.Status !== 'Succeeded' ||
+      typeof refund.Total !== 'number' ||
+      !Number.isSafeInteger(refund.Total) ||
+      refund.Total <= 0
+    )
+      return null
+    sum += refund.Total
+  }
+  return Number.isSafeInteger(sum) ? sum : null
+}
+
 /** A checkout egyetlen fizetési tranzakciójának kereskedői azonosítója (start-checkout.ts). */
 export function expectedPosTransactionId(orderNumber: string | null | undefined): string | null {
   return typeof orderNumber === 'string' && orderNumber.trim().length > 0

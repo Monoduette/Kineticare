@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fixture, provider, store, documents, access } from './refund-fixture'
+import { fixture, provider, store, documents, access, locks, mail } from './refund-fixture'
 import { recoverRejectedSucceededPayment } from '../lib/order-status/recover-paid-reject'
 import { createLogger } from '../lib/logger'
 import type { BarionPaymentStateResponse } from '../lib/barion'
@@ -135,8 +135,15 @@ describe('automatic paid-reject durable ledger runtime', () => {
     expect(provider.refund).not.toHaveBeenCalled()
   })
 
-  it('offers owner-visible local recovery and completes it without customer or invoice assumptions', async () => {
+  it('offers owner-visible local recovery, completes it without customer or invoice assumptions and sends the buyer notice once, outside every lock', async () => {
     const f = setup()
+    // Vendégrendelés: az értesítő a rendelés e-mail-címére megy.
+    Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
+    const heldAtSend: string[][] = []
+    mail.send.mockImplementation(async () => {
+      heldAtSend.push([...locks.held])
+      return { ok: true, provider: 'noop' }
+    })
     f.failures.order = true
     await f.run()
     const before = vi.mocked(f.payload.update).mock.calls.length
@@ -148,6 +155,9 @@ describe('automatic paid-reject durable ledger runtime', () => {
     expect(provider.refund).toHaveBeenCalledTimes(1)
     expect(documents.storno).not.toHaveBeenCalled()
     expect(access.apply).not.toHaveBeenCalled()
+    // A lezárást végző helyreállítás küldi, a koordinátor-zár
+    // (refund-recovery:order:<id>) elengedése után: HTTP zár alatt tilos.
+    expect(heldAtSend).toEqual([[]])
   })
 
   it('does not launch without an acknowledged prepared baseline', async () => {

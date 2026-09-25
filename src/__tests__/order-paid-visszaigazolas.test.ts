@@ -8,7 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetAlertThrottle } from '../lib/alert-throttle'
 import type { AuditLogStore } from '../lib/audit'
 import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
-import { EMAIL_SZINEK, escapeHtml, inlineLinkHtml } from '../lib/email/templates/layout'
+import {
+  DEFAULT_FOOTER_TEXT,
+  EMAIL_SZINEK,
+  escapeHtml,
+  inlineLinkHtml,
+} from '../lib/email/templates/layout'
 import {
   ORDER_CONFIRMATION_TEMPLATE_VERSION,
   WAIVER_LOSS_STATEMENT,
@@ -439,7 +444,9 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
     expect(linkkel.text).not.toContain('mellékeltük')
   })
 
-  it('kapcsolati cím nélkül a lábléc a megszokott „ne válaszolj" sor marad', () => {
+  // K14 (2026-09-24): kapcsolati cím nélkül is a hivatalos címre terel a
+  // lábléc (a váz alapértelmezése), „ne válaszolj” sehol nincs.
+  it('kapcsolati cím nélkül a lábléc a váz alapértelmezése: a hivatalos címet nevezi meg (K14)', () => {
     const regi = orderConfirmationEmail({
       orderNumber: ORDER_NUMBER,
       items: [],
@@ -447,7 +454,8 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
       coursesUrl: 'https://pelda.hu/kurzusaim',
       invoiceNote: false,
     })
-    expect(regi.text).toContain('ne válaszolj')
+    expect(regi.text).toContain(DEFAULT_FOOTER_TEXT)
+    expect(regi.text).not.toContain('ne válaszolj')
     expect(regi.text).not.toContain('A szolgáltató adatai')
   })
 
@@ -510,6 +518,8 @@ describe('hatarozottNevelo: a/az a kapcsolati cím előtt', () => {
 describe('sablonváltozat: a renderelt szöveg ujjlenyomatához kötve', () => {
   const UJJLENYOMATOK: Readonly<Record<string, string>> = {
     '2026-09-24.2': '84d807355613a580f487f03e2159ee6166ae5fe89a8a55f842a95ce24ce3c82a',
+    // Elállási funkció linkje (22. § (1b)) és a K14 alapértelmezett lábléc.
+    '2026-09-24.3': 'c7c3a56e1b7b32c52ba030e8f975a50c43f0045d1407f24ddb94c2e2870b201c',
   }
 
   const szolgaltato: SellerIdentity = {
@@ -540,6 +550,7 @@ describe('sablonváltozat: a renderelt szöveg ujjlenyomatához kötve', () => {
           email: 'anna@pelda.hu',
         },
         withdrawalWaiver: { given: true, at: WAIVER_AT },
+        withdrawalUrl: 'https://pelda.hu/elallas?rendeles=MINTA-1',
         seller: szolgaltato,
         terms: { url: 'https://pelda.hu/aszf', attachment: melleklet },
         supportEmail: 'info@pelda.hu',
@@ -661,6 +672,28 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     expect(errorsOf(entries)).toHaveLength(0)
   })
 
+  it('a levél (szöveg és HTML) az elállási funkcióra linkel, előtöltött rendelésszámmal (22. § (1b))', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', 'https://kineticare.test/')
+    const { send, calls } = createSender()
+
+    await futtasd({
+      payload: {} as unknown as Payload,
+      order: createOrder(),
+      logger: createCapturingLogger().log,
+      queueInvoice: async () => true,
+      send,
+      auditStore: createAuditStore().store,
+      loadAccessDurations: async () => new Map(),
+      sleep: nemVarhat,
+    })
+
+    const url = `https://kineticare.test/elallas?rendeles=${ORDER_NUMBER}`
+    expect(calls[0].text).toContain(`Elállás a szerződéstől: ha élni szeretnél`)
+    expect(calls[0].text).toContain(url)
+    expect(calls[0].html).toContain('<strong>Elállás a szerződéstől:</strong>')
+    expect(calls[0].html).toContain(`href="${url}"`)
+  })
+
   it('nyilatkozat nélküli rendelés: nincs visszaigazolt nyilatkozat, és a napló is ezt rögzíti', async () => {
     const { send, calls } = createSender()
     const { store, created } = createAuditStore()
@@ -744,6 +777,49 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     expect(alerts[0].msg).toContain('RIASZTÁS')
     expect(alerts[0].msg).toContain('18. §')
     expect(alerts[0].context).toMatchObject({ attempts: 2, retryable: false })
+  })
+
+  it('a melléklet nélküli pótlevél BIZONYTALAN kézbesítése is bizonytalan: nincs „NEM ment ki”, van egyeztetési bejegyzés', async () => {
+    // A mellékletes levelet a szerver végleg elutasítja (pl. SMTP 552, méret),
+    // a pótlevélnél viszont a kapcsolat a tartalom átadása UTÁN szakad meg: a
+    // pótlevél célba érhetett. A „küldd el kézzel” riasztás kettőzést kérne.
+    const { send, calls } = createSender([
+      { ok: false, provider: 'smtp', retryable: false, error: 'SMTP 552: túl nagy levél' },
+      {
+        ok: false,
+        provider: 'smtp',
+        retryable: false,
+        deliveryUncertain: true,
+        error: 'SMTP: a levél tartalmának átadása után megszakadt a kapcsolat',
+      },
+    ])
+    const { store, created } = createAuditStore()
+    const { log, entries } = createCapturingLogger()
+
+    await futtasd({
+      payload: {} as unknown as Payload,
+      order: createOrder(),
+      logger: log,
+      queueInvoice: async () => true,
+      send,
+      auditStore: store,
+      loadAccessDurations: async () => new Map(),
+      sleep: nemVarhat,
+    })
+
+    expect(calls).toHaveLength(2)
+    expect(calls[0].attachments).toHaveLength(1)
+    expect(calls[1].attachments).toBeUndefined()
+    expect(created).toEqual([
+      expect.objectContaining({
+        action: 'order-confirmation-email-uncertain',
+        after: expect.objectContaining({ attempts: 2, attachmentDropped: true }),
+      }),
+    ])
+    const alerts = errorsOf(entries)
+    expect(alerts.map((alert) => alert.msg)).toEqual([
+      expect.stringContaining('kézbesítése BIZONYTALAN'),
+    ])
   })
 
   it('minden kísérlet elbukik: 3 próba után egyetlen RIASZTÁS, küldés nincs rögzítve', async () => {

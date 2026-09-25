@@ -280,6 +280,20 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok: 'Folyószövegbe ragozott dokumentum-hivatkozás a kapcsolat-űrlap alatt.',
   },
   {
+    felirat: 'Adatkezelési és adatvédelmi szabályzat',
+    fajl: 'app/(frontend)/elallas/page.tsx',
+    kategoria: 'nem-cta',
+    indok:
+      'Az elállási űrlap alatti adatkezelési mondat dokumentum-hivatkozása („az … szerint”), dokumentumnév, nem cselekvés.',
+  },
+  {
+    felirat: 'Általános szerződési feltételekben',
+    fajl: 'app/(frontend)/elallas/page.tsx',
+    kategoria: 'nem-cta',
+    indok:
+      'Folyószövegbe ragozott dokumentum-hivatkozás az /elallas bevezetőjében (az ÁSZF „Elállási jog kizárása” pontja).',
+  },
+  {
     felirat: 'Általános szerződési feltételek',
     fajl: 'components/layout/Footer.tsx',
     kategoria: 'nem-cta',
@@ -417,8 +431,17 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * nem kódliterál, hanem a kapcsolati e-mail feloldójának értéke
  * (src/lib/contact-email-server.ts); a két sor a futásidőben eldőlő helyek
  * közé került át, a kivétel-listáról törölve.
+ *
+ * 2026-09-25 (w1-integráció): 42 → 44, KÉT sorral, mind nem-CTA. Az új
+ * /elallas oldal (45/2014. Korm. rendelet 22. § (1a)–(1b), elállási funkció)
+ * két folyószövegbe ágyazott jogi dokumentum-hivatkozása: „Általános
+ * szerződési feltételekben” és „Adatkezelési és adatvédelmi szabályzat”.
+ * Pontosan az a szerep, mint a pénztár és az űrlapok hozzájáruló mondatainak
+ * hivatkozásaié. Új CTA-felirat nem keletkezett: az oldal két cselekvése
+ * (§3.2 #47 és #48) a szótárból olvas. A két sor felvétele a w1-integráció
+ * vezetői kiírásának része.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 42
+const KIVETEL_LISTA_FELSO_KORLAT = 44
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy
@@ -954,11 +977,18 @@ describe('G-UI2 — a bejáró vak foltjai kimondva', () => {
     // `CtaBanner`-é: a blokk bármilyen ajánlatra mutathat, a hívóhely nem ismer
     // `CtaAction`-t. A /szakembereknek kódtartalékának és kezdő rekordjának
     // feliratai a `ctaLabel`-ből jönnek (lib/szakembereknek.ts).
+    // 84 (2026-09-25, w1-integráció), mérve az egyesített fán: +2 az /elallas
+    // két új `mailto:${supportEmail}` linkje (az oldal bevezetője és a sikeres
+    // beküldés panelje), amelyek a kapcsolati e-mail feloldójából jönnek, mint a
+    // láblécé; +1 a pénztár hibaösszesítőjének linkje (`{item.message}`: a mező
+    // saját hibaüzenete, nem CTA); −2 a köszönőoldal két `ctaLabel(next.action)`
+    // gombja, amely a w1-checkout-ui óta statikusan feloldható (két szótári
+    // `ctaLabel(...)` közti feltétel).
     expect(
       dinamikusHelyek.length,
       `Futásidőben eldőlő feliratok: ${dinamikusHelyek.length}. Ha ez a szám ` +
         'megugrott, a felületről feliratok csúsztak át kódon kívülre — ' +
         'ellenőrizd, nem CMS-ből jön-e egy szótári cselekvés felirata.',
-    ).toBeLessThanOrEqual(83)
+    ).toBeLessThanOrEqual(84)
   })
 })

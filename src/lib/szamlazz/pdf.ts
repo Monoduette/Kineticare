@@ -29,14 +29,26 @@ import { escapeXml } from './xml'
  * - A három azonosító kulcs (szamlaszam, rendelesSzam, szamlaKulsoAzon) közül
  *   legalább egy kell; a szamlaKulsoAzon csak akkor használható, ha a
  *   KIÁLLÍTÓ kérésben el volt küldve — nálunk mindig el van (invoice.ts,
- *   storno.ts, corrective.ts), bizonylatonként EGYEDI értékkel, ezért ez a
- *   pontos kulcs (a rendelesSzam több bizonylatot is takarhat, és arra a
- *   rendszer a LEGUTOLSÓT adná vissza).
+ *   storno.ts, corrective.ts), bizonylatonként EGYEDI értékkel (kulso-azon.ts),
+ *   ezért ez a pontos kulcs (a rendelesSzam több bizonylatot is takarhat, és
+ *   arra a rendszer a LEGUTOLSÓT adná vissza). A Számlázz.hu a külső azonosító
+ *   egyediségét NEM kényszeríti ki: azonos kulcsra a legújabb birtokost adja
+ *   (r-szamlazz, szamlazz-hu-behaviour.md), ezért a hívó a talált bizonylat
+ *   bruttó végösszegét is egyezteti a rendeléssel, mielőtt átveszi.
  * - Ismeretlen azonosító → 7-es hibakód: ez itt NEM hiba, hanem „nincs ilyen
  *   bizonylat" válasz (null) — pl. az első kiállítási kísérlet retry-ja előtt.
+ *   A null KIZÁRÓLAG a VÉGLEGES, nem újrapróbálható 7-esre jár (2xx válasz a
+ *   7-es kóddal, a hivatalos válasz-oldal szerint: „Ismeretlen számlaszám,
+ *   rendelésszám vagy külső azonosító esetén a szerver 7-es hibakódot ad
+ *   vissza"). Egy átmeneti státusz (503/429) mellé került 7-es kód
+ *   ÚJRAPRÓBÁLHATÓ hibaként megy tovább: a hívó a null-t a bizonylat
+ *   NEMLÉTÉNEK bizonyítékaként kezeli, és beküldene — egy korábbi bizonytalan
+ *   beküldés után ez dupla számlát adna (Codex, PR #304 utáni P1).
  * - valaszVerzio=2: a válasz ugyanaz az xmlszamlavalasz, mint kiállításnál
  *   (parseAgentResponse újrahasznosítva); a <pdf> base64 tartalmát nem
- *   tároljuk, a lekérdezés célja a bizonylat LÉTÉNEK és SZÁMÁNAK megállapítása.
+ *   tároljuk, a lekérdezés célja a bizonylat LÉTÉNEK, SZÁMÁNAK és bruttó
+ *   VÉGÖSSZEGÉNEK megállapítása (`szamlabrutto`, a hivatalos válasz-minta
+ *   szerint a v2 válasz része).
  */
 
 const logger = createLogger({ module: 'szamlazz-lookup' })
@@ -64,16 +76,40 @@ export function buildInvoiceLookupXml(input: BuildInvoiceLookupXmlInput): string
 export interface InvoiceLookupResult {
   /** A megtalált bizonylat (számla / stornó / helyesbítő) sorszáma. */
   szamlaszam: string
+  /**
+   * A talált bizonylat bruttó és nettó végösszege (HUF; stornón és
+   * helyesbítőn negatív), ha a válasz hordozta. Az átvétel előtti
+   * egyeztetéshez: hiányában a hívó NEM veszi át a bizonylatot.
+   */
+  szamlabrutto?: number
+  szamlanetto?: number
+}
+
+/**
+ * VÉGLEGES „nincs ilyen bizonylat" válasz-e a hiba: 7-es agent-kód, amelyet a
+ * kliens nem minősített újrapróbálhatónak (2xx válasz, vagy végleges
+ * státusz). Egy 503/429 mellé került 7-es, a szlahu_down, vagy a
+ * félbeszakadt törzs NEM az: ott a bizonylat léte eldöntetlen maradt.
+ */
+export function isDefinitiveNotFound(error: unknown): error is SzamlazzApiError {
+  return (
+    error instanceof SzamlazzApiError &&
+    error.kind === 'agent' &&
+    !error.retryable &&
+    error.agentErrors.some((entry) => entry.code.trim() === SZAMLAZZ_NOT_FOUND_CODE)
+  )
 }
 
 /**
  * Bizonylat-lekérdezés külső azonosító (szamlaKulsoAzon) alapján.
  *
  * Visszatérés:
- * - a bizonylat száma, ha létezik;
- * - null, ha a Számlázz.hu 7-es kóddal „nem található"-t mond;
+ * - a bizonylat száma (és végösszege), ha létezik;
+ * - null, ha a Számlázz.hu VÉGLEGES 7-es kóddal „nem található"-t mond;
  * - SzamlazzApiError minden más esetben (timeout/network/http retryable;
- *   agent-hiba a hivatalos osztályozással) — a hívó dönt az újrapróbálásról.
+ *   agent-hiba a hivatalos osztályozással; átmeneti státusz melletti 7-es
+ *   kód is retryable) — a hívó dönt az újrapróbálásról, és bizonytalan
+ *   kimenetnél NEM küld be.
  */
 export async function queryInvoiceByKulsoAzon(
   kulsoAzon: string,
@@ -122,16 +158,14 @@ export async function queryInvoiceByKulsoAzon(
   // A törzs-olvasás és az értelmezés a közös readAgentResponse-ban: a stream
   // félbeszakadása (timeout a fejlécek után, TCP-vágás félúton) osztályozott,
   // retryable hibává válik, a nem-2xx válasz hibakódját is kiolvassa, a
-  // parseAgentResponse strukturált hibái pedig változatlanul jönnek ki: a 7-es
-  // kód (CDATA-ban vagy nem-2xx válaszban is) → null, a többi dob.
+  // parseAgentResponse strukturált hibái pedig változatlanul jönnek ki: a
+  // VÉGLEGES 7-es kód (CDATA-ban vagy végleges nem-2xx válaszban is) → null,
+  // az újrapróbálható (átmeneti státusz melletti) 7-es és minden más dob.
   let result: SzamlazzParsedSuccess
   try {
     result = await readAgentResponse(response, resolved.timeoutMs, 'bizonylat-lekérdezés')
   } catch (error) {
-    if (
-      error instanceof SzamlazzApiError &&
-      error.agentErrors.some((entry) => entry.code.trim() === SZAMLAZZ_NOT_FOUND_CODE)
-    ) {
+    if (isDefinitiveNotFound(error)) {
       logger.info('bizonylat-lekérdezés: nincs találat (7-es kód)', { endpoint, durationMs })
       return null
     }
@@ -142,6 +176,11 @@ export async function queryInvoiceByKulsoAzon(
     endpoint,
     durationMs,
     szamlaszam: result.szamlaszam,
+    szamlabrutto: result.szamlabrutto ?? null,
   })
-  return { szamlaszam: result.szamlaszam }
+  return {
+    szamlaszam: result.szamlaszam,
+    ...(result.szamlabrutto !== undefined ? { szamlabrutto: result.szamlabrutto } : {}),
+    ...(result.szamlanetto !== undefined ? { szamlanetto: result.szamlanetto } : {}),
+  }
 }

@@ -83,6 +83,7 @@ Egyéb scriptek:
 | `npm run grant:purchase`         | Kézi hozzáférés-adás vásárlás nélkül (`src/scripts/grant-purchase.ts`)                                                                                                                                            |
 | `npm run backfill:ar-snapshot`   | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md`                                     |
 | `npm run backfill:access-grants` | Hiányzó `accessGrants.grantedAt` pótlása paid rendelés dátumából (`src/scripts/backfill-access-grants.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/access-grants-backfill.md` |
+| `npm run record:manual-invoice`  | Megtalált vagy kézzel kiállított számla sorszáma egy 'failed' számlájú rendelésre (`src/scripts/record-manual-invoice.ts`); próbafutás, íráshoz `OWNER_MANUAL_INVOICE_CONFIRM=igen`; útmutató: runbook 05         |
 | `npm run seed:legacy`            | Örökölt tartalom visszatöltése (`src/scripts/restore-legacy-content.ts`)                                                                                                                                          |
 | `npm run generate:types`         | Payload típusok újragenerálása (`src/payload-types.ts`)                                                                                                                                                           |
 | `npm run generate:importmap`     | Admin importmap újragenerálása                                                                                                                                                                                    |
@@ -152,11 +153,18 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
   `szamlaKulsoAzon = rendelésszám` — idempotens). Stornó teljes refundnál,
   helyesbítő számla részleges refundnál (külön taskok).
 - **Jobok:** a workerek az `ENABLE_JOB_WORKERS=true` env mögött futnak (autoRun
-  cron: webhook-retry percenként, order-maintenance 5 percenként); dev-ben
-  alapból KI vannak kapcsolva. Élesben hiányzó flag → induláskori **warn**
-  (`job_workerek_kikapcsolva`), nem fail-closed boot: a bolt ettől még
-  kiszolgál. A production `Kineticare` env-ben ellenőrizd. A job-végpontok és a
-  `payload-jobs` collection staff/owner-only (`src/jobs/index.ts`).
+  cron: webhook-retry percenként, order-poll és order-maintenance 5 percenként,
+  külön queue-ban); dev-ben
+  alapból KI vannak kapcsolva. Nem éles címen a hiányzó flag → induláskori
+  **warn** (`job_workerek_kikapcsolva`). Az éles címen (`NEXT_PUBLIC_SERVER_URL`)
+  a hiányzó flag boot-hiba, hacsak nincs mellette `JOB_WORKERS_OFF_CONFIRM=igen`
+  nyugtázás (W1, tulajdonosi jóváhagyással; a kulcs az `.env.example`-ben):
+  workerek nélkül egyetlen számla sem áll ki és az elveszett callback sem
+  pótlódik, ezt csak tudatosan szabad. Nyugtázva az app elindul, és RIASZTÁS
+  szól. A bukó új verzió healthcheckje miatt a Railway a régit hagyja
+  kiszolgálni, a bolt tehát ekkor sem áll le. A production `Kineticare` env-ben
+  ellenőrizd. A job-végpontok és a `payload-jobs` collection staff/owner-only
+  (`src/jobs/index.ts`).
 - **Videó:** védett Bunny-library → szerveroldali token-jegy (`/api/stream-token`);
   publikus library (hero, előzetesek) token nélkül. Hiányzó env = magyar
   „nem érhető el" degradáció, az app ettől még fut.
@@ -166,8 +174,12 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
     SKU-nál fail-open; pótlás: `npm run backfill:access-grants` vagy a
     Kurzus ajándékozása panel.
 - **Replica:** `railway.json` `numReplicas: 1` — az in-memory rate-limit
-  elég. A `pg` `pool.max` uncapped marad (W3); ne állítsd Railway
-  `max_connections` mérés nélkül.
+  elég. A `pg` `pool.max` 20 (W1, a-callback-7: a session-zárak mellett a 10-es
+  alapérték kevés volt). A Railway `max_connections`-t minden induláskor mérjük
+  (onInit, `src/lib/db-connection-budget.ts`): ha két konténer (deploy-átfedés)
+  × `pool.max` + 10 tartalék nem fér bele, RIASZTÁS szól. Replika- vagy
+  pool-emelés előtt nézd meg a deploy-napló „Postgres kapcsolat-keret mérve”
+  sorát.
 
 ## TILOS ZÓNÁK
 

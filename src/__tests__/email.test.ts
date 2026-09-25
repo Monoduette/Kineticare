@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { maskEmail, parseFromAddress } from '../lib/email/mask'
 import { resolveEmailProvider, sendMail } from '../lib/email/provider'
+import { sendWithRetry, type RetryableMailInput } from '../lib/email/retry'
 import {
   contactStaffEmail,
   resetPasswordEmail,
@@ -11,6 +12,7 @@ import {
 } from '../lib/email/templates/auth'
 import { escapeHtml, renderLayout } from '../lib/email/templates/layout'
 import { usersAuthEmails } from '../lib/email/users-auth'
+import type { SendResult } from '../lib/email/types'
 import { PASSWORD_RESET_PATH, buildPasswordResetUrl } from '../lib/password-reset-url'
 
 describe('resolveEmailProvider', () => {
@@ -81,6 +83,34 @@ describe('e-mail provider figyelmeztetése kulcs nélkül', () => {
     // A figyelmeztetés magyar, és megmondja, mi hiányzik.
     expect(warnings[0]).toContain('RESEND_API_KEY')
     expect(warnings[0]).toContain('"level":"warn"')
+  })
+
+  it('élesben a noop NEM „elküldve”: RIASZTÁS szól, az ismétlés fojtott warn', async () => {
+    vi.resetModules()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('RESEND_API_KEY', '')
+    vi.stubEnv('SMTP_HOST', '')
+    const lines: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((line: unknown) => {
+      lines.push(String(line))
+    })
+
+    const { resetAlertThrottle } = await import('../lib/alert-throttle')
+    resetAlertThrottle()
+    const { sendMail: freshSendMail } = await import('../lib/email/provider')
+    const message = { subject: 'T', html: '<p>x</p>', text: 'x' }
+    const first = await freshSendMail({ to: 'egy@example.com', ...message })
+    await freshSendMail({ to: 'ketto@example.com', ...message })
+    vi.unstubAllEnvs()
+
+    // A hívó a `provider: 'noop'` alapján dönt (order-paid, elállás).
+    expect(first).toMatchObject({ ok: true, provider: 'noop' })
+    expect(lines.some((line) => line.includes('e-mail elküldve'))).toBe(false)
+    const alerts = lines.filter((line) => line.includes('"level":"error"'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]).toContain('RIASZTÁS')
+    expect(alerts[0]).toContain('RESEND_API_KEY')
+    expect(lines.filter((line) => line.includes('e-mail NEM ment ki'))).toHaveLength(1)
   })
 })
 
@@ -257,5 +287,40 @@ describe('usersAuthEmails plugin', () => {
     const config = (await usersAuthEmails(baseConfig())) as Config
     const media = (config.collections ?? []).find((collection) => collection.slug === 'media')
     expect(media?.auth).toBeUndefined()
+  })
+})
+
+describe('sendWithRetry: automatikus újraküldés csak ott, ahol nem kettőzhet', () => {
+  const LEVEL: RetryableMailInput = {
+    to: 'vevo@example.test',
+    subject: 'Teszt',
+    html: '<p>Teszt</p>',
+    text: 'Teszt',
+    idempotencyKey: 'teszt:1',
+  }
+
+  // A bizonytalan kézbesítés (a levél célba érhetett) akkor sem ismételhető,
+  // ha egy szolgáltató mellé `retryable: true`-t is ad: az ismétlés második
+  // levél lenne. Az első sor a kontroll: ugyanaz `deliveryUncertain` nélkül
+  // újrapróbál.
+  it.each([
+    { eset: 'átmeneti hiba', eredmeny: { retryable: true }, kiserletek: 3 },
+    {
+      eset: 'átmeneti, de bizonytalan kézbesítés',
+      eredmeny: { retryable: true, deliveryUncertain: true },
+      kiserletek: 1,
+    },
+  ])('$eset: $kiserletek kísérlet', async ({ eredmeny, kiserletek }) => {
+    const hivasok: RetryableMailInput[] = []
+    const kimenet = await sendWithRetry(
+      async (input: RetryableMailInput): Promise<SendResult> => {
+        hivasok.push(input)
+        return { ok: false, provider: 'smtp', error: 'x', ...eredmeny }
+      },
+      LEVEL,
+      { delaysMs: [1, 1], sleep: async () => {} },
+    )
+    expect(hivasok).toHaveLength(kiserletek)
+    expect(kimenet.attempts).toBe(kiserletek)
   })
 })

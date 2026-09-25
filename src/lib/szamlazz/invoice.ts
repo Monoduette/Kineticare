@@ -10,7 +10,10 @@ import {
   postInvoiceXml,
   type SzamlazzParsedSuccess,
 } from './client'
+import { queryInvoiceData } from './invoice-data'
 import { isTrustedInvoicePdfUrl } from './invoice-url'
+import { invoiceKulsoAzon, invoiceLookupKeys } from './kulso-azon'
+import { createLockBudget } from './lock-budget'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from './pdf'
 import { writeOrderInvoicingState } from './order-state'
 import { resolveOrderPaidMoment, type OrderPaidMoment } from './paid-date'
@@ -38,7 +41,7 @@ import type { IssueStornoForOrderDeps } from './storno'
  * - Forint-számla: az <arfolyamBank>/<arfolyam> pár KIMARAD (mindkettő
  *   minOccurs=0, és csak devizás számlán van jelentésük — a hivatalos PHP SDK
  *   és a WooCommerce-bővítmény is így küldi).
- * - <fizetve>true</fizetve>: a számla egy MÁR KIFIZETETT (Barion, bankkártya)
+ * - <fizetve>true</fizetve>: a számla egy MÁR KIFIZETETT (Barion, online)
  *   rendelésről szól, a helyesbítő pedig egy már visszautalt összegről.
  *   Nélküle a Számlázz.hu csak a készpénzes számlát tartja kiegyenlítettnek,
  *   minden mást kintlévőségként, lejárat után fizetési felszólítással
@@ -66,21 +69,37 @@ import type { IssueStornoForOrderDeps } from './storno'
  *   határidő „csak a keltezés napjára vagy annál később" állítható, a
  *   teljesítés viszont „akár korábbi is lehet"
  *   (tudastar.szamlazz.hu/gyik/ismetlodo-szamlazas-utemezese).
- * - szamlaKulsoAzon: a bizonylat VISSZAKERESÉSI kulcsa (számla: orderNumber,
- *   helyesbítő: saját, seq-kulcsolt azonosító). A hivatalos dokumentáció NEM
- *   állítja, hogy azonos külső azonosítóval a Számlázz.hu megtagadná az újabb
- *   kiállítást — a duplikátum-védelmet a <rendelesSzam> + a fiókban bekapcsolt
- *   rendelésszám-ismétlés-tiltás adja (71/152 hibakód). A külső azonosító
+ * - szamlaKulsoAzon: a bizonylat VISSZAKERESÉSI kulcsa, GLOBÁLISAN EGYEDI alakban
+ *   (kulso-azon.ts: rendelésszám + rendelés-id + létrehozási pillanat; a
+ *   helyesbítőé ehhez a refund-sorszámot fűzi). A Számlázz.hu a külső
+ *   azonosító egyediségét NEM kényszeríti ki, azonos kulcsra a legújabb
+ *   birtokost adja vissza, tehát a kulcs önmagában nem duplikátum-védelem. A
+ *   SZÁMLA duplikátum-védelme a <rendelesSzam> + a fiókban bekapcsolt
+ *   rendelésszám-ismétlés-tiltás (71/152); a HELYESBÍTŐ és a stornó a
+ *   hivatalos rendelésszám-oldal szerint KIVÉTEL ez alól („A sztornó és a
+ *   helyesbítő számla kivétel az ellenőrzés alól"), ott a beküldés előtti
+ *   lekérdezés és az advisory-zár az egyetlen védvonal. A külső azonosító
  *   ahhoz kell, hogy kétes esetben (elveszett válasz) a bizonylat
- *   visszakereshető legyen — utólag már nem pótolható.
+ *   visszakereshető legyen: utólag már nem pótolható.
+ * - <vevo><orszag>: mindig 'Magyarország' (K11: egyelőre csak magyar
+ *   számlázási cím fogadható el, a pénztár ezt kényszeríti ki). Az élő XSD
+ *   szerint a <nev> után áll (minOccurs 0, szöveges érték, a WooCommerce-
+ *   bővítmény is az ország nevét küldi).
+ * - Fejléc-megjegyzés: rendelésszám és a semleges fizetési mód
+ *   („Barion, online fizetés"; a Barion-egyenlegből is lehet fizetni, tehát a
+ *   „bankkártya" nem mindig igaz). AAM módban a megjegyzés a jogszabályi
+ *   utalást is hordozza (Áfa tv. 169. § m): „Alanyi adómentes (Áfa tv. XIII.
+ *   fejezet)." — a tételsor AAM-címkéje mellett ez ártalmatlan, egyértelmű
+ *   hivatkozás, és nem mond ellent neki.
  * - A <vevo><azonosito> mezőt SOHA nem küldjük (a Számlázz.hu-dokumentáció
  *   figyelmeztet: más vevőhöz rögzített azonosító adatfrissítést/biztonsági
  *   problémát okozna).
  * - HELYESBÍTŐ (módosító) számla: ugyanez a művelet, `corrective` megadásával —
  *   ilyenkor <helyesbitoszamla>true</helyesbitoszamla>, a
  *   <helyesbitettSzamlaszam> az eredeti számla száma, a tételek negatív
- *   korrekciót hordoznak, a külső azonosító ÉS a <rendelesSzam> pedig a
- *   helyesbítő saját kulsoAzon-ja (lásd corrective.ts — részleges
+ *   korrekciót hordoznak, a külső azonosító a helyesbítő saját, egyedi
+ *   kulsoAzon-ja, a <rendelesSzam> pedig a rövid
+ *   `<rendelésszám>-HELYESBITO-<seq>` (lásd corrective.ts — részleges
  *   visszatérítés bizonylata).
  */
 
@@ -114,18 +133,33 @@ export interface CorrectiveInvoiceRef {
   /** Az eredeti (helyesbítendő) számla száma — <helyesbitettSzamlaszam>. */
   originalInvoiceNumber: string
   /**
-   * A helyesbítő saját, bizonylat-egyedi azonosítója. KÉT helyre kerül:
-   * <szamlaKulsoAzon> (visszakeresési kulcs) ÉS <rendelesSzam> — utóbbi azért,
-   * mert a provider-oldali duplikátum-védelem a rendelésszámra épül: az eredeti
-   * számla rendelésszámával beküldött helyesbítő a bekapcsolt
-   * rendelésszám-ismétlés-tiltásba (71/152) futna.
+   * A helyesbítő saját, globálisan egyedi azonosítója (kulso-azon.ts): a
+   * <szamlaKulsoAzon> (visszakeresési kulcs). A helyesbítő a hivatalos
+   * rendelésszám-oldal szerint kivétel a rendelésszám-ismétlés-tiltás alól,
+   * tehát a 71/152 itt NEM véd: a duplikátum ellen a beküldés előtti
+   * lekérdezés és az advisory-zár véd.
    */
   kulsoAzon: string
+  /**
+   * A helyesbítő <rendelesSzam>-ja. A kiállító a rövid
+   * `<rendelésszám>-HELYESBITO-<seq>` alakot adja: a fiókban a számlától
+   * külön sorként, a rendelésszámmal kereshető, és nem ütközik a NAV-export
+   * mezőhossz-korlátjába. Elhagyva a kulsoAzon megy ki.
+   */
+  rendelesSzam?: string
 }
 
 export interface BuildInvoiceXmlInput {
   agentKey: string
   orderNumber: string
+  /**
+   * A számla globálisan egyedi külső azonosítója (<szamlaKulsoAzon>,
+   * kulso-azon.ts). Elhagyva a rendelésszám megy ki (a PR #304-es, régi,
+   * újrahasznosítható alak): az éles kiállító (issueInvoiceForOrder) MINDIG
+   * az egyedi kulcsot adja. Helyesbítőnél a `corrective.kulsoAzon` dönt. A
+   * <rendelesSzam> számlán a puszta rendelésszám marad.
+   */
+  kulsoAzon?: string
   invoicePrefix: string
   /** Kiállítás dátuma (YYYY-MM-DD) — kelt és fizetési határidő. */
   issueDate: string
@@ -144,13 +178,33 @@ export interface BuildInvoiceXmlInput {
    * bekapcsolt számlázásnál kötelező, alapértelmezés nélkül).
    */
   vatMode?: SzamlazzVatMode
-  /**
-   * Helyesbítő számla esetén az eredeti számla hivatkozása + a helyesbítő
-   * saját, bizonylat-egyedi azonosítója (kulsoAzon + rendelesSzam).
-   */
+  /** Helyesbítő számla esetén az eredeti számla hivatkozása. */
   corrective?: CorrectiveInvoiceRef
-  /** A fejléc-megjegyzés felülírása (alapból a rendelésre utaló szöveg). */
+  /**
+   * A fejléc-megjegyzés felülírása (alapból a rendelésre utaló szöveg). AAM
+   * módban az adómentességi utalás ehhez is hozzáfűződik.
+   */
   megjegyzes?: string
+}
+
+/** Az AAM-számla fejléc-megjegyzésének jogszabályi utalása (Áfa tv. 169. § m). */
+export const AAM_MEGJEGYZES = 'Alanyi adómentes (Áfa tv. XIII. fejezet).'
+
+/** A vevő országa a számlán (K11: egyelőre csak magyar számlázási cím). */
+export const VEVO_ORSZAG = 'Magyarország'
+
+/** Az alapértelmezett fejléc-megjegyzés: rendelésszám + semleges fizetési mód. */
+export function defaultInvoiceMegjegyzes(orderNumber: string): string {
+  return `Kineticare online kurzus, rendelésszám: ${orderNumber} (Barion, online fizetés).`
+}
+
+/** A megjegyzés AAM módban az adómentességi utalással (egyszer, ismétlés nélkül). */
+function withVatNote(megjegyzes: string, vatMode: SzamlazzVatMode): string {
+  if (vatMode !== 'AAM' || megjegyzes.includes(AAM_MEGJEGYZES)) {
+    return megjegyzes
+  }
+  const base = megjegyzes.trim()
+  return base ? `${base} ${AAM_MEGJEGYZES}` : AAM_MEGJEGYZES
 }
 
 import { budapestDateString, escapeXml, isIsoDateString, stripXmlIllegalChars } from './xml'
@@ -316,17 +370,17 @@ export function buildInvoiceXml(input: BuildInvoiceXmlInput): string {
   // Az adóalanyiság SZIGORÚAN az adószám meglétéből képződik (a checkout csak
   // ellenőrzött magyar adószámot fogad): 1 = van magyar adószáma, -1 = nincs.
   const adoalany = adoszam.length > 0 ? 1 : -1
-  const megjegyzes =
-    input.megjegyzes ??
-    `Kineticare online kurzus — rendelés: ${input.orderNumber} (Barion, bankkártya)`
-  const kulsoAzon = corrective ? corrective.kulsoAzon : input.orderNumber
-  // A <rendelesSzam> a provider-oldali duplikátum-védelem kulcsa (a fiókban
-  // bekapcsolt rendelésszám-ismétlés-tiltás ezt figyeli, 71/152 hibakóddal).
-  // A helyesbítő ÖNÁLLÓ bizonylat: az eredeti számla rendelésszámával minden
-  // helyesbítő azonnal a tiltásba futna, ezért itt a bizonylat-egyedi kulcs
-  // megy ki. Így a 71/152 tényleg azt jelenti: „EZ a helyesbítő már létezik",
-  // és a külső azonosítóra futó feloldó lekérdezés a helyes bizonylatot találja.
-  const rendelesSzam = corrective ? corrective.kulsoAzon : input.orderNumber
+  const megjegyzes = withVatNote(
+    input.megjegyzes ?? defaultInvoiceMegjegyzes(input.orderNumber),
+    vatMode,
+  )
+  const kulsoAzon = corrective ? corrective.kulsoAzon : (input.kulsoAzon ?? input.orderNumber)
+  // A SZÁMLA <rendelesSzam>-ja a puszta rendelésszám: a fiókban bekapcsolt
+  // rendelésszám-ismétlés-tiltás (71/152) erre épül. A helyesbítő a hivatalos
+  // rendelésszám-oldal szerint KIVÉTEL a tiltás alól, tehát ott a 71/152 nem
+  // véd; a helyesbítő saját, rövid rendelésszámot kap, hogy a fiókban a számla
+  // mellett külön sorként legyen kereshető.
+  const rendelesSzam = corrective ? (corrective.rendelesSzam ?? kulsoAzon) : input.orderNumber
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamla xmlns="http://www.szamlazz.hu/xmlszamla" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamla https://www.szamlazz.hu/szamla/docs/xsds/agent/xmlszamla.xsd">
@@ -364,6 +418,7 @@ export function buildInvoiceXml(input: BuildInvoiceXmlInput): string {
   </elado>
   <vevo>
     <nev>${esc(input.buyer.nev)}</nev>
+    <orszag>${esc(VEVO_ORSZAG)}</orszag>
     <irsz>${esc(input.buyer.irsz)}</irsz>
     <telepules>${esc(input.buyer.telepules)}</telepules>
     <cim>${esc(input.buyer.cim)}</cim>
@@ -510,20 +565,48 @@ export const LOOKUP_FAILURE_ALERT_AFTER_MS = 2 * HOUR_MS
 export const LOOKUP_FAILURE_ESCALATION_MS = 24 * HOUR_MS
 
 /**
- * A hibasorozat kezdete PERZISZTENS, migráció nélkül: az invoiceLastError
- * elején álló, géppel is olvasható előtag, pl.
- * `[lekérdezési hiba 2026-09-24T10:00:00.000Z óta] <az utolsó hiba>`. Így egy
- * újraindulás vagy deploy sem indítja újra a sorozatot. A mezőt kizárólag ez a
- * modul írja, és az `invoice:<orderId>` advisory-zár alatt olvassa és írja,
- * tehát egy párhuzamos job sem írhatja közben felül. A sikeres lekérdezés
- * utáni első állapotírás (átvétel, plafon-döntés vagy a beküldés előtti
- * pending-írás) az előtagot törli.
+ * A lekérdezések GYAKORISÁGÁNAK fékje egy hibasorozat alatt (a-szamlazz-15).
+ * A hivatalos hibakezelési oldal szerint a rendszer ne küldje újra és újra
+ * automatikusan a sikertelen kéréseket; a resweep viszont 10–15 percenként
+ * újra sorba állítja a pending számlát, és a job maga is háromszor
+ * újrapróbál. Ezért:
+ * - az első LOOKUP_BURST_FAILURES sikertelen lekérdezés a szokásos ütemben
+ *   ismétlődhet (egy pillanatnyi kiesés után a számla gyorsan kiálljon);
+ * - utána két lekérdezés között legalább LOOKUP_MIN_INTERVAL_MS telik el
+ *   (a közbeeső futások hálózati hívás nélkül 'skipped'-del zárnak), ami
+ *   rendelésenként nagyjából napi 24 lekérdezés;
+ * - a MAX_LOOKUP_FAILURES-edik sikertelen lekérdezés után a számla
+ *   automatikus kiállítása leáll ('failed' + RIASZTÁS), a H4-időkorláttól
+ *   függetlenül.
  */
-const LOOKUP_STREAK_MARKER =
-  /^\[lekérdezési hiba (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z) óta\] /
+export const LOOKUP_BURST_FAILURES = 3
+export const LOOKUP_MIN_INTERVAL_MS = HOUR_MS
+export const MAX_LOOKUP_FAILURES = 24
 
-function withLookupStreakMarker(startedAtMs: number, message: string): string {
-  return `[lekérdezési hiba ${new Date(startedAtMs).toISOString()} óta] ${message}`
+/**
+ * A hibasorozat PERZISZTENS, migráció nélkül: az invoiceLastError elején álló,
+ * géppel is olvasható előtag, pl.
+ * `[lekérdezési hiba 2026-09-24T10:00:00.000Z óta, 3 sikertelen lekérdezés, utolsó: 2026-09-24T10:20:00.000Z] <az utolsó hiba>`.
+ * Így egy újraindulás vagy deploy sem indítja újra a sorozatot. A régi,
+ * számláló nélküli alak (`[lekérdezési hiba <időpont> óta] …`) is olvasható:
+ * egy sikertelen lekérdezésnek számít, amely a sorozat kezdetén történt. A
+ * mezőt kizárólag ez a modul írja, és az `invoice:<orderId>` advisory-zár alatt
+ * olvassa és írja, tehát egy párhuzamos job sem írhatja közben felül. A
+ * sikeres lekérdezés utáni első állapotírás (átvétel, plafon-döntés vagy a
+ * beküldés előtti pending-írás) az előtagot törli.
+ */
+const ISO_INSTANT = '(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)'
+const LOOKUP_STREAK_MARKER = new RegExp(
+  `^\\[lekérdezési hiba ${ISO_INSTANT} óta(?:, (\\d+) sikertelen lekérdezés, utolsó: ${ISO_INSTANT})?\\] `,
+)
+
+function withLookupStreakMarker(
+  startedAtMs: number,
+  failures: number,
+  lastFailureAtMs: number,
+  message: string,
+): string {
+  return `[lekérdezési hiba ${new Date(startedAtMs).toISOString()} óta, ${failures} sikertelen lekérdezés, utolsó: ${new Date(lastFailureAtMs).toISOString()}] ${message}`
 }
 
 interface ParsedLookupStreak {
@@ -531,6 +614,10 @@ interface ParsedLookupStreak {
   marked: boolean
   /** A sorozat kezdete; null, ha nincs előtag, vagy a kezdet értelmezhetetlen vagy jövőbeli. */
   startedAtMs: number | null
+  /** A sorozat eddigi sikertelen lekérdezéseinek száma (előtag nélkül 0). */
+  failures: number
+  /** Az utolsó sikertelen lekérdezés pillanata; null, ha nem ismert vagy jövőbeli. */
+  lastFailureAtMs: number | null
   /** Az előtag nélküli hibaüzenet (null, ha a mező üres). */
   message: string | null
 }
@@ -540,17 +627,30 @@ function parseLookupStreak(
   nowMs: number,
 ): ParsedLookupStreak {
   if (!lastError) {
-    return { marked: false, startedAtMs: null, message: null }
+    return { marked: false, startedAtMs: null, failures: 0, lastFailureAtMs: null, message: null }
   }
   const match = LOOKUP_STREAK_MARKER.exec(lastError)
   if (!match) {
-    return { marked: false, startedAtMs: null, message: lastError }
+    return {
+      marked: false,
+      startedAtMs: null,
+      failures: 0,
+      lastFailureAtMs: null,
+      message: lastError,
+    }
   }
-  const startedAtMs = Date.parse(match[1] ?? '')
+  // Óraeltérésből eredő jövőbeli időpont érvénytelen: a sorozat újraindul.
+  const validInstant = (raw: string | undefined): number | null => {
+    const parsed = Date.parse(raw ?? '')
+    return Number.isFinite(parsed) && parsed <= nowMs ? parsed : null
+  }
+  const startedAtMs = validInstant(match[1])
+  const counted = match[2] === undefined ? 1 : Number.parseInt(match[2], 10)
   return {
     marked: true,
-    // Óraeltérésből eredő jövőbeli kezdet érvénytelen: a sorozat újraindul.
-    startedAtMs: Number.isFinite(startedAtMs) && startedAtMs <= nowMs ? startedAtMs : null,
+    startedAtMs,
+    failures: startedAtMs === null ? 0 : Number.isSafeInteger(counted) && counted > 0 ? counted : 1,
+    lastFailureAtMs: startedAtMs === null ? null : (validInstant(match[3]) ?? startedAtMs),
     message: lastError.slice(match[0].length),
   }
 }
@@ -565,10 +665,11 @@ const DUPLICATE_EXISTS_NOTE = '71/152 — a bizonylat a Számlázz.hu szerint m�
 /**
  * A kézi rendezésre váró VÉGLEGES leállás közös előtagja az invoiceLastError
  * elején (H4-időkorlát, végleges lekérdezés-hiba egy korábbi beküldés után,
- * kimerült plafon). Egy ilyen rendelésen egy még sorban álló (pl. a resweep
- * által duplán sorba állított) job sem kérdez le és nem küld be: a RIASZTÁS
- * kézi rendezést kért, és egy közben lefutó automatikus beküldés a kézzel
- * kiállított mellé dupla NAV-számlát tenne.
+ * kimerült plafon, idegen bizonylat, visszatérítés a számla előtt). Egy ilyen
+ * rendelésen egy még sorban álló (pl. a resweep által duplán sorba állított)
+ * job sem kérdez le és nem küld be: a RIASZTÁS kézi rendezést kért, és egy
+ * közben lefutó automatikus beküldés a kézzel kiállított mellé dupla
+ * NAV-számlát tenne.
  */
 const INVOICE_AUTOMATION_STOPPED = 'A számla automatikus kiállítása leállt'
 
@@ -585,6 +686,47 @@ function lookupFailureClockStart(
   return Number.isFinite(createdAtMs) ? { atMs: createdAtMs, source: 'rendeles' } : null
 }
 
+/**
+ * A rendelés számlájának várt bruttó végösszege (HUF) az átvétel előtti
+ * egyeztetéshez (a-szamlazz-5): a rendelés végösszeg-pillanatképe
+ * (totalHufSnapshot, a tétel-snapshotok ár × mennyiség összege,
+ * order-integrity.ts), ennek hiányában a kiküldendő tételek bruttó összege.
+ */
+export function expectedInvoiceBruttoHuf(
+  order: Order,
+  items: InvoiceItemInput[] | null,
+): number | null {
+  if (typeof order.totalHufSnapshot === 'number' && Number.isFinite(order.totalHufSnapshot)) {
+    return order.totalHufSnapshot
+  }
+  if (!items) {
+    return null
+  }
+  return items.reduce(
+    (sum, item) => sum + Math.round(Math.abs(item.bruttoEgysegar)) * item.mennyiseg,
+    0,
+  )
+}
+
+/** Vevőnév-összevetés: kis- és nagybetű, valamint szóköz-eltérés nem számít. */
+function normalizeBuyerName(value: string): string {
+  return value.normalize('NFC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('hu')
+}
+
+/** Sikeres (pénzt ténylegesen visszautaló) visszatérítés-bejegyzés-e a refunds-nyomban. */
+function isSettledRefundEntry(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) {
+    return false
+  }
+  const record = entry as Record<string, unknown>
+  return (
+    typeof record.amountHuf === 'number' &&
+    record.amountHuf > 0 &&
+    typeof record.status === 'string' &&
+    ['Succeeded', 'Refunded', 'PartiallyRefunded'].includes(record.status)
+  )
+}
+
 export interface IssueInvoiceForOrderDeps {
   payload: Payload
   orderId: number
@@ -599,8 +741,9 @@ export interface IssueInvoiceForOrderDeps {
    * létezik. A kimerült plafonnál is lefut (H3), mielőtt a számla 'failed'
    * lesz. 71/152 után is lefut a meglévő számla számának átvételére.
    * A lekérdezés NEM fogyaszt beküldési kísérletet (F10); a hibáit a
-   * hibasorozat-alapú időkorlát fékezi (LOOKUP_FAILURE_ALERT_AFTER_MS,
-   * LOOKUP_FAILURE_ESCALATION_MS).
+   * hibasorozat-alapú időkorlát és a gyakoriság-fék fékezi
+   * (LOOKUP_FAILURE_ALERT_AFTER_MS, LOOKUP_FAILURE_ESCALATION_MS,
+   * LOOKUP_MIN_INTERVAL_MS, MAX_LOOKUP_FAILURES).
    */
   queryByKulsoAzon?: (
     kulsoAzon: string,
@@ -618,7 +761,8 @@ export interface IssueInvoiceForOrderDeps {
    * Injektálható stornó-kiállítás (teszteléshez); alapból a valódi
    * issueStornoForOrder. A refund-verseny (W7) utáni inline stornóhoz kell:
    * ha a számla kiállt, de közben a rendelés refunded lett, a stornót ITT
-   * állítjuk ki. queueStornoIssueJob TILOS (W5 — a sorbaállítás csapda).
+   * állítjuk ki, az `invoice:<id>` zár elengedése UTÁN (a stornó saját
+   * zárat használ). queueStornoIssueJob TILOS (W5 — a sorbaállítás csapda).
    * invoice.ts NEM importál a refund-orderből (ciklus: a refund a
    * szamlazz-modulból húz).
    */
@@ -629,30 +773,47 @@ export interface IssueInvoiceForOrderDeps {
  * Számla kiállítása egy paid rendeléshez — idempotens:
  * - issued/invoiceNumber már megvan → 'already-issued' (no-op);
  * - Számlázz.hu kikapcsolva (nincs agent-kulcs) → 'disabled' (no-op);
- * - hiányzó vevő-/tételadat → invoiceStatus 'failed' + 'failed' (NEM dob,
- *   a job nem újrapróbálja — emberi adatpótlás kell);
+ * - hiányzó vevő-/tételadat → invoiceStatus 'failed' + 'failed' + RIASZTÁS
+ *   (NEM dob, a job nem újrapróbálja — emberi adatpótlás kell);
  * - retryable provider/timeout-hiba → invoiceStatus MARAD 'pending' (a hibát
  *   az invoiceLastError hordozza) + THROW. A 'pending' azért kötelező, mert az
  *   order-poll resweep csak a ['none','pending'] rendeléseket veszi fel újra
  *   (src/lib/order-poll/service.ts) — 'failed' esetén a job-retryk kimerülése
  *   után a számla ÖRÖKRE elveszne. A valódi fék a perzisztens 5-ös plafon (F4),
- *   a beküldés előtti lekérdezés hibáira pedig az időkorlát (H4): ha a
- *   lekérdezés legalább 2 órája folyamatosan hibás, és a fizetés óta több mint
- *   24 óra telt el, a számla 'failed' + RIASZTÁS, dobás nélkül;
+ *   a beküldés előtti lekérdezés hibáira pedig az időkorlát (H4) és a
+ *   gyakoriság-fék: ha a lekérdezés legalább 2 órája folyamatosan hibás, és a
+ *   fizetés óta több mint 24 óra telt el, vagy a sorozat elérte a
+ *   MAX_LOOKUP_FAILURES-t, a számla 'failed' + RIASZTÁS, dobás nélkül;
+ * - VÉGLEGES agent-hiba (pl. 3, 54, 57, 202) → 'failed' + RIASZTÁS a
+ *   hibakóddal (a job nem dob, nincs újrapróbálás; a fiók rendbetétele után
+ *   egy kézzel sorba állított invoice-issue job a plafonig újrapróbálhatja);
+ * - a lekérdezés bizonylatot talál → CSAK egyező bruttó végösszegnél (és a
+ *   régi kulcson talált bizonylatnál egyező vevőnévnél, élő, nem sztornózott
+ *   állapotban) vesszük át; eltérésnél 'failed' + RIASZTÁS, beküldés NÉLKÜL
+ *   (idegen bizonylat, a-szamlazz-5);
  * - kimerült plafon (H3) → előbb lekérdezés: találatnál a meglévő számla
  *   átvétele, üres találatnál 'failed' + RIASZTÁS, beküldés NÉLKÜL; a
  *   lekérdezés újrapróbálható hibájánál azonnali (fojtott) RIASZTÁS, és a
  *   lekérdezés a H4-időkorlátig ismétlődik (az 5. beküldés bizonylata így
  *   a Számlázz.hu helyreállása után is átvehető);
+ * - VISSZATÉRÍTETT (refunded), még számla nélküli rendelés (a-egyeztetes-13,
+ *   K12): ha volt már beküldés, a lekérdezés a státusz-kapu ELŐTT fut, és a
+ *   talált (egyeztetett) számla átvétele után az inline stornó is lefut; ha
+ *   nincs bizonylat, vagy beküldés sem volt, a rendszer NEM állít ki új
+ *   számlát + stornót (a könyvelő döntéséig), hanem 'failed' + RIASZTÁS;
  * - kézi rendezésre váró végleges leállás (INVOICE_AUTOMATION_STOPPED) →
  *   'skipped', lekérdezés és beküldés NÉLKÜL (egy még sorban álló job sem
  *   küldhet be a kézi kiállítás mellé).
  *
  * A paid/issue szakasz `invoice:<orderId>` advisory-zár alatt fut (W7):
  * a paid-átmenet jobja és a poll resweep ne POST-oljon egyszerre. A
- * Számlázz.hu HTTP a záron belül van (a refund mintája). Barion-hívás NINCS
- * ebben a zárban. Mockolt Payload (nincs drizzle) nem-productionben a zár
- * nélkül futtatja a `fn`-t.
+ * Számlázz.hu HTTP a záron belül van (a refund mintája), a hívások közös
+ * időkerettel (lock-budget.ts): a beküldés csak akkor indul, ha a teljes
+ * timeoutja a zár-tranzakció tétlenségi korlátja előtt lezárul. A kiállítás
+ * vagy átvétel utáni inline stornó NEM a zár alatt fut, hanem az elengedése
+ * után (saját `storno:<id>` zárral), mert a POST-ja a keretbe már nem férne.
+ * Barion-hívás NINCS ebben a zárban. Mockolt Payload (nincs drizzle)
+ * nem-productionben a zár nélkül futtatja a `fn`-t.
  */
 export async function issueInvoiceForOrder(
   deps: IssueInvoiceForOrderDeps,
@@ -668,10 +829,23 @@ export async function issueInvoiceForOrder(
     return { outcome: 'disabled' }
   }
 
-  return withAdvisoryLock(
+  /**
+   * A zár ELENGEDÉSE UTÁN futó lépés: a kiállítás vagy átvétel utáni
+   * visszatérítés-egyeztetés (az inline stornó). A stornó saját POST-ja nem
+   * fér a zár közös időkeretébe (lock-budget.ts): a lekérdezések után akár
+   * 44 s-nál indulna, és a zár-tranzakciót a 60 s-os tétlenségi korlát a
+   * beküldés közben ölné le. A zárra a stornónak nincs is szüksége: saját
+   * `storno:<id>` zár alatt, frissen újraolvasott rendelésen dönt, és egy
+   * korábbi beküldés után nem küld újra (F3). A lépés soha nem dob (a hibáit
+   * RIASZTÁS jelzi), így a kiállítás eredményét nem írja felül.
+   */
+  let afterLock = null as (() => Promise<void>) | null
+  const locked = withAdvisoryLock<IssueInvoiceResult>(
     deps.payload,
     `invoice:${deps.orderId}`,
     async () => {
+      // A zár alatti Számlázz.hu-hívások közös időkerete a zár megszerzésétől.
+      const budget = createLockBudget(config)
       const order = (await deps.payload.findByID({
         collection: 'orders',
         id: deps.orderId,
@@ -695,13 +869,15 @@ export async function issueInvoiceForOrder(
       }
 
       /**
-       * Védelem mélységében: számla KIZÁRÓLAG paid rendeléshez állítható ki. A
-       * sorbaállítás ma csak a paid-átmenetből (és a paid-rendeléseket pásztázó
-       * resweepből) történik, de a szolgáltatás a FRISSEN olvasott rendelésen is
-       * kikényszeríti — egy jövőbeli hívó vagy egy refundálás utáni elavult job így
-       * sem állíthat ki számlát nem-fizetett rendelésre.
+       * Védelem mélységében: ÚJ számla KIZÁRÓLAG paid rendeléshez állítható ki.
+       * A sorbaállítás ma csak a paid-átmenetből (és a paid-rendeléseket
+       * pásztázó resweepből) történik, de a szolgáltatás a FRISSEN olvasott
+       * rendelésen is kikényszeríti. Egyetlen kivétel a VISSZATÉRÍTETT rendelés
+       * (a-egyeztetes-13): egy korábbi, elveszett válaszú beküldés számlája ott
+       * is létezhet, ezért azt a lekérdezés átveszi és sztornózza (lent).
        */
-      if (order.status !== 'paid') {
+      const refunded = order.status === 'refunded'
+      if (order.status !== 'paid' && !refunded) {
         orderLog.info('a rendelés státusza nem paid — számlakiállítás kihagyva', {
           status: order.status ?? null,
         })
@@ -731,6 +907,40 @@ export async function issueInvoiceForOrder(
         await writeOrderInvoicingState(deps.payload, deps.orderId, { invoiceStatus: 'failed' })
         return { outcome: 'failed', reason: 'hiányzó rendelésszám' }
       }
+      const orderNumber = order.orderNumber
+
+      // A14: perzisztens kísérlet-plafon — a Számlázz.hu felé ugyanaz a kérés
+      // legfeljebb ötször mehet ki, utána emberi beavatkozás kell. A plafon
+      // SZÁNDÉKOSAN csak a beküldés előtti lekérdezés UTÁN dönt (H3, lásd a
+      // try-blokkot): az 5. (bizonytalan kimenetű) beküldés bizonylatát is át
+      // kell tudni venni.
+      const previousAttempts = order.invoiceAttempts ?? 0
+
+      /**
+       * K12 (könyvelői döntésig): visszatérített, számla nélküli rendelésre a
+       * rendszer NEM állít ki utólag számlát + stornót. A leállás végleges
+       * (INVOICE_AUTOMATION_STOPPED), a RIASZTÁS a kézi egyeztetést kéri.
+       */
+      const stopRefundedWithoutInvoice = async (detail: string): Promise<IssueInvoiceResult> => {
+        const reason =
+          `${INVOICE_AUTOMATION_STOPPED}: a rendelést a számla kiállítása előtt visszatérítették, és ${detail}. ` +
+          'A rendszer nem állít ki utólag számlát és stornót (könyvelői döntésig, K12): egyeztesd a könyvelővel, kell-e bizonylat.'
+        orderLog.error(
+          'RIASZTÁS: a rendelést a számla kiállítása előtt visszatérítették, és számla nem készült. A rendszer nem állít ki utólag számlát és stornót (K12): egyeztesd a könyvelővel.',
+          { orderNumber, attempts: previousAttempts, detail },
+        )
+        await writeOrderInvoicingState(deps.payload, deps.orderId, {
+          invoiceStatus: 'failed',
+          invoiceLastError: reason,
+        })
+        return { outcome: 'failed', reason }
+      }
+
+      if (refunded && previousAttempts === 0) {
+        // Beküldés sosem volt: a mi külső azonosítónkon bizonylat nem
+        // létezhet, a lekérdezés felesleges volna.
+        return stopRefundedWithoutInvoice('korábbi beküldés sem történt')
+      }
 
       const buyer = buyerFromOrder(order)
       if (!buyer) {
@@ -754,13 +964,6 @@ export async function issueInvoiceForOrder(
         await writeOrderInvoicingState(deps.payload, deps.orderId, { invoiceStatus: 'failed' })
         return { outcome: 'failed', reason: 'hiányzó tétel ár-snapshot' }
       }
-
-      // A14: perzisztens kísérlet-plafon — a Számlázz.hu felé ugyanaz a kérés
-      // legfeljebb ötször mehet ki, utána emberi beavatkozás kell. A plafon
-      // SZÁNDÉKOSAN csak a beküldés előtti lekérdezés UTÁN dönt (H3, lásd a
-      // try-blokkot): az 5. (bizonytalan kimenetű) beküldés bizonylatát is át
-      // kell tudni venni.
-      const previousAttempts = order.invoiceAttempts ?? 0
 
       // A kelt-dátum a SZÉKHELY szerinti naptári nap: UTC-ből képezve magyar idő
       // szerint 00:00–02:00 között az előző napra (adott esetben az előző
@@ -789,9 +992,13 @@ export async function issueInvoiceForOrder(
       } else {
         teljesitesDatum = paidMoment.paidDate
       }
+      // A bizonylat globálisan egyedi külső azonosítója (a-szamlazz-5,
+      // r-szamlazz-11); a <rendelesSzam> ettől függetlenül a puszta rendelésszám.
+      const kulsoAzon = invoiceKulsoAzon(orderNumber, order)
       const xml = buildInvoiceXml({
         agentKey: config.agentKey as string,
-        orderNumber: order.orderNumber,
+        orderNumber,
+        kulsoAzon,
         invoicePrefix: config.invoicePrefix,
         issueDate,
         teljesitesDatum,
@@ -799,6 +1006,12 @@ export async function issueInvoiceForOrder(
         items,
         vatMode: config.vatMode,
       })
+      // Visszafelé kompatibilitás: a PR #304 a rendelésszámot küldte külső
+      // azonosítóként. Korábbi beküldés után a régi alakon is keresünk; egy
+      // sosem beküldött rendelésnél a régi kulcson talált bizonylat csak
+      // idegen lehetne, ezért ott nem keresünk.
+      const lookupKeys = invoiceLookupKeys(orderNumber, order, previousAttempts > 0)
+      const expectedBrutto = expectedInvoiceBruttoHuf(order, items)
 
       /**
        * A ténylegesen BEKÜLDÖTT kísérletek száma. A lekérdezés (F10) nem fogyaszt
@@ -814,50 +1027,162 @@ export async function issueInvoiceForOrder(
           overrideAccess: true,
         })) as Order | null
       }
+
+      interface LookupHit {
+        found: InvoiceLookupResult
+        key: string
+        legacy: boolean
+      }
+      /** A bizonylat keresése a kulcsokon, sorrendben; az első találat dönt. */
+      const findExisting = async (): Promise<LookupHit | null> => {
+        for (const [index, key] of lookupKeys.entries()) {
+          const found = await lookup(key, budget.forQuery())
+          if (found) {
+            return { found, key, legacy: index > 0 }
+          }
+        }
+        return null
+      }
       /**
-       * W7: a számla kiállt (vagy átvettük), de a refund közben refunded-re
-       * állíthatta a rendelést üres invoiceNumberrel — stornó nem indulna.
-       * Itt, a számla számának rögzítése UTÁN újraolvasunk, és ha kell, inline
-       * stornózunk. A stornó hibája NEM billenti a számla-kimenetet failed-re.
+       * Az átvétel előtti egyeztetés (a-szamlazz-5): a talált bizonylat
+       * ehhez a rendeléshez tartozik-e. Visszatérés: null, ha igen; különben
+       * az eltérés oka. A PDF-lekérdezés válasza vevőnevet nem hordoz, csak a
+       * bruttó végösszeget; a RÉGI kulcson talált bizonylatnál ezért a
+       * számlaadat-lekérdezés a vevőnevet és a sztornózottságot is adja (a
+       * vevő-blokk a partnertörzs élő adata, de a partnert a Számlázz.hu a
+       * névvel azonosítja, tehát a név összevethető). A lekérdezés hibája
+       * dob (a hívó bizonytalan állapotban nem vesz át és nem küld be).
        */
-      const stornoIfRefundedAfterIssue = async (invoiceNumber: string): Promise<void> => {
-        const latest = await rereadOrder()
+      const mismatchOf = async (hit: LookupHit): Promise<string | null> => {
+        const brutto = hit.found.szamlabrutto
+        if (brutto === undefined) {
+          return 'a lekérdezés válasza nem hordoz bruttó végösszeget (szamlabrutto), így a bizonylat nem egyeztethető'
+        }
+        if (expectedBrutto === null || brutto !== expectedBrutto) {
+          return `a bizonylat bruttó végösszege ${brutto} Ft, a rendelésé ${expectedBrutto ?? 'ismeretlen'} Ft`
+        }
+        if (!hit.legacy) {
+          return null
+        }
+        const data = await queryInvoiceData(hit.found.szamlaszam, budget.forQuery())
+        if (data.szamlaszam !== hit.found.szamlaszam) {
+          return `a számlaadat-lekérdezés más bizonylatot adott vissza (${data.szamlaszam})`
+        }
+        if (data.sztornozott) {
+          return 'a régi (rendelésszám-alapú) kulcson talált bizonylat már sztornózott'
+        }
+        if (!data.vevoNev) {
+          return 'a régi (rendelésszám-alapú) kulcson talált bizonylat vevőneve nem olvasható, így nem egyeztethető'
+        }
+        if (normalizeBuyerName(data.vevoNev) !== normalizeBuyerName(buyer.nev)) {
+          return 'a régi (rendelésszám-alapú) kulcson talált bizonylat vevőneve eltér a rendelésétől'
+        }
+        return null
+      }
+      /** Idegen (vagy nem egyeztethető) bizonylat: nem vesszük át, és nem küldünk be. */
+      const refuseForeign = async (
+        hit: LookupHit,
+        mismatch: string,
+        via: string,
+      ): Promise<IssueInvoiceResult> => {
+        const reason =
+          `${INVOICE_AUTOMATION_STOPPED}: a(z) ${hit.key} külső azonosítón talált ${hit.found.szamlaszam} számú bizonylat nem egyeztethető ezzel a rendeléssel (${mismatch}). ` +
+          'A rendszer nem veszi át, és új számlát sem küld be: ellenőrizd a Számlázz.hu-fiókban, és szükség esetén állítsd ki kézzel.'
+        orderLog.error(
+          'RIASZTÁS: a bizonylat-lekérdezés olyan bizonylatot talált, amely nem egyeztethető ezzel a rendeléssel (idegen vagy sztornózott bizonylat lehet) — a számla automatikus kiállítása leállt, kézi ellenőrzés kell.',
+          {
+            orderNumber,
+            foundInvoiceNumber: hit.found.szamlaszam,
+            kulsoAzon: hit.key,
+            legacyKey: hit.legacy,
+            szamlabrutto: hit.found.szamlabrutto ?? null,
+            expectedBrutto,
+            mismatch,
+            via,
+          },
+        )
+        await writeOrderInvoicingState(deps.payload, deps.orderId, {
+          invoiceStatus: 'failed',
+          invoiceLastError: reason,
+        })
+        return { outcome: 'failed', reason }
+      }
+      /**
+       * A számla rögzítése UTÁN újraolvasunk, és a közben (vagy korábban)
+       * történt visszatérítésekhez igazítjuk a bizonylatokat:
+       * - W7: ha a rendelés refunded lett (üres invoiceNumberrel), inline
+       *   stornó. A stornó hibája NEM billenti a számla-kimenetet failed-re.
+       * - a-szamlazz-12: ha a számla előtt RÉSZLEGES visszatérítés történt, a
+       *   teljes összegű számla mellé helyesbítő kell; ezt a refund-
+       *   helyreállítás állítja ki, a számla oldaláról RIASZTÁS jelzi.
+       *
+       * A zár ELENGEDÉSE UTÁN fut (afterLock, lásd fent), és nem dob: az
+       * újraolvasás hibája is RIASZTÁS, a kiállítás eredménye marad. (Dobás
+       * esetén a job újrapróbálása a már rögzített számlán no-op volna, a
+       * stornó tehát némán elmaradna.)
+       */
+      const reconcileRefundsAfterIssue = async (invoiceNumber: string): Promise<void> => {
+        let latest: Order | null
+        let issueStorno: NonNullable<IssueInvoiceForOrderDeps['issueStorno']>
+        try {
+          latest = await rereadOrder()
+          issueStorno = deps.issueStorno ?? (await import('./storno')).issueStornoForOrder
+        } catch (reconcileError) {
+          orderLog.error(
+            'RIASZTÁS: a számla kiállt, de a rendelés újraolvasása nem sikerült, így nem dönthető el, kell-e stornó vagy helyesbítő — ellenőrizd a rendelés visszatérítéseit',
+            {
+              orderNumber,
+              invoiceNumber,
+              error:
+                reconcileError instanceof Error ? reconcileError.message : String(reconcileError),
+            },
+          )
+          return
+        }
         if (!latest) {
           return
         }
         const recordedInvoice = latest.invoiceNumber?.trim() || invoiceNumber
+        if (latest.status === 'paid') {
+          const refunds: unknown[] = Array.isArray(latest.refunds) ? latest.refunds : []
+          const partial = refunds.filter(isSettledRefundEntry)
+          if (partial.length > 0) {
+            orderLog.error(
+              'RIASZTÁS: a számla kiállt, de a rendelésen a számla ELŐTT részleges visszatérítés történt — a visszatérített összegről helyesbítő számla kell (a rendelés visszatérítési helyreállításával)',
+              { orderNumber, invoiceNumber: recordedInvoice, refundEntries: partial.length },
+            )
+          }
+          return
+        }
         const hasStorno = Boolean(latest.stornoNumber?.trim()) || latest.stornoStatus === 'storned'
         if (latest.status !== 'refunded' || !recordedInvoice || hasStorno) {
           return
         }
-        const issueStorno = deps.issueStorno ?? (await import('./storno')).issueStornoForOrder
         const orderForStorno: Order = { ...latest, invoiceNumber: recordedInvoice }
         try {
           const stornoResult = await issueStorno(orderForStorno, {
             payload: deps.payload,
             config,
             logger: orderLog,
-            reason: 'a számla a refund után állt ki — automatikus stornó',
+            reason: 'a számla a visszatérítés után állt ki, automatikus stornó',
           })
           if (stornoResult.outcome === 'failed') {
             orderLog.error(
               'RIASZTÁS: a számla kiállt, de a rendelés közben refunded lett, és a stornó nem készült el',
-              { invoiceNumber: recordedInvoice, reason: stornoResult.reason ?? null },
+              { orderNumber, invoiceNumber: recordedInvoice, reason: stornoResult.reason ?? null },
             )
           }
         } catch (stornoError) {
           const message = stornoError instanceof Error ? stornoError.message : String(stornoError)
           orderLog.error(
             'RIASZTÁS: a számla kiállt, de a rendelés közben refunded lett, és a stornó hibával állt le',
-            { invoiceNumber: recordedInvoice, error: message },
+            { orderNumber, invoiceNumber: recordedInvoice, error: message },
           )
         }
       }
       /** A meglévő bizonylat átvétele (lekérdezés-találat vagy 71/152-feloldás). */
-      const adoptExisting = async (
-        szamlaszam: string,
-        via: string,
-      ): Promise<IssueInvoiceResult> => {
+      const adoptExisting = async (hit: LookupHit, via: string): Promise<IssueInvoiceResult> => {
+        const szamlaszam = hit.found.szamlaszam
         await writeOrderInvoicingState(deps.payload, deps.orderId, {
           invoiceStatus: 'issued',
           invoiceNumber: szamlaszam,
@@ -870,23 +1195,26 @@ export async function issueInvoiceForOrder(
         })
         orderLog.info('a számla már korábban kiállt — a meglévő bizonylat átvéve', {
           invoiceNumber: szamlaszam,
+          kulsoAzon: hit.key,
+          legacyKey: hit.legacy,
           via,
           attempts,
         })
-        await stornoIfRefundedAfterIssue(szamlaszam)
+        afterLock = () => reconcileRefundsAfterIssue(szamlaszam)
         return { outcome: 'issued', invoiceNumber: szamlaszam }
       }
 
       /**
        * H4: a beküldés ELŐTTI lekérdezés hibája. A lekérdezés nem fogyaszt
        * beküldési kísérletet (F10), ezért a kísérlet-plafon itt nem fékez: a
-       * fék a folyamatos hibasorozat hossza és a fizetés óta eltelt idő
-       * (LOOKUP_FAILURE_ALERT_AFTER_MS, LOOKUP_FAILURE_ESCALATION_MS).
+       * fék a folyamatos hibasorozat hossza, a fizetés óta eltelt idő és a
+       * sorozat sikertelen lekérdezéseinek száma (LOOKUP_FAILURE_ALERT_AFTER_MS,
+       * LOOKUP_FAILURE_ESCALATION_MS, MAX_LOOKUP_FAILURES).
        *
        * Kimenet: `settled` → végleges 'failed', a hívó ezzel tér vissza;
        * `lastError` → a közös hibaág folytatja (újrapróbálható hibán pending +
-       * THROW, véglegesen failed + warn), és ezt írja az invoiceLastError-ba:
-       * újrapróbálható hibánál a hibasorozat kezdetét hordozó előtaggal.
+       * THROW, véglegesen failed + RIASZTÁS), és ezt írja az invoiceLastError-ba:
+       * újrapróbálható hibánál a hibasorozatot hordozó előtaggal.
        */
       const settleLookupFailure = async (
         error: SzamlazzApiError,
@@ -899,6 +1227,7 @@ export async function issueInvoiceForOrder(
           ? `${DUPLICATE_EXISTS_NOTE}; a lekérdezés hibája: ${error.message}`
           : error.message
         const streakStartedAtMs = previous.startedAtMs ?? nowMs
+        const failures = previous.failures + 1
         const streakMs = nowMs - streakStartedAtMs
         const streakHours = Math.floor(streakMs / HOUR_MS)
         const clockStart = lookupFailureClockStart(paidMoment, order)
@@ -906,6 +1235,7 @@ export async function issueInvoiceForOrder(
         const ageHours = ageMs === null ? null : Math.floor(ageMs / HOUR_MS)
         const since = clockStart?.source === 'rendeles' ? 'a rendelés' : 'a fizetés'
         const context = {
+          orderNumber,
           kind: error.kind,
           retryable: error.retryable,
           attempts: previousAttempts,
@@ -913,17 +1243,19 @@ export async function issueInvoiceForOrder(
           error: error.message,
           lastError: order.invoiceLastError ?? null,
           lookupFailingSince: new Date(streakStartedAtMs).toISOString(),
+          lookupFailures: failures,
           streakHours,
           hoursSinceClockStart: ageHours,
           clockStart: clockStart?.source ?? null,
+          refunded,
         }
         // A kézi rendezés teendője: 71/152 után a bizonylat biztosan létezik,
         // egy korábbi (bizonytalan kimenetű) beküldés után létezhet; a kézi
         // újrakiállítás mindkét esetben dupla NAV-számla volna.
         const manualHint = duplicateKnown
-          ? ` A Számlázz.hu szerint a számla MÁR LÉTEZIK (71/152): ne állítsd ki kézzel, hanem keresd meg a Számlázz.hu-fiókban a(z) ${order.orderNumber} külső azonosítójú bizonylatot.`
+          ? ` A Számlázz.hu szerint a számla MÁR LÉTEZIK (71/152): ne állítsd ki kézzel, hanem keresd meg a Számlázz.hu-fiókban a(z) ${orderNumber} rendelésszámú bizonylatot.`
           : previousAttempts > 0
-            ? ` Egy korábbi beküldés létrehozhatta a számlát, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${order.orderNumber} külső azonosítójú bizonylatot.`
+            ? ` Egy korábbi beküldés létrehozhatta a számlát, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${orderNumber} rendelésszámú bizonylatot.`
             : ' Beküldés még nem történt, a számlát kézzel kell kiállítani.'
         const stop = async (
           reason: string,
@@ -944,7 +1276,7 @@ export async function issueInvoiceForOrder(
           }
           return stop(
             `${INVOICE_AUTOMATION_STOPPED}: a számla előtti bizonylat-lekérdezés végleges hibát adott (${error.message}).${manualHint}`,
-            'RIASZTÁS: a számla előtti bizonylat-lekérdezés végleges hibát adott egy korábbi beküldés után, ezért a számla automatikus kiállítása leállt. A számla létezhet: kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámmal azonos külső azonosítójú bizonylatot.',
+            'RIASZTÁS: a számla előtti bizonylat-lekérdezés végleges hibát adott egy korábbi beküldés után, ezért a számla automatikus kiállítása leállt. A számla létezhet: kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámmal azonos rendelésszámú bizonylatot.',
           )
         }
 
@@ -957,22 +1289,55 @@ export async function issueInvoiceForOrder(
           )
         }
 
-        // A kimerült plafonnál a lekérdezés hibája AZONNAL riaszt (az 5.
-        // beküldés bizonylata létezhet), egyébként a legalább 2 órás sorozat.
-        // Mindkettő rendelésenként fojtott, közös kulccsal.
+        if (failures >= MAX_LOOKUP_FAILURES) {
+          return stop(
+            `${INVOICE_AUTOMATION_STOPPED}: a Számlázz.hu bizonylat-lekérdezése ${failures} alkalommal egymás után sikertelen volt (utolsó hiba: ${error.message}). ` +
+              `Ellenőrizd a SZAMLAZZ_API_URL beállítást és a Számlázz.hu elérhetőségét.${manualHint}`,
+            `RIASZTÁS: a számla előtti bizonylat-lekérdezés ${MAX_LOOKUP_FAILURES} alkalommal egymás után sikertelen volt, ezért a számla automatikus kiállítása leállt (a rendszer nem ismétli tovább a kérést). Ellenőrizd a SZAMLAZZ_API_URL beállítást és a Számlázz.hu elérhetőségét.`,
+          )
+        }
+
+        // A kimerült plafonnál és a visszatérített rendelésnél a lekérdezés
+        // hibája AZONNAL riaszt (a bizonylat létezhet, és a visszatérített
+        // rendelést a resweep nem veszi fel újra), egyébként a legalább 2 órás
+        // sorozat. Mindkettő rendelésenként fojtott, közös kulccsal.
         const capReached = previousAttempts >= MAX_INVOICE_ATTEMPTS
         if (
-          (capReached || streakLongEnough) &&
+          (capReached || refunded || streakLongEnough) &&
           shouldEmitThrottledAlert(`invoice-lookup:${deps.orderId}`, LOOKUP_FAILURE_ESCALATION_MS)
         ) {
           orderLog.error(
-            capReached
-              ? 'RIASZTÁS: a számlakiállítás beküldései kimerültek, és a záró bizonylat-lekérdezés hibát adott. Az utolsó beküldés létrehozhatta a számlát: a rendszer tovább próbálkozik a lekérdezéssel, és ha megtalálja, átveszi; tartós hibánál az automatikus kiállítás leáll. Kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámmal azonos külső azonosítójú bizonylatot.'
-              : `RIASZTÁS: a számla előtti bizonylat-lekérdezés legalább 2 órája folyamatosan sikertelen. Ha a hiba ${since} után 24 órával is fennáll, a számla automatikus kiállítása leáll. Ellenőrizd a SZAMLAZZ_API_URL beállítást és a Számlázz.hu elérhetőségét.`,
+            refunded
+              ? 'RIASZTÁS: a visszatérített rendelés korábbi számla-beküldésének ellenőrzése (bizonylat-lekérdezés) hibát adott. A számla létezhet, és akkor sztornózni kell: a rendszer a job újrapróbálásaival még keresi, utána kézi ellenőrzés kell a Számlázz.hu-fiókban.'
+              : capReached
+                ? 'RIASZTÁS: a számlakiállítás beküldései kimerültek, és a záró bizonylat-lekérdezés hibát adott. Az utolsó beküldés létrehozhatta a számlát: a rendszer tovább próbálkozik a lekérdezéssel, és ha megtalálja, átveszi; tartós hibánál az automatikus kiállítás leáll. Kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámmal azonos rendelésszámú bizonylatot.'
+                : `RIASZTÁS: a számla előtti bizonylat-lekérdezés legalább 2 órája folyamatosan sikertelen. Ha a hiba ${since} után 24 órával is fennáll, a számla automatikus kiállítása leáll. Ellenőrizd a SZAMLAZZ_API_URL beállítást és a Számlázz.hu elérhetőségét.`,
             context,
           )
         }
-        return { lastError: withLookupStreakMarker(streakStartedAtMs, detail) }
+        return { lastError: withLookupStreakMarker(streakStartedAtMs, failures, nowMs, detail) }
+      }
+
+      // Gyakoriság-fék (a-szamlazz-15): egy hibasorozat első néhány lekérdezése
+      // után két lekérdezés között legalább LOOKUP_MIN_INTERVAL_MS telik el. A
+      // közbeeső futás hálózati hívás és állapotírás nélkül zár; a pending
+      // státusz marad, a resweep később újra sorba állítja.
+      const streakNow = parseLookupStreak(order.invoiceLastError, Date.now())
+      if (
+        streakNow.marked &&
+        streakNow.failures >= LOOKUP_BURST_FAILURES &&
+        streakNow.lastFailureAtMs !== null &&
+        Date.now() - streakNow.lastFailureAtMs < LOOKUP_MIN_INTERVAL_MS
+      ) {
+        const nextAt = new Date(streakNow.lastFailureAtMs + LOOKUP_MIN_INTERVAL_MS).toISOString()
+        orderLog.info('a bizonylat-lekérdezés a hibasorozat miatt szünetel — kihagyva', {
+          lookupFailures: streakNow.failures,
+          nextLookupAt: nextAt,
+        })
+        return {
+          outcome: 'skipped',
+          reason: `a bizonylat-lekérdezés a hibasorozat miatt szünetel (következő: ${nextAt})`,
+        }
       }
 
       /** Igaz, amíg a beküldés ELŐTTI lekérdezés fut (H4: csak ennek a hibája időkorlátos). */
@@ -985,17 +1350,31 @@ export async function issueInvoiceForOrder(
         // lekérdezés hibája szándékosan nem enged vak beküldést (a státusz
         // pending marad, a fék a hibasorozat-alapú időkorlát:
         // settleLookupFailure). A lekérdezés NEM fogyaszt kísérletet (F10).
+        // A talált bizonylatot csak egyeztetés után vesszük át (a-szamlazz-5).
         lookupPhase = true
-        const found = await lookup(order.orderNumber, config)
+        const hit = await findExisting()
+        const mismatch = hit ? await mismatchOf(hit) : null
         lookupPhase = false
-        if (found) {
-          return await adoptExisting(
-            found.szamlaszam,
-            previousAttempts >= MAX_INVOICE_ATTEMPTS
-              ? 'plafon-utani lekerdezes'
+        const via =
+          previousAttempts >= MAX_INVOICE_ATTEMPTS
+            ? 'plafon-utani lekerdezes'
+            : refunded
+              ? 'visszaterites-utani lekerdezes'
               : previousAttempts > 0
                 ? 'retry-elotti lekerdezes'
-                : 'elso-kiserlet-elotti lekerdezes',
+                : 'elso-kiserlet-elotti lekerdezes'
+        if (hit && mismatch !== null) {
+          return await refuseForeign(hit, mismatch, via)
+        }
+        if (hit) {
+          return await adoptExisting(hit, via)
+        }
+
+        // a-egyeztetes-13 + K12: a visszatérített rendelés korábbi beküldése
+        // nem hozott létre kereshető számlát. Új számla + stornó nem megy ki.
+        if (refunded) {
+          return await stopRefundedWithoutInvoice(
+            `a korábbi beküldés (${previousAttempts}) nyomán a lekérdezés sem talált számlát`,
           )
         }
 
@@ -1013,11 +1392,11 @@ export async function issueInvoiceForOrder(
           const previousError = parseLookupStreak(order.invoiceLastError, Date.now()).message
           const reason =
             `${INVOICE_AUTOMATION_STOPPED}: a számlakiállítási kísérletek száma kimerült (${previousAttempts}/${MAX_INVOICE_ATTEMPTS}), és a záró lekérdezés sem talált bizonylatot. ` +
-            `Az utolsó beküldés ennek ellenére létrehozhatta a számlát, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${order.orderNumber} külső azonosítójú bizonylatot.` +
+            `Az utolsó beküldés ennek ellenére létrehozhatta a számlát, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${orderNumber} rendelésszámú bizonylatot.` +
             (previousError ? ` A korábbi hiba: ${previousError}` : '')
           orderLog.error(
-            'RIASZTÁS: a számlakiállítás beküldései kimerültek, és a záró lekérdezés sem talált bizonylatot. Emberi beavatkozás kell (Számlázz.hu-szabály: legfeljebb 5 beküldés); kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámmal azonos külső azonosítójú bizonylatot.',
-            { attempts: previousAttempts, lastError: order.invoiceLastError ?? null },
+            'RIASZTÁS: a számlakiállítás beküldései kimerültek, és a záró lekérdezés sem talált bizonylatot. Emberi beavatkozás kell (Számlázz.hu-szabály: legfeljebb 5 beküldés); kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámmal azonos rendelésszámú bizonylatot.',
+            { orderNumber, attempts: previousAttempts, lastError: order.invoiceLastError ?? null },
           )
           await writeOrderInvoicingState(deps.payload, deps.orderId, {
             invoiceStatus: 'failed',
@@ -1030,6 +1409,13 @@ export async function issueInvoiceForOrder(
         // állíthatja a rendelést. Közvetlenül a kísérlet-növelés / POST előtt
         // újraolvasunk (az invoice-zár a párhuzamos kiállítót sorosítja).
         const latestBeforePost = await rereadOrder()
+        if (latestBeforePost?.status === 'refunded') {
+          return await stopRefundedWithoutInvoice(
+            previousAttempts > 0
+              ? `a korábbi beküldés (${previousAttempts}) nyomán a lekérdezés sem talált számlát`
+              : 'korábbi beküldés sem történt',
+          )
+        }
         if (!latestBeforePost || latestBeforePost.status !== 'paid') {
           orderLog.info('a rendelés státusza nem paid — számlakiállítás kihagyva', {
             status: latestBeforePost?.status ?? null,
@@ -1037,6 +1423,10 @@ export async function issueInvoiceForOrder(
           return { outcome: 'skipped', reason: 'a rendelés státusza nem paid' }
         }
 
+        // A beküldés csak teljes timeouttal, a zár időkeretén belül indulhat
+        // (lock-budget.ts). Korai ellenőrzés a pending-írás előtt (tartalékkal):
+        // különben újrapróbálható hiba, kísérlet-növelés NÉLKÜL.
+        budget.reservePost()
         attempts = previousAttempts + 1
         // H4: a sikeres lekérdezés lezárta a lekérdezési hibasorozatot, az
         // előtag kikerül (az üzenet a beküldés eredményéig marad).
@@ -1053,7 +1443,11 @@ export async function issueInvoiceForOrder(
         })
 
         const postXml = deps.postXml ?? postInvoiceXml
-        const result = await postXml(xml, config)
+        // Késői ellenőrzés a beküldés pillanatában: a pending-írás megakadhatott
+        // (sorzár, pool; CLAUDE.md 6–7.). Ha a teljes timeout már nem fér a
+        // keretbe, a POST nem indul (újrapróbálható hiba; a státusz pending
+        // marad, a következő futás a beküldés előtti lekérdezéssel kezd).
+        const result = await postXml(xml, budget.forPost())
         // A vevői fiók URL-jét CSAK allowlist után mentjük — a link a vásárló
         // fiók-oldalán kattintható. Nem megfelelő URL: nem mentjük (a számla maga
         // ettől még kiállt), és riasztunk, mert ilyet a Számlázz.hu nem küldhet.
@@ -1078,6 +1472,7 @@ export async function issueInvoiceForOrder(
         })
         orderLog.info('számla kiállítva', {
           invoiceNumber: result.szamlaszam,
+          kulsoAzon,
           attempts,
           teljesitesDatum,
         })
@@ -1090,24 +1485,31 @@ export async function issueInvoiceForOrder(
             { invoiceNumber: result.szamlaszam, agentErrorCode: result.notificationError.code },
           )
         }
-        await stornoIfRefundedAfterIssue(result.szamlaszam)
+        afterLock = () => reconcileRefundsAfterIssue(result.szamlaszam)
         return { outcome: 'issued', invoiceNumber: result.szamlaszam }
       } catch (error) {
         // 71/152 — „Már létező rendelésszám": nem hiba, hanem idempotencia-találat.
-        // A meglévő bizonylat számát lekérdezéssel vesszük át.
+        // A meglévő bizonylat számát lekérdezéssel (és egyeztetéssel) vesszük át.
         if (isDuplicateOrderError(error)) {
           orderLog.info(
             'a Számlázz.hu duplikátum-jelzést adott (71/152) — a meglévő számla lekérdezése',
             { agentErrorCodes: error.agentErrors.map((entry) => entry.code) },
           )
           try {
-            const found = await lookup(order.orderNumber, config)
-            if (found) {
-              return await adoptExisting(found.szamlaszam, 'duplikatum-feloldas')
+            const hit = await findExisting()
+            const mismatch = hit ? await mismatchOf(hit) : null
+            if (hit && mismatch !== null) {
+              return await refuseForeign(hit, mismatch, 'duplikatum-feloldas')
+            }
+            if (hit) {
+              return await adoptExisting(hit, 'duplikatum-feloldas')
             }
             const reason =
               'a Számlázz.hu duplikátumot jelzett (71/152), de a szamlaKulsoAzon-lekérdezés nem talál bizonylatot — kézi egyeztetés szükséges'
-            orderLog.error(`RIASZTÁS: ${reason}`)
+            orderLog.error(`RIASZTÁS: ${reason}`, {
+              orderNumber,
+              agentErrorCodes: error.agentErrors.map((entry) => entry.code),
+            })
             await writeOrderInvoicingState(deps.payload, deps.orderId, {
               invoiceStatus: 'failed',
               invoiceLastError: reason,
@@ -1135,8 +1537,7 @@ export async function issueInvoiceForOrder(
         }
         // H4: a beküldés ELŐTTI lekérdezés hibája (ebben a futásban POST nem
         // ment ki). Időkorlát és riasztás a settleLookupFailure-ben; ha nem
-        // végleges, a hibasorozat kezdete az invoiceLastError előtagjában
-        // marad meg.
+        // végleges, a hibasorozat az invoiceLastError előtagjában marad meg.
         let lastErrorToWrite: string | null = null
         if (lookupPhase && error instanceof SzamlazzApiError) {
           const settled = await settleLookupFailure(error)
@@ -1156,25 +1557,51 @@ export async function issueInvoiceForOrder(
           invoiceLastError: lastErrorToWrite ?? message,
         }).catch(() => undefined)
         if (error instanceof SzamlazzApiError) {
-          orderLog.warn('számlakiállítás sikertelen', {
+          const agentErrorCodes = error.agentErrors.map((entry) => entry.code)
+          const context = {
+            orderNumber,
             kind: error.kind,
             retryable: error.retryable,
             attempts,
-            agentErrorCodes: error.agentErrors.map((entry) => entry.code),
+            agentErrorCode: agentErrorCodes[0] ?? null,
+            agentErrorCodes,
             error: error.message,
-          })
+          }
           if (error.retryable) {
             // A job-retry (kimerülése után az order-poll resweep) újrapróbálja: a
             // következő futás a beküldés ELŐTT lekérdezi a bizonylatot, a
             // beküldések számát pedig az invoiceAttempts plafon korlátozza.
+            orderLog.warn('számlakiállítás sikertelen (újrapróbálható)', context)
             throw error
           }
+          // VÉGLEGES hiba (a-szamlazz-6, a-riasztas-2): a számla 'failed', a job
+          // nem próbálja újra, és a resweep sem veszi fel. Konfiguráció-jellegű
+          // kód (3 hibás kulcs, 54 e-számla nincs engedélyezve, 57 XML, 202
+          // előtag, 259–264 kerekítés) MINDEN rendelést érint: RIASZTÁS kell.
+          orderLog.error(
+            `RIASZTÁS: a számla kiállítása végleges hibával leállt (a Számlázz.hu válasza: ${agentErrorCodes.join(', ') || 'kód nélkül'}) — a számla NEM készült el; a hiba okát a Számlázz.hu-fiókban kell rendezni, utána a számla kézzel sorba állított invoice-issue jobbal újrapróbálható`,
+            context,
+          )
           return { outcome: 'failed', reason: error.message }
         }
-        orderLog.error('számlakiállítás váratlan hibával állt le', { attempts, error: message })
+        orderLog.error('RIASZTÁS: a számlakiállítás váratlan hibával állt le', {
+          orderNumber,
+          attempts,
+          error: message,
+        })
         throw error
       }
     },
     log,
   )
+  try {
+    return await locked
+  } finally {
+    // A zár véget ért (sikeres lezárásnál és akkor is, ha a lezárás hibát
+    // adott: a számla állapota külön kapcsolaton már rögzült, a stornó tehát
+    // ilyenkor is kell).
+    if (afterLock) {
+      await afterLock()
+    }
+  }
 }

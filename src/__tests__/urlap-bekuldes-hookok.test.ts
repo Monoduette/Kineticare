@@ -288,6 +288,33 @@ describe('stáb-értesítő (form-submissions afterChange)', () => {
     expect(String(level.html)).toContain('2026. 09. 15. 08:35')
   })
 
+  // Codex (PR #307): a beküldőnek menő visszaigazolás válaszcíme a Kapcsolat
+  // oldalon beállított cím, nem a kódbeli tartalék (K14, a rendelés-levelek
+  // mintájára), így a szerkesztő címcseréje ide is eljut.
+  it('időpontkérés: a beküldőnek menő visszaigazolás Reply-To-ja a Kapcsolat oldalon beállított cím', async () => {
+    vi.stubEnv('CONTACT_STAFF_EMAILS', STAB_CIM)
+    const { stabErtesito } = await bekuldesHookok()
+    const cmsCim = 'rendelo@pelda-kineticare.hu'
+    const payload = {
+      find: async () => ({ docs: [{ layout: [{ blockType: 'appointment', email: cmsCim }] }] }),
+    }
+    const doc = {
+      submissionData: [
+        sor('name', 'Kovács Anna'),
+        sor('phone', '+36 30 123 4567'),
+        sor('email', 'anna@pelda.hu'),
+      ],
+    }
+    const args = afterChangeArgs(doc, 'appointment')
+
+    await stabErtesito({ ...args, req: { ...args.req, payload } } as unknown as typeof args)
+
+    expect(sendMailMock).toHaveBeenCalledTimes(2)
+    const visszaigazolas = sendMailMock.mock.calls[1]?.[0] ?? {}
+    expect(visszaigazolas.to).toBe('anna@pelda.hu')
+    expect(visszaigazolas.replyTo).toBe(cmsCim)
+  })
+
   it('kapcsolat-űrlap: érvényes e-mail → Reply-To a beküldőre', async () => {
     vi.stubEnv('CONTACT_STAFF_EMAILS', STAB_CIM)
     const { stabErtesito } = await bekuldesHookok()

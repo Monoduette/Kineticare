@@ -19,6 +19,7 @@ import {
   resolveAttention,
 } from '../../lib/alerts/attention'
 import { MAX_WEBHOOK_ATTEMPTS } from '../../lib/idempotency'
+import { REFUND_RECOVERY_ACTION_LABEL } from '../../lib/refund/recovery-action-label'
 import {
   isRefundIntentUnresolved,
   NO_PROVIDER_REQUEST_REFERENCE,
@@ -352,6 +353,25 @@ describe('attentionListHref', () => {
     expect(definition).toBeDefined()
     const matched = orders.filter((order) => matchesWhere(order, definition?.where ?? {}))
     expect(matched.map((order) => order.id)).toEqual([7, 9])
+  })
+})
+
+/**
+ * W1B-1: a Figyelmet igényel blokk nem adhat a visszatérítési panellel
+ * ellentétes utasítást. Amíg a helyesbítő keresés-átvétel jobja dolgozik, a
+ * panel tiltja a kézi kiállítást; a blokk ezért előbb keresést és a panelt
+ * kéri, és a gombot a felületen látható nevén mondja (WCAG 2.2 SC 3.2.4).
+ */
+describe('bizonylathiba teendője', () => {
+  const teendo = attentionDefinitions(NOW).find((item) => item.key === 'bizonylatHiba')?.teendo
+
+  it('kézi kiállítás előtt keresést kér, és a panel tiltásáig nem enged kézi helyesbítőt', () => {
+    expect(teendo).not.toContain('Állítsd ki kézzel a Számlázz.hu-ban.')
+    expect(teendo).toContain(
+      'Kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámra, hogy nem készült-e már el.',
+    )
+    expect(teendo).toContain('az áll ott, hogy ne állíts ki kézzel helyesbítőt, addig ne tedd')
+    expect(teendo).toContain(`ha ott a „${REFUND_RECOVERY_ACTION_LABEL}” gomb látszik`)
   })
 })
 

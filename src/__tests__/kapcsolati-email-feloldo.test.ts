@@ -33,7 +33,20 @@ const h = vi.hoisted(() => ({
   payloadHiba: false,
   findHivasok: [] as unknown[],
   warn: [] as { msg: string; context?: unknown }[],
+  /** A provider-rétegnek átadott levelek (a Payload e-mail-adapterén át). */
+  levelek: [] as { replyTo?: string }[],
 }))
+
+vi.mock('../lib/email/provider', async (importOriginal) => {
+  const eredeti = await importOriginal<typeof import('../lib/email/provider')>()
+  return {
+    ...eredeti,
+    sendMail: async (input: { replyTo?: string }) => {
+      h.levelek.push({ replyTo: input.replyTo })
+      return { ok: true, provider: 'resend', id: 'x' }
+    },
+  }
+})
 
 vi.mock('../lib/logger', () => {
   const naplo = {
@@ -90,6 +103,7 @@ const { contactDataFromLayout, contactOrganizationNode, medicalBusinessNodes, si
   await import('../lib/seo-graph')
 const { buildLlmsFullTxt, buildLlmsTxt } = await import('../lib/seo-llms')
 const { migrationNoticeEmail } = await import('../lib/email/templates/migration')
+const { kineticareEmailAdapter } = await import('../lib/email/adapter')
 const { sendMigrationNotices } = await import('../lib/migration-notice/send')
 
 const UJ_CIM = 'rendelo@pelda-kineticare.hu'
@@ -133,6 +147,7 @@ afterEach(() => {
   h.payloadHiba = false
   h.findHivasok.length = 0
   h.warn.length = 0
+  h.levelek.length = 0
 })
 
 describe('1. a tiszta feloldó', () => {
@@ -329,6 +344,21 @@ describe('3. eltérő CMS-címmel minden fogyasztó az új címet adja', () => {
     expect(buildLlmsTxt({ pages: [], posts: [], products: [] })).toContain(
       `Kapcsolat: ${KAPCSOLATI_EMAIL_TARTALEK}.`,
     )
+  })
+
+  // Codex (PR #307): a Payload levelei (jelszó-visszaállítás, fiók-megerősítés)
+  // eddig válaszcím nélkül mentek, és a provider a kódtartalékot tette be.
+  it('a Payload levelei (jelszó-visszaállítás, fiók-megerősítés): a Reply-To a CMS-cím', async () => {
+    h.kapcsolatOldal = { layout: kapcsolatLayout(UJ_CIM) }
+    const adapter = kineticareEmailAdapter({ payload: hamisPayload() })
+
+    await adapter.sendEmail({
+      to: 'vevo@example.com',
+      subject: 'Jelszó visszaállítása',
+      html: '<p>Kattints a linkre.</p>',
+    })
+
+    expect(h.levelek).toEqual([{ replyTo: UJ_CIM }])
   })
 
   it('átállási levél: a Reply-To és a lábléc-mondat a futás elején egyszer feloldott cím', async () => {

@@ -200,10 +200,13 @@
   margin: var(--kc-space-4) 0;
 }
 
+/* ÉRINTŐCÉL: 1,5rem = 24 CSS px, a WCAG 2.2 SC 2.5.8 (Target Size, Minimum)
+   küszöbe, mint az ÁSZF-négyzeté (mérve korábban 20×20 px volt). A „Cégként
+   vásárolok" négyzet is ezt a sort használja. */
 .kc-checkout-waiver__item input[type='checkbox'] {
   flex-shrink: 0;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
   margin-block-start: 0.15rem;
   accent-color: var(--kc-color-primary);
 }
@@ -314,25 +317,118 @@
   background-color: transparent;
 }
 
-/**
- * ÜRES ÁLLAPOT — a piros doboz eltüntetése hiba nélkül.
- * A hibarégió MINDIG a DOM-ban van (lásd a CheckoutForm kommentjét: a
- * dinamikusan beszúrt aria-live régiót több képernyőolvasó nem jelenti be),
- * ezért üresen is renderelődött — és a fenti szabály miatt egy üres PIROS sáv
- * ült a „Pénztár" cím alatt.
- * A megoldás a `.kc-visually-hidden` (base.css) technikája: `display: none`
- */
-.kc-checkout-form__error[data-visible='false'] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-  background-color: transparent;
+/* A hiba-ÖSSZEFOGLALÓ (a-ux-10): cím + minden hiba egy linkes sorban, a
+   GOV.UK Error summary mintájára
+   (https://design-system.service.gov.uk/components/error-summary/). A linkek
+   a doboz danger-színét viszik aláhúzással: a szín mellett az aláhúzás is
+   jelöli, hogy link (WCAG 2.2 SC 1.4.1). */
+.kc-checkout-form__error-title {
+  margin: 0 0 var(--kc-space-2);
+  font-weight: var(--kc-font-weight-bold);
+}
+
+.kc-checkout-form__error-list {
+  margin: 0;
+  padding-inline-start: var(--kc-space-5);
+}
+
+.kc-checkout-form__error-list li + li {
+  margin-top: var(--kc-space-1);
+}
+
+.kc-checkout-form__error-list a {
+  color: var(--kc-color-danger);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  overflow-wrap: break-word;
+}
+
+.kc-checkout-form__error-list a:focus-visible {
+  outline: 2px solid var(--kc-color-focus);
+  outline-offset: 2px;
+}
+
+/* ---- Összegzés a fizetőgomb fölött (a-ux-6) --------------------------------
+   Rövid, a gombhoz tapadó blokk: 320×740-en az összegzés és a gomb EGY
+   képernyőn fér el. A felső kártya megmarad; ez nem ismétli a teljes
+   űrlapot, csak a 45/2014. 15. § (1) szerinti lényeges feltételeket. */
+.kc-checkout-final {
+  padding: var(--kc-space-4);
+  border: 1px solid var(--kc-color-border);
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-surface-tint);
+}
+
+.kc-checkout-final__heading {
+  margin: 0 0 var(--kc-space-3);
+  font-size: var(--kc-font-m);
+}
+
+.kc-checkout-final__list {
+  margin: 0;
+}
+
+/* Címke és érték egy sorban, szűk sávban tördelhetően (320 px: SC 1.4.10). */
+.kc-checkout-final__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 var(--kc-space-3);
+  padding: var(--kc-space-1) 0;
+  font-size: var(--kc-font-s);
+}
+
+.kc-checkout-final__row dt {
+  color: var(--kc-color-text-muted);
+}
+
+.kc-checkout-final__row dd {
+  margin: 0;
+  color: var(--kc-color-text);
+  text-align: end;
+  overflow-wrap: break-word;
+}
+
+/* A végösszeg a törzsméreten, 700-as súllyal (a kosár végösszegének nyelve). */
+.kc-checkout-final__row--total {
+  margin-top: var(--kc-space-1);
+  padding-top: var(--kc-space-2);
+  border-top: 1px solid var(--kc-color-border);
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-bold);
+}
+
+.kc-checkout-final__row--total dt {
+  color: var(--kc-color-text);
+}
+
+.kc-checkout-final__note,
+.kc-checkout-final__email {
+  margin: var(--kc-space-2) 0 0;
+  max-width: var(--kc-measure);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+}
+
+.kc-checkout-final__note {
+  color: var(--kc-color-text-muted);
+}
+
+/* A beírt cím visszaírása teljes tintával: ezt kell a vevőnek ellenőriznie.
+   Hosszú címnél sem lóghat ki (SC 1.4.10). */
+.kc-checkout-final__email {
+  color: var(--kc-color-text);
+  overflow-wrap: anywhere;
+}
+
+/* A láthatatlan Turnstile helye: üresen nem foglal helyet; ha a Cloudflare
+   interakciót kér, a widget itt jelenik meg, a gomb alatt. */
+.kc-checkout-turnstile {
+  max-width: 100%;
+}
+
+.kc-checkout-turnstile:empty {
+  display: none;
 }
 
 /* A gomb és a MELLETTE álló magyarázat egy oszlopban, jobbra zárva: a
@@ -379,6 +475,38 @@
 
 .kc-thankyou h1 {
   margin: 0 0 var(--kc-space-4);
+  /* 320 px-en a 32 px-es címsor 208 px-es sávba kényszerült, és a
+     „visszaigazolás" szó elválasztójel nélkül tört ketté (a-ux-12). A
+     kurzusoldal H1-ének szabálya: magyar elválasztás a `lang="hu"` alapján
+     (MDN, hyphens: „Browsers will only hyphenate if [lang] is present and the
+     appropriate hyphenation dictionary is available",
+     https://developer.mozilla.org/en-US/docs/Web/CSS/hyphens). */
+  hyphens: auto;
+  text-wrap: balance;
+}
+
+/* 360 px alatt a doboz belső margója a felére csökken, hogy a címsor sávja
+   szélesebb legyen (a-ux-12; WCAG 2.2 SC 1.4.10 Reflow). */
+@media (max-width: 359.98px) {
+  .kc-thankyou {
+    padding: var(--kc-space-4);
+  }
+}
+
+/* A vendég-nézet késleltetett jelszó-beállító kérése (a-ux-5): folyószöveg,
+   benne egy másodlagos link, nem gomb. */
+.kc-thankyou__later {
+  max-width: var(--kc-measure);
+}
+
+.kc-thankyou__later a {
+  color: var(--kc-color-link);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+.kc-thankyou__later a:hover {
+  color: var(--kc-color-link-hover);
 }
 
 .kc-thankyou__order {
@@ -405,6 +533,11 @@
 }
 
 @keyframes kc-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
 }
