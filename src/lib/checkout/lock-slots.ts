@@ -25,12 +25,24 @@
  *
  * A pool azóta kifejezetten 20 kapcsolatos (src/payload.config.ts `pool.max`,
  * w1-barion-platform). A „(pool.max − 2) / 4” ökölszabály így 4 helyet is
- * engedne, a korlát mégis a kisebb, biztonságos 2 marad: ugyanebből a poolból
- * él a Barion-callback is, amely csúcson kérésenként 4 kapcsolatot fog
- * (session-zár + rendelés-zár + ügyfél-zár + lekérdezés), és a számla-job is
- * 2–3-at. Két nyitott pénztár (8) mellett két egyidejű callback (8) és egy
- * számla-job (3) még elfér a 20-ban; négy pénztár (16) mellett már egyetlen
- * callback is kimerítené a poolt, és a fizetések visszaigazolása állna.
+ * engedne, a korlát mégis a kisebb, biztonságos 2 marad, mert ugyanebből a
+ * poolból él a Barion-callback és a háttér-jobok is. Egy callback csúcson 4
+ * kapcsolatot fog (session-zár + rendelés-zár + ügyfél-zár + lekérdezés). Az
+ * order-maintenance queue egy tickben 4 jobot futtat párhuzamosan
+ * (src/jobs/index.ts `ORDER_MAINTENANCE_AUTORUN_LIMIT`: order-poll, számla,
+ * stornó, helyesbítő), jobonként legfeljebb 3 kapcsolattal, ez 12.
+ *
+ * A legrosszabb eset így sem fér el: két nyitott pénztár (8) és egy teli
+ * job-tick (12) már mind a 20 kapcsolatot fogja, a callbacknek és a
+ * webhook-retry jobnak nem marad hely. Ilyenkor a kapcsolat-timeoutig (10 mp)
+ * várnak, utána hibát kapnak: a még nem rögzített callbackre 500 megy, amit a
+ * Barion újraküld, a rögzített esemény feldolgozását pedig a webhook-retry
+ * pótolja. Ez csak akkor áll elő, ha a pénztári forgalom job-torlódással esik
+ * egybe (például egy Számlázz.hu-kimaradás utáni pótláskor): késleltet, de
+ * adatot nem veszít. Négy pénztárhellyel (16) már egy fél job-tick (6) mellett
+ * is kifogyna a pool. Hogy a job-limitet 2-re csökkentsük (akkor a csúcs
+ * 8 + 6 = 14, és 6 kapcsolat marad), vagy a poolt növeljük, nyitott döntés
+ * (w1 integráció, követő feladat).
  */
 
 export const CHECKOUT_LOCK_MAX_CONCURRENT = 2
