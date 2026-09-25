@@ -317,9 +317,15 @@ describe('BARION_SEND_3DS — nem ismert érték: egyszeri figyelmeztetés a nap
     },
   )
 
-  it.each([[undefined], [''], ['true'], ['false'], [' FALSE ']])(
-    'BARION_SEND_3DS=%j: ismert vagy üres érték, nincs figyelmeztetés',
-    async (value) => {
+  it.each<[string | undefined, 'NoPreference' | undefined]>([
+    [undefined, 'NoPreference'],
+    ['', 'NoPreference'],
+    ['true', 'NoPreference'],
+    ['false', undefined],
+    [' FALSE ', undefined],
+  ])(
+    'BARION_SEND_3DS=%j: ismert vagy üres érték, nincs figyelmeztetés (ChallengePreference: %j)',
+    async (value, expectedChallengePreference) => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
       const build = await freshBuild()
       if (value !== undefined) {
@@ -328,9 +334,7 @@ describe('BARION_SEND_3DS — nem ismert érték: egyszeri figyelmeztetés a nap
 
       const request = build({ ...baseParams, threeDs: guestThreeDs }, testConfig)
 
-      expect(request.ChallengePreference).toBe(
-        value?.trim().toLowerCase() === 'false' ? undefined : 'NoPreference',
-      )
+      expect(request.ChallengePreference).toBe(expectedChallengePreference)
       expect(send3dsWarnings(logSpy.mock.calls)).toEqual([])
     },
   )
@@ -561,5 +565,30 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
     expect(mail.text).toContain('barionErrorKind: ModelValidationError')
     expect(mail.alertCode).toBe('a-barion-elutasitotta-a-fizetesinditast')
     expect(RUNBOOK).toContain(`\`${String(mail.alertCode)}\``)
+  })
+
+  it('ha a Barion első hibakódja üres, a levél a következő, nem üres kódot nevezi meg', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          Errors: [
+            { ErrorCode: '', Title: 'x', Description: 'x' },
+            { ErrorCode: 'ModelValidationError', Title: 'x', Description: 'x' },
+          ],
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    const { payload } = checkoutPayload()
+    const { log, errors } = captureLogger()
+
+    await expect(
+      startCheckout({ payload, user: loggedInUser, input: checkoutInput, logger: log }),
+    ).rejects.toBeInstanceOf(CheckoutError)
+
+    const alert = errors.find((entry) => entry.message.startsWith('RIASZTÁS:'))
+    expect(alert?.context).toMatchObject({ providerErrorCodes: ['', 'ModelValidationError'] })
+    const mail = ownerAlertMail(alert ?? { message: '', context: {} })
+    expect(mail.text).toContain('barionErrorKind: ModelValidationError')
   })
 })

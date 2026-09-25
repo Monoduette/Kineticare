@@ -1542,7 +1542,10 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
       httpStatus: failure.httpStatus,
       // A riasztás-levél csak lapos, kódszerű mezőt enged át (SAFE_ALERT_FIELDS):
       // ebből látja a tulajdonos a Barion hibakódját (pl. ModelValidationError).
-      barionErrorKind: failure.errorCodes[0] ?? `http-${failure.httpStatus ?? 'ismeretlen'}`,
+      // Az első nem üres kód kell: az üres értéket a levél szűrője eldobná.
+      barionErrorKind:
+        failure.errorCodes.find((code) => code.trim() !== '') ??
+        `http-${failure.httpStatus ?? 'ismeretlen'}`,
       providerErrorCodes: failure.errorCodes,
       operatorHint: failure.operatorHint,
       error: errorMessage,
