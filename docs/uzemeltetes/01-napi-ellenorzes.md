@@ -6,8 +6,9 @@ Az első éles hetekben este is.
 ## Mit küld magától a rendszer
 
 - **Napi összesítő levél** reggel 7 óra után (magyar idő), az
-  `OWNER_ALERT_EMAILS` címre, **csak ha van teendő**. Benne minden szám a
-  szűrt admin-listára mutat.
+  `OWNER_ALERT_EMAILS` címre, **csak ha van teendő**, vagy ha az alanyi
+  adómentes keret figyelmet kér (70% fölött, vagy most nem számolható). Benne
+  minden szám a szűrt admin-listára mutat.
 - **Riasztás-levél**, ha valami azonnali beavatkozást kér (lásd
   [11 Riasztás és ügyelet](11-riasztas-es-ugyelet.md)). Ugyanarra a
   riasztásra legfeljebb óránként egy levél jön.
@@ -37,7 +38,9 @@ levélküldés nem működik. Ezért a blokkot akkor is nézd meg, ha nem jött 
    következő napra: nézd meg a Barion-fiókban, sikeres-e a fizetés, és ha igen,
    szólj a fejlesztőnek (a rendszernek magától le kellett volna zárnia).
 4. Nézd meg az **Alanyi adómentes keret** sort (ha van). 70% fölött:
-   [14](14-alanyi-adomentes-keret.md).
+   [14](14-alanyi-adomentes-keret.md). Ha a sor azt írja, hogy a keret **most
+   nem számolható**, a sor maga mondja a teendőt; a részletek a
+   [11](11-riasztas-es-ugyelet.md) `aam-keret-nem-teljes` kódjánál.
 5. Nézz bele a postafiókba, ahová a Barion és a Számlázz.hu értesítései jönnek
    (Barion: a bolt regisztrált címe; a Barion 5 sikertelen értesítés-kézbesítés
    után ide ír).
