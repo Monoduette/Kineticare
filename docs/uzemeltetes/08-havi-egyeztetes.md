@@ -41,12 +41,15 @@ bizonylataiból és a Barion havi kivonatából kell.
    mindkét hónap fájljában szerepel. Például az augusztus 31-én 23:50-kor
    leadott és szeptember 1-jén 00:10-kor kifizetett rendelés az augusztusi
    fájlban a létrehozása, a szeptemberiben a fizetése miatt van benne. A
-   Barion-fizetést abban a hónapban párosítsd, amelyikbe a `fizetve_budapest`
-   esik; a másik hónap sorához nem tartozik Barion-fizetés. A
-   `fizetve_budapest` az az időpont, amikor a Kineticare a fizetést
-   feldolgozta (a hozzáférés megnyílt). Ez néhány perccel később is lehet,
-   mint a Barion-exportban látható idő, ezért éjfél körül mindkét hónap
-   fájljában keresd. Ha a `fizetve_budapest` üres, a fizetés ideje nem
+   Barion-fizetést általában abban a hónapban párosítsd, amelyikbe a
+   `fizetve_budapest` esik, és a másik hónap sorához ilyenkor nem tartozik
+   Barion-fizetés. Éjfél körül azonban ez megfordulhat: a `fizetve_budapest`
+   az az időpont, amikor a Kineticare a fizetést feldolgozta (a hozzáférés
+   megnyílt), és ez néhány perccel később is lehet, mint a Barion-exportban
+   látható idő. Az augusztus 31-én 23:59-kor fizetett, de szeptember 1-jén
+   00:01-kor feldolgozott rendelés Barion-fizetése így az augusztusi
+   Barion-exportban van, a `fizetve_budapest` viszont szeptemberi. Éjfél
+   körül ezért mindkét hónap fájljában keresd. Ha a `fizetve_budapest` üres, a fizetés ideje nem
    ismert. Ilyen rendelés a fizetése miatt nem kerül be másik hónap
    fájljába, ezért a Barion-exportból kell megkeresni, a rendelésszám
    alapján.

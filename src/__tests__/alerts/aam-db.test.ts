@@ -106,7 +106,15 @@ describe.skipIf(!hasDb)('AAM-keret jelöltjei (valódi PostgreSQL)', () => {
       invoiceCompletionDate: '2027-01-01',
       totalHuf: 4_000_000,
     })
-    // Tárgyévi dátum, de a számla nem állt ki.
+    // A tárgyév utolsó napján teljesített számla: a szöveges tartomány felső
+    // széle is a keretbe engedi.
+    await insertOrder({
+      createdAt: '2026-12-20T10:00:00.000Z',
+      invoiceStatus: 'issued',
+      invoiceCompletionDate: '2026-12-31',
+      totalHuf: 500,
+    })
+    // Tárgyévi dátum, de a számlát nem állították ki.
     await insertOrder({
       createdAt: '2026-04-01T10:00:00.000Z',
       invoiceStatus: 'pending',
@@ -133,7 +141,7 @@ describe.skipIf(!hasDb)('AAM-keret jelöltjei (valódi PostgreSQL)', () => {
     }
   })
 
-  it('a késve kiállt számla (korábbi rendelés, tárgyévi teljesítés) is a keretbe számít, az előző évi nem', async () => {
+  it('a később kiállított számla (korábbi rendelés, tárgyévi teljesítés) és a tárgyév utolsó napjáé is a keretbe számít, az előző évi nem', async () => {
     const aamFind = payloadAamFind(payload, { overrideAccess: true })
     const find: AamFindFn = (args) =>
       aamFind({ ...args, where: { and: [args.where, { customer: { equals: userId } }] } })
@@ -141,6 +149,6 @@ describe.skipIf(!hasDb)('AAM-keret jelöltjei (valódi PostgreSQL)', () => {
     const status = await queryAamStatus(find, NOW)
 
     expect(status.year).toBe(2026)
-    expect(status.netHuf).toBe(21_000)
+    expect(status.netHuf).toBe(21_500)
   })
 })

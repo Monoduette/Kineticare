@@ -207,8 +207,8 @@ export class AamIncompleteError extends Error {
  * A tárgyév kiállított számlás rendelései, a számla TELJESÍTÉSI DÁTUMA
  * szerint. A jelöltet ugyanaz a mező választja ki, amely szerint az
  * `aamContribution` az évhez rendel: a létrehozás ideje erre nem jó, mert egy
- * korábbi rendelés számlája később is kiállhat (vagy kézzel újra kiállhat), és
- * akkor a tárgyévbe számít (PR #305, Devin: novemberi rendelés, januári
+ * korábbi rendelés számláját később is kiállíthatják (vagy kézzel újra
+ * kiállíthatják), és akkor a tárgyévbe számít (PR #305, Devin: novemberi rendelés, januári
  * teljesítés). A `createdAt`-visszatekintés az ilyen rendelést kihagyta, és a
  * keret-használatot alábecsülte.
  *

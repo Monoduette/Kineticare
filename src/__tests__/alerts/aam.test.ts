@@ -212,3 +212,63 @@ describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lap
     expect(errorLog).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Codex P2 (PR #305): a lapozott AAM-lekérdezés rendezésének egyedi
+ * holtverseny-döntővel kell végződnie. A Postgres nem egyedi `ORDER BY`
+ * mellett az azonos kulcsú sorokat nem rögzített sorrendben adja, és
+ * `LIMIT/OFFSET`-nél lekérdezésenként más sorrendet adhat
+ * (https://www.postgresql.org/docs/current/queries-limit.html): egy sor két
+ * oldalon is megjöhet, egy másik egyiken sem, és az adóhatár-összeg hamis
+ * lesz. A hamis adatbázis a kért rendezési kulcsokat betartja, a maradék
+ * holtversenyt viszont oldalanként másképp dönti el, ahogy a Postgres is
+ * teheti.
+ */
+describe('queryAamStatus: a lapozás azonos létrehozási idő mellett is minden sort egyszer olvas', () => {
+  it('a lapozott lekérdezés rendezése id-val zárul, és az összeg a lapok határán is pontos', async () => {
+    const SOROK = 600
+    const rows = Array.from({ length: SOROK }, (_, index) => ({
+      id: index + 1,
+      createdAt: '2026-03-01T10:00:00.000Z',
+      invoiceStatus: 'issued',
+      invoiceCompletionDate: '2026-03-01',
+      totalHufSnapshot: index + 1,
+    }))
+    const calls: Array<{ sort?: unknown; page?: number }> = []
+    const payload = {
+      find: async (args: { sort?: string | string[]; page?: number; limit?: number }) => {
+        calls.push(args)
+        const kulcsok = typeof args.sort === 'string' ? [args.sort] : (args.sort ?? [])
+        const page = args.page ?? 1
+        const limit = args.limit ?? 10
+        const rendezett = [...rows].sort((a, b) => {
+          for (const kulcs of kulcsok) {
+            const mezo = kulcs.replace(/^-/, '') as keyof (typeof rows)[number]
+            const irany = kulcs.startsWith('-') ? -1 : 1
+            const x = a[mezo]
+            const y = b[mezo]
+            if (x !== y) return (x < y ? -1 : 1) * irany
+          }
+          // A kulcsokkal el nem döntött sorrend lekérdezésenként más lehet.
+          return page % 2 === 1 ? a.id - b.id : b.id - a.id
+        })
+        return {
+          docs: rendezett.slice((page - 1) * limit, page * limit),
+          hasNextPage: page * limit < rendezett.length,
+        }
+      },
+    }
+
+    const status = await queryAamStatus(
+      payloadAamFind(payload as never, { overrideAccess: true }),
+      Date.parse('2026-09-24T08:00:00Z'),
+    )
+
+    expect(calls.length).toBeGreaterThan(1)
+    for (const { sort } of calls) {
+      const kulcsok = typeof sort === 'string' ? [sort] : (sort as string[] | undefined)
+      expect(kulcsok?.at(-1)?.replace(/^-/, '')).toBe('id')
+    }
+    expect(status.netHuf).toBe((SOROK * (SOROK + 1)) / 2)
+  })
+})

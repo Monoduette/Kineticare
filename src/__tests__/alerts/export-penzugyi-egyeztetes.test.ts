@@ -294,8 +294,9 @@ describe('export — a hónap visszatérítései (valódi where-kiértékelésse
  * menti, ezért a fixtúrában a rendelés `updatedAt`-je nem korábbi a
  * `grantedAt`-nél.
  *
- * A rendeléseket a memória-payload szűri (valódi where-kiértékeléssel); a
- * vevőket egy szűk kiszolgáló adja, amely kizárólag az export
+ * A rendeléseket a memória-payload szűri (valódi where-kiértékeléssel), és
+ * az adatbázishoz hasonlóan a kért `sort` szerint rendezve, oldalanként adja
+ * vissza; a vevőket egy szűk kiszolgáló adja, amely kizárólag az export
  * `accessGrants.sourceOrder in [...]` lekérdezését ismeri, minden mást
  * hangosan elutasít.
  */
@@ -323,22 +324,68 @@ describe('export — a hónapban fizetett rendelés (Budapest szerinti hónaphat
     updatedAt: mezok.updatedAt,
   })
 
+  /** Az adatbázis `ORDER BY`-ja: a `sort` kulcsai sorban, a `-` előtag csökkenő. */
+  function rendez(
+    docs: ReadonlyArray<Record<string, unknown>>,
+    sort: string | readonly string[] | undefined,
+  ): Array<Record<string, unknown>> {
+    const kulcsok = sort === undefined ? [] : typeof sort === 'string' ? [sort] : sort
+    return [...docs].sort((a, b) => {
+      for (const kulcs of kulcsok) {
+        const mezo = kulcs.replace(/^-/, '')
+        const irany = kulcs.startsWith('-') ? -1 : 1
+        const x = a[mezo]
+        const y = b[mezo]
+        const kul =
+          typeof x === 'number' && typeof y === 'number'
+            ? x - y
+            : String(x) < String(y)
+              ? -1
+              : String(x) > String(y)
+                ? 1
+                : 0
+        if (kul !== 0) return kul * irany
+      }
+      return 0
+    })
+  }
+
   function exportPayload(
     orders: ReadonlyArray<Record<string, unknown>>,
     hozzaferesek: readonly Hozzaferes[],
   ) {
     const { payload } = createMemoryPayload({ orders })
     const vevok = hozzaferesek.map((grant) => ({ accessGrants: [grant] }))
+    const vevoLekerdezesek: unknown[][] = []
     return {
-      find: async (args: { collection: string; where?: Record<string, unknown> }) => {
+      vevoLekerdezesek,
+      find: async (args: {
+        collection: string
+        where?: Record<string, unknown>
+        sort?: string | string[]
+        page?: number
+        limit?: number
+      }) => {
         if (args.collection !== 'users') {
-          return payload.find(args as Parameters<typeof payload.find>[0])
+          const { docs } = await payload.find({
+            ...(args as Parameters<typeof payload.find>[0]),
+            page: 1,
+            limit: Number.MAX_SAFE_INTEGER,
+          })
+          const limit = args.limit ?? 10
+          const page = args.page ?? 1
+          const rendezett = rendez(docs, args.sort)
+          return {
+            docs: rendezett.slice((page - 1) * limit, page * limit),
+            hasNextPage: page * limit < rendezett.length,
+          }
         }
         const feltetel = args.where?.['accessGrants.sourceOrder'] as { in?: unknown } | undefined
         const ids = feltetel?.in
         if (!Array.isArray(ids) || Object.keys(args.where ?? {}).length !== 1) {
           throw new Error('váratlan vevő-lekérdezés')
         }
+        vevoLekerdezesek.push(ids)
         return {
           docs: vevok.filter((vevo) => ids.includes(vevo.accessGrants[0]?.sourceOrder)),
           hasNextPage: false,
@@ -424,5 +471,28 @@ describe('export — a hónapban fizetett rendelés (Budapest szerinti hónaphat
     const { csv } = await penzugyiExport(payload as never, '2026-09')
 
     expect(csvSorok(csv).map((sor) => sor.rendelesszam)).toEqual(['KH-2026-000001'])
+    // Egy vevő-lekérdezés legfeljebb 200 rendelést kér (korlátos `in`-lista,
+    // nem rendelésenként egy lekérdezés), és együtt minden jelöltet lefednek.
+    expect(payload.vevoLekerdezesek.length).toBeGreaterThan(1)
+    expect(Math.max(...payload.vevoLekerdezesek.map((ids) => ids.length))).toBeLessThanOrEqual(200)
+    expect(new Set(payload.vevoLekerdezesek.flat()).size).toBe(451)
   })
+
+  // Codex P2 (PR #305): a bővebb halmaz egy régi hónapra a hónap óta módosult
+  // összes rendelést tartalmazza. Darabszám-korlátos lapozásnál (200 × 100 sor)
+  // egy régi hónap exportja végleg elromlana, amint ennél több későbbi
+  // rendelés gyűlik össze.
+  it('sok későbbi rendelés mellett is elkészül egy régi hónap exportja', async () => {
+    const kesobbiek = Array.from({ length: 20_001 }, (_, index) =>
+      rendeles(10_000 + index, {
+        createdAt: '2026-10-05T08:00:00.000Z',
+        updatedAt: '2026-10-05T08:00:00.000Z',
+      }),
+    )
+    const payload = exportPayload([rendeles(1, devinPeldaja), ...kesobbiek], [devinFizetese])
+
+    const { csv } = await penzugyiExport(payload as never, '2026-08')
+
+    expect(csvSorok(csv).map((sor) => sor.rendelesszam)).toEqual(['KH-2026-000001'])
+  }, 120_000)
 })
