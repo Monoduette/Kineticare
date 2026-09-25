@@ -70,11 +70,13 @@ export const correctiveInvoiceIssueTask: TaskConfig<CorrectiveInvoiceJobIO> = {
       return { output: { outcome: 'failed', reason: 'ismeretlen visszatérítés-sorszám' } }
     }
 
+    // A refund-bejegyzés `reason`-je a visszatérítési API szabad szöveges
+    // indoka (belső adat). A helyesbítő megjegyzése a vevőhöz is eljut, ezért
+    // az indok ide sem kerül át, ahogy a refund-recovery azonnali útján sem.
     const result = await issueCorrectiveInvoiceForOrder(order, {
       payload: req.payload,
       refundSeq,
       amountHuf: entry.amountHuf,
-      ...(entry.reason ? { reason: entry.reason } : {}),
     })
     return {
       output: {

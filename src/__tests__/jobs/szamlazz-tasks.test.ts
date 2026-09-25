@@ -21,6 +21,22 @@ import type { Order } from '../../payload-types'
  */
 const DUMMY_AGENT_KEY = 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK'
 
+/**
+ * A helyesbítő-kiállító a modul-határon mockolt (a job-nak nincs injektálási
+ * pontja): a job ágait lefedő többi teszt a kiállításig el sem jut, ezért a
+ * mock alapból hangosan dob.
+ */
+type IssueCorrectiveFn = (typeof import('../../lib/szamlazz'))['issueCorrectiveInvoiceForOrder']
+const szamlazz = vi.hoisted(() => ({
+  issueCorrective: vi.fn<IssueCorrectiveFn>(async () => {
+    throw new Error('TESZT-HIBA: ezen az ágon nem indulhat helyesbítő-kiállítás')
+  }),
+}))
+vi.mock('../../lib/szamlazz', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/szamlazz')>()),
+  issueCorrectiveInvoiceForOrder: szamlazz.issueCorrective,
+}))
+
 interface TaskResult {
   output: Record<string, unknown>
 }
@@ -315,6 +331,49 @@ describe('corrective-invoice-issue task', () => {
         outcome: 'failed',
         reason: 'ismeretlen visszatérítés-sorszám',
       })
+    } finally {
+      restore()
+    }
+  })
+
+  // A kiállító a kapott indokot a helyesbítő vevőnek is látható megjegyzésébe
+  // írja (szamlazz/corrective.test.ts: „a megjegyzés … a visszatérítés
+  // indokára hivatkozik”). A refund-bejegyzés indoka a visszatérítési API
+  // belső, szabad szövege, ezért a job nem adhatja tovább.
+  it('a kiállítónak csak a sorszámot és az összeget adja át, a visszatérítés indokát nem', async () => {
+    const restore = withAgentKey()
+    try {
+      const order = {
+        id: 557,
+        orderNumber: 'KH-2026-000779',
+        status: 'paid',
+        invoiceNumber: 'E-TESZT-3',
+        refunds: [
+          {
+            transactionId: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+            amountHuf: 3000,
+            status: 'PartiallyRefunded',
+            refundedAt: '2026-09-20T10:00:00.000Z',
+            type: 'partial',
+            reason: 'Kedvezmény utólag, telefonos egyeztetés után',
+          },
+        ],
+      } as unknown as Order
+      szamlazz.issueCorrective.mockResolvedValueOnce({
+        outcome: 'issued',
+        correctiveInvoiceNumber: 'E-TESZT-H1',
+      })
+      const { req } = reqWith(order)
+      const result = await runTask(correctiveInvoiceIssueTask, {
+        req,
+        input: { orderId: 557, refundSeq: 1 },
+      })
+      expect(szamlazz.issueCorrective).toHaveBeenCalledExactlyOnceWith(order, {
+        payload: req.payload,
+        refundSeq: 1,
+        amountHuf: 3000,
+      })
+      expect(result.output).toEqual({ outcome: 'issued', correctiveInvoiceNumber: 'E-TESZT-H1' })
     } finally {
       restore()
     }
