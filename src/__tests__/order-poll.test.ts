@@ -4998,6 +4998,23 @@ describe('a-callback-9: árva rendelés lezárása előtt a gazdátlan Barion-ca
 })
 
 describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra egyeztetve', () => {
+  // A hibázott, le nem zárt újraellenőrzések tára folyamat-szintű, és a sávból
+  // kiesett bejegyzésről a következő futás utólag RIASZTÁS-t küld. Hogy egy
+  // teszt maradéka ne a következő teszt naplójába riasszon, minden teszt után
+  // egy jóval későbbi, jelölt nélküli futás a valódi határon kiüríti a tárat
+  // (a fojtást a fájlszintű afterEach utána nullázza).
+  afterEach(async () => {
+    await pollPendingOrders({
+      ...setup({ pending: [], paidResweep: [] }),
+      fetchState: async () => {
+        throw new Error('TESZT: a tár kiürítése nem hívhat GetState-et')
+      },
+      now: NOW + 365 * 24 * HOUR_MS,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+  })
+
   const SOURCE_TX_ID = 'abababab-0000-4000-8000-000000000001'
   function refundedOrder(refundedDaysAgo: number): Order {
     return createPendingOrder({
@@ -5888,14 +5905,16 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
   })
 
   // A többi globális megállás ugyanígy: a sávból REFUND_RECHECK_LAST_CHANCE_MS-on
-  // belül kieső sor most kap RIASZTÁS-t, a több időt kapó sor nem.
+  // belül kieső sor most kap RIASZTÁS-t, a több időt kapó sor nem. A RIASZTÁS a
+  // sor eddigi kísérleteit viszi: a hitelesítési hiba nem számít kísérletnek,
+  // az 503 igen.
   it.each([
-    ['hitelesítési hiba', 'auth', 2630],
-    ['szállítási hiba (503)', 'transport', 2632],
-    ['a futás már a függő soroknál megszakadt (hitelesítés)', 'futas-megszakadt', 2634],
+    ['hitelesítési hiba', 'auth', 2630, 0],
+    ['szállítási hiba (503)', 'transport', 2632, 1],
+    ['a futás már a függő soroknál megszakadt (hitelesítés)', 'futas-megszakadt', 2634, 0],
   ] as const)(
     'globális megállás (%s): a sávból hamarosan kieső visszatérítés sor-szintű RIASZTÁS-t kap, a később kieső nem',
-    async (_label, failureClass, exitingId) => {
+    async (_label, failureClass, exitingId, attempts) => {
       const [exiting] = bandOrders(
         [exitingId],
         8 - REFUND_RECHECK_LAST_CHANCE_MS / 2 / (24 * HOUR_MS),
@@ -5923,6 +5942,7 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
       expect(alerts[0].context).toMatchObject({
         orderId: exiting.id,
         reason: 'globalis-hiba',
+        attempts,
         failureClass,
       })
     },
@@ -6037,6 +6057,171 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
       checked.barionPaymentId,
       entering.barionPaymentId,
     ])
+    expect(gaveUpAlerts(errors)).toEqual([])
+  })
+  // Vezetői minor (rev3-rev3): a sávból kiesés előtti RIASZTÁS csak globális
+  // megállás után jár. Egy sorra szóló átmeneti hiba (429) a sáv utolsó órájában
+  // sem ad feladást: a következő futás újrapróbálja a sort.
+  it('a sáv utolsó órájában kapott 429 nem globális megállás: nincs feladás, a következő futás újrapróbál', async () => {
+    const [order] = bandOrders([2670], 8 - REFUND_RECHECK_LAST_CHANCE_MS / 2 / (24 * HOUR_MS))
+    const f = setup({ pending: [], paidResweep: [order] })
+    let calls = 0
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      calls += 1
+      if (calls === 1) throw rateLimited()
+      return reversedState()
+    })
+    const { log, errors } = contextLog()
+
+    await recheckRun(f, withLedger(f, order.id), fetchState, NOW, log)
+    const gaveUpAfterFirstRun = gaveUpAlerts(errors).length
+    await recheckRun(f, withLedger(f, order.id), fetchState, NOW + POLL_INTERVAL_MS, log)
+
+    expect(gaveUpAfterFirstRun).toBe(0)
+    expect(fetchState).toHaveBeenCalledTimes(2)
+    expect(gaveUpAlerts(errors)).toEqual([])
+    const reversal = errors.find((entry) =>
+      entry.message.startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+    )
+    expect(reversal?.context).toMatchObject({ findings: ['refund-reversal'] })
+  })
+
+  // Vezetői minor (rev3-rev3): ha a sor a sáv utolsó futásában kap sorra szóló
+  // átmeneti hibát (429), a következő futásban már nincs a sávban. fb98534-en
+  // némán eltűnt; most a következő futás utólag, egyszer RIASZTÁS-t küld róla.
+  it('a sáv utolsó perceiben 429-et kapó, azután kieső visszatérítés utólag egyszer RIASZTÁS-t kap', async () => {
+    const [order] = bandOrders([2672], 8 - (3 * 60_000) / (24 * HOUR_MS))
+    const f = setup({ pending: [], paidResweep: [order] })
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw rateLimited()
+    })
+    const { log, errors } = contextLog()
+
+    for (const run of [0, 1, 2]) {
+      await recheckRun(f, withLedger(f, order.id), fetchState, NOW + run * POLL_INTERVAL_MS, log)
+    }
+
+    expect(fetchState).toHaveBeenCalledTimes(1)
+    const alerts = gaveUpAlerts(errors)
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].context).toMatchObject({
+      orderId: order.id,
+      reason: 'sav-lejart',
+      attempts: 1,
+      failureClass: 'rate-limited',
+      refundedAt: order.refundedAt,
+    })
+  })
+
+  // Az utólagos RIASZTÁS nem hamis riasztás: ha a rendelés egy újabb
+  // visszatérítése sikeresen egyeztetve lett, az a fizetés egészét nézte, a
+  // korábbi, hibázott időpont is lefedett.
+  it('a hibázott részleges visszatérítés után egy újabb visszatérítés sikeres egyeztetése lefedi a korábbit: utólag nincs RIASZTÁS', async () => {
+    const [order] = bandOrders([2674], 7.05)
+    const earlierIso = new Date(NOW - 8 * 24 * HOUR_MS + HOUR_MS).toISOString()
+    const laterIso = new Date(NOW - 7 * 24 * HOUR_MS + 10 * 60_000).toISOString()
+    const partial = (refundedAt: string, transactionId: string) => ({
+      transactionId,
+      amountHuf: 5000,
+      status: 'Succeeded' as const,
+      refundedAt,
+      type: 'partial' as const,
+    })
+    order.status = 'paid'
+    order.refundedAt = null
+    order.refunds = [
+      partial(earlierIso, SOURCE_TX_ID),
+      partial(laterIso, 'abababab-0000-4000-8000-000000000004'),
+    ]
+    const f = setup({ pending: [], paidResweep: [order] })
+    let calls = 0
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      calls += 1
+      if (calls === 1) throw rateLimited()
+      return reversedState()
+    })
+    const { log, errors } = contextLog()
+
+    for (const offset of [0, 15 * 60_000, 65 * 60_000]) {
+      await recheckRun(f, withLedger(f, order.id), fetchState, NOW + offset, log)
+    }
+
+    expect(fetchState).toHaveBeenCalledTimes(2)
+    expect(gaveUpAlerts(errors)).toEqual([])
+  })
+
+  // Breaker BRK-R2-1 (rev3-rev2): a hátrébb tett sorok egymás közti sorrendje a
+  // DB-sorrend volt. A tartós puszta 404-es, sikertelen próbájú sor a sáv utolsó
+  // 6 órájában várakozás nélkül minden futásban elsőként próbálkozott, és a
+  // futást megállította: a mögötte várakozó részleges visszatérítés (egyetlen
+  // 503 után) sosem kapott újabb kísérletet, kézi RIASZTÁS lett belőle, közben
+  // 47 GetState + 47 próba és 4 útvonal-RIASZTÁS. A legrégebben hibázott elöl.
+  it('BRK-R2-1: a hátrébb tett, tartósan 404-es sor nem éheztetheti ki a várakozó sorokat', async () => {
+    const [stuck] = bandOrders([2700], 7 + 18 / 24)
+    const [partial] = bandOrders([2701], 7 + 20 / 24)
+    partial.status = 'paid'
+    partial.refundedAt = null
+    partial.refunds = (partial.refunds ?? []).map((entry) => ({
+      ...entry,
+      amountHuf: 5000,
+      type: 'partial' as const,
+    }))
+    const probe = paidProbeRow(2702)
+    const f = setup({ pending: [], paidResweep: [stuck, partial, probe] })
+    const payload = withLedgerFor(f, [stuck, partial])
+    let partialCalls = 0
+    const fetchState = vi.fn(async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      if (paymentId === partial.barionPaymentId) {
+        partialCalls += 1
+        if (partialCalls === 1) throw http503()
+        return reversedState()
+      }
+      throw bare404()
+    })
+    const { log, errors } = contextLog()
+
+    for (let run = 0; run < 48; run += 1) {
+      await recheckRun(f, payload, fetchState, NOW + run * POLL_INTERVAL_MS, log)
+    }
+
+    const stuckCalls = fetchState.mock.calls.filter(([id]) => id === stuck.barionPaymentId).length
+    const routeAlerts = errors.filter(
+      (entry) => entry.message.startsWith('RIASZTÁS') && entry.message.includes('BARION_API_URL'),
+    ).length
+    expect(partialCalls).toBe(2)
+    expect(gaveUpAlerts(errors).filter((entry) => entry.context.orderId === partial.id)).toEqual([])
+    expect(stuckCalls).toBeLessThanOrEqual(REFUND_RECHECK_MAX_ATTEMPTS)
+    expect(routeAlerts).toBe(1)
+  })
+
+  // Breaker BRK-R2-2 (rev3-rev2): ha a próba jelöltje maga a 404-es sor, és a
+  // próba második GetState-je sikeres, az első 404 bizonyítottan nem végleges.
+  // fb98534 ezt végleges hibaként, az első kísérletben feladta.
+  it('BRK-R2-2: sikeres önpróba után a sor nem végleges hibával feladva, hanem újrapróbálva', async () => {
+    const [row] = bandOrders([2710], 7.05)
+    row.status = 'paid'
+    row.refundedAt = null
+    row.refunds = (row.refunds ?? []).map((entry) => ({
+      ...entry,
+      amountHuf: 5000,
+      type: 'partial' as const,
+    }))
+    row.updatedAt = new Date(NOW + HOUR_MS).toISOString()
+    const f = setup({ pending: [], paidResweep: [row] })
+    let calls = 0
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      calls += 1
+      if (calls === 1) throw bare404()
+      return reversedState()
+    })
+    const { log, errors } = contextLog()
+
+    await recheckRun(f, withLedger(f, row.id), fetchState, NOW, log)
+    const reasonsAfterFirstRun = gaveUpAlerts(errors).map((entry) => entry.context.reason)
+    await recheckRun(f, withLedger(f, row.id), fetchState, NOW + GAP, log)
+
+    expect(reasonsAfterFirstRun).not.toContain('vegleges-hiba')
+    expect(fetchState).toHaveBeenCalledTimes(3)
     expect(gaveUpAlerts(errors)).toEqual([])
   })
 })
