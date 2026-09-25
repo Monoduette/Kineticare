@@ -551,9 +551,13 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         />
         <div className="kc-checkout-billing__grid">
           {/*
-            `inputMode="numeric"` szándékosan NINCS: a mező külföldi
-            irányítószámot is elfogad (pl. `SW1A 1AA`), a szám-billentyűzet
-            pedig mobilon el sem érhetővé tenné a betűket.
+            Egyszerű szövegmező, `inputMode`, `maxLength` és `pattern` nélkül.
+            K11 óta csak magyar irányítószám megy át (négy számjegy, opcionális
+            `H-` előtaggal); a döntést a közös `billing.ts` hozza, és a hibás
+            alakra (elgépelés vagy külföldi cím) az a mezőhöz kötött, a
+            négyjegyű alakot kérő üzenetet adja. A számbillentyűzet bevezetése
+            külön, mérést igénylő felületi döntés
+            (docs/oldal-audit-c-ertekesites-2026-09-07.md, P3-1).
           */}
           <Field
             autoComplete="billing postal-code"

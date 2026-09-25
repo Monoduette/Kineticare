@@ -143,21 +143,35 @@ const TEXT_RULES: readonly TextRule[] = [
 ]
 
 /**
- * Hiányzó vagy elgépelt (nem négyjegyű, nullával kezdődő) irányítószám. A
+ * Hiányzó vagy elgépelt magyar irányítószám (nem négyjegyű, nullával kezdődő,
+ * `HU` előtagú, vagy a négy számjegy után írásjel, településnév áll). A
  * szöveg a teendőt mondja meg egy példával (GOV.UK, Error message: „tell the
  * user what to do", https://design-system.service.gov.uk/components/error-message/).
  */
 export const BILLING_ZIP_ERROR = 'Add meg a négyjegyű magyar irányítószámot (például 1011).'
 /**
  * Külföldi alakú irányítószám (K11: számla egyelőre csak magyarországi címre).
- * Nem hibáztat, megmondja a korlát tényét és a kiutat, a kapcsolati címmel
- * (NN/g, Error-Message Guidelines: „offer some potential remedies",
- * https://www.nngroup.com/articles/error-message-guidelines/ ; a cím egyetlen
- * forrása a contact-email.ts, K14).
+ *
+ * MIÉRT A TEENDŐVEL KEZDŐDIK: a magyar vevő elgépelése és a valódi külföldi
+ * irányítószám alakra gyakran nem választható szét (a dupla leütéses `10111`
+ * és a berlini `10115` egyaránt öt számjegy, a `1O11` betűs O-ja is csak
+ * külföldinek látszik). Ha az üzenet csak a korlátot mondaná ki, a magyar
+ * címmel vásárló vevő hamis állítást kapna, és nem tudná, mit javítson. Ezért
+ * először a négyjegyű alakot kéri (ugyanazzal a mondattal, mint az elgépelés
+ * üzenete), utána mondja ki a K11-es korlátot és a kiutat a kapcsolati
+ * címmel.
+ *
+ * Források: GOV.UK Design System, Error message („Describe what has happened
+ * and tell them how to fix it", https://design-system.service.gov.uk/components/error-message/);
+ * NN/g, Error-Message Guidelines („offer some potential remedies",
+ * https://www.nngroup.com/articles/error-message-guidelines/); WCAG 2.2
+ * SC 3.3.3 Error Suggestion (https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html).
+ * Két önálló állítás két mondat, nem pontosvessző (docs/ui-sztenderdek.md
+ * 3.1). A cím egyetlen forrása a contact-email.ts (K14).
  */
 export const BILLING_ZIP_FOREIGN_ERROR =
-  'Számlát jelenleg csak magyarországi címre tudunk kiállítani. ' +
-  `Ha külföldi címre kérnéd a számlát, írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
+  `${BILLING_ZIP_ERROR} Számlát jelenleg csak magyarországi címre tudunk kiállítani. ` +
+  `Ha külföldi címre kérnéd, írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
 export const BILLING_TAX_NUMBER_ERROR =
   'Az adószám 11 számjegyből áll (például 12345676-1-42). Magánszemélyként hagyd üresen.'
 export const BILLING_TAX_NUMBER_STRUCTURE_ERROR =
@@ -191,13 +205,27 @@ export const BILLING_SUMMARY_MIXED = 'Ellenőrizd a pirossal jelölt számlázá
  */
 const HUNGARIAN_ZIP_PATTERN = /^(?:[Hh]-?)?([1-9]\d{3})$/
 /**
- * Magyar ELGÉPELÉS alakja: a szóközök elhagyása után csak számjegyek,
- * legfeljebb négy (`101`, `0111`, `10 11`). Ami ettől eltér (öt számjegy,
- * betű, kötőjel), az külföldi irányítószámnak látszik, és a K11-es üzenetet
- * kapja. A `10 11` sem lesz csendben `1011`: a vevő a négyjegyű alakot kéri
- * vissza, nem találgatunk helyette.
+ * Magyar ELGÉPELÉS alakjai (mindegyiket a szóközök elhagyása után vizsgáljuk,
+ * opcionális `H`, `H-`, `HU` vagy `HU-` előtaggal):
+ *  - csak számjegyek, legfeljebb négy (`101`, `0111`, `10 11`, `HU-1011`,
+ *    `HU 1011`, `hu1011`);
+ *  - érvényes négyjegyű irányítószám, utána nem számjegy (`1011.`, `1011,`,
+ *    `1011-`, `1011 Budapest`).
+ * Egyiket sem fogadjuk el csendben (a `HU-1011` sem lesz `1011`): a vevő a
+ * négyjegyű alakot kéri vissza, nem találgatunk helyette, és a számlára
+ * kerülő adat útja nem változik.
  */
-const HUNGARIAN_ZIP_TYPO_PATTERN = /^(?:[Hh]-?)?\d{1,4}$/
+const HUNGARIAN_ZIP_TYPO_PATTERN = /^(?:[Hh][Uu]?-?)?\d{1,4}$/
+const HUNGARIAN_ZIP_WITH_TAIL_PATTERN = /^(?:[Hh][Uu]?-?)?[1-9]\d{3}\D/
+/**
+ * Négy számjeggyel kezdődő, de VALÓDI külföldi alakok, amelyeket a fenti
+ * „négy számjegy + farok" szabály elgépelésnek látna: holland (`1011 AB`,
+ * négy számjegy + két betű) és portugál (`1000-001`). Ezek maradnak
+ * külföldiek, hogy a vevő a K11-es kiutat (a kapcsolati címet) megkapja.
+ * A kétbetűs magyar rövidítés (`1011 Bp`) így szintén külföldinek számít, de
+ * a külföldi üzenet is a négyjegyű alakot kéri elsőként.
+ */
+const FOREIGN_FOUR_DIGIT_ZIP_PATTERN = /^\d{4}(?:[A-Za-z]{2}|-\d{3})$/
 /** Az adószám nyers alakja a szóközök, kötőjelek és a `HU` előtag elhagyása után. */
 const TAX_NUMBER_DIGITS_PATTERN = /^\d{11}$/
 /** A CDV-súlyok az adószám törzsszámának első HÉT jegyére (a 8. a képzett ellenőrző jegy). */
@@ -337,9 +365,15 @@ type ZipResult = { ok: true; value: string } | { ok: false; failure: ZipFailure 
  *  - magyar alak (opcionális `H-` előtag + négy számjegy, 1000–9999) →
  *    normalizálva, csak a négy számjegy kerül a számlára;
  *  - üres → `missing`;
- *  - szóközök nélkül csupa számjegy, legfeljebb négy (`101`, `0111`,
- *    `10 11`) → `typo` (magyar elgépelés, a négyjegyű példát kapja vissza);
- *  - minden más (öt számjegy, betű, kötőjel) → `foreign`.
+ *  - magyar elgépelés → `typo` (a négyjegyű példát kapja vissza): szóközök
+ *    nélkül csupa számjegy, legfeljebb négy (`101`, `0111`, `10 11`), `HU`
+ *    előtaggal is (`HU-1011`, `HU 1011`, `hu1011`), vagy érvényes négy
+ *    számjegy után írásjel, szöveg (`1011.`, `1011,`, `1011-`,
+ *    `1011 Budapest`), kivéve a holland és a portugál alakot;
+ *  - minden más (öt számjegy, betű a számjegyek között, `1011 AB`,
+ *    `1000-001`) → `foreign`, amelynek üzenete szintén a négyjegyű alakkal
+ *    kezdődik, mert az öt számjegyű elgépelés (`10111`) a berlini
+ *    irányítószámtól (`10115`) nem választható szét.
  */
 function normalizeZip(value: unknown): ZipResult {
   const normalized = normalizeText(value)
@@ -350,7 +384,10 @@ function normalizeZip(value: unknown): ZipResult {
   if (hungarian) {
     return { ok: true, value: hungarian[1] }
   }
-  const typo = HUNGARIAN_ZIP_TYPO_PATTERN.test(normalized.replace(/ /g, ''))
+  const compact = normalized.replace(/ /g, '')
+  const typo =
+    HUNGARIAN_ZIP_TYPO_PATTERN.test(compact) ||
+    (HUNGARIAN_ZIP_WITH_TAIL_PATTERN.test(compact) && !FOREIGN_FOUR_DIGIT_ZIP_PATTERN.test(compact))
   return { ok: false, failure: typo ? 'typo' : 'foreign' }
 }
 

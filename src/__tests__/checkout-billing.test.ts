@@ -126,16 +126,17 @@ describe('validateBilling — elfogadott, VALÓS magyar címek', () => {
     })
   })
 
-  it('az irányítószám H- előtaggal is elfogadott', () => {
-    expect(validateBilling({ ...VALID, zip: 'H-1011' })).toMatchObject({
-      ok: true,
-      value: { zip: '1011' },
-    })
-    expect(validateBilling({ ...VALID, zip: 'H1011' })).toMatchObject({
-      ok: true,
-      value: { zip: '1011' },
-    })
-  })
+  // Őr az elgépelés-felismerés bővítéséhez: az érvényes magyar alak továbbra
+  // is átmegy, és a számlára csak a négy számjegy kerül.
+  it.each(['1011', ' 1011 ', 'H-1011', 'H1011', 'h-1011'])(
+    'az irányítószám elfogadott, a számlára a négy számjegy kerül (%s)',
+    (zip) => {
+      expect(validateBilling({ ...VALID, zip })).toMatchObject({
+        ok: true,
+        value: { zip: '1011' },
+      })
+    },
+  )
 })
 
 describe('validateBilling — csak magyar cím (K11, tulajdonosi döntés 2026-09-24)', () => {
@@ -151,6 +152,10 @@ describe('validateBilling — csak magyar cím (K11, tulajdonosi döntés 2026-0
     ['malackai (belső szóközzel)', '900 01'],
     ['londoni (betű+számjegy)', 'SW1A 1AA'],
     ['kötőjeles (pl. lengyel)', '00-950'],
+    // Négy számjeggyel kezdődő külföldi alakok: az elgépelés-szabály
+    // („négy számjegy + farok") nem veheti el tőlük a K11-es kiutat.
+    ['holland (négy számjegy + két betű)', '1011 AB'],
+    ['portugál (négy számjegy + kötőjel + három számjegy)', '1000-001'],
   ])('elutasítva, a kapcsolati címre irányít: %s', (_label, zip) => {
     const result = validateBilling({ ...VALID, zip, city: 'Berlin' })
     expect(result).toEqual({
@@ -166,6 +171,13 @@ describe('validateBilling — csak magyar cím (K11, tulajdonosi döntés 2026-0
     ['három számjegy', '101'],
     ['nullával kezdődő négy számjegy', '0111'],
     ['belső szóközzel tagolt négy számjegy', '10 11'],
+    ['HU országelőtag kötőjellel', 'HU-1011'],
+    ['HU országelőtag szóközzel', 'HU 1011'],
+    ['kisbetűs hu országelőtag', 'hu1011'],
+    ['pont a végén', '1011.'],
+    ['vessző a végén', '1011,'],
+    ['kötőjel a végén', '1011-'],
+    ['a településnév is a mezőben', '1011 Budapest'],
   ])('magyar elgépelés: a négyjegyű alakot kéri, nem találgat (%s)', (_label, zip) => {
     const result = validateBilling({ ...VALID, zip })
     expect(result).toEqual({
@@ -173,6 +185,31 @@ describe('validateBilling — csak magyar cím (K11, tulajdonosi döntés 2026-0
       errors: [{ field: 'zip', kind: 'invalid', message: BILLING_ZIP_ERROR }],
     })
   })
+
+  /**
+   * W1A-4: a magyar címmel vásárló vevő elgépelése (dupla leütés, `HU`
+   * előtag, írásjel vagy településnév a mezőben, betű O a nulla helyén) nem
+   * kaphat olyan üzenetet, amely csak a „magyarországi címre" korlátot mondja
+   * ki: az első mondatnak a teendőt kell megmondania, a mezőnél és az élő
+   * hibarégió összefoglalójában is. A `10111` és a `1O11` külföldi osztályú
+   * marad (a `10115`-től nem választható szét), ott az üzenet sorrendje véd.
+   */
+  it.each(['10111', 'HU-1011', 'HU 1011', '1011 Budapest', '1011.', '1O11'])(
+    'magyar vevő elgépelése: a hiba a négyjegyű alak kérésével kezdődik (%s)',
+    (zip) => {
+      const result = validateBilling({
+        name: 'Teszt Elek',
+        city: 'Budapest',
+        street: 'Fő utca 1.',
+        zip,
+      })
+      const errors = result.ok ? [] : result.errors
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toMatchObject({ field: 'zip', kind: 'invalid' })
+      expect(errors[0].message).toMatch(/^Add meg a négyjegyű magyar irányítószámot/)
+      expect(billingSummaryMessage(errors)).toMatch(/^Add meg a négyjegyű magyar irányítószámot/)
+    },
+  )
 })
 
 describe('validateBilling — „Cégként vásárolok" (K11, r-ado-13)', () => {
