@@ -34,8 +34,13 @@ import { loadActiveRefundIntent } from '../refund/intent-store'
  * orders.refunds a forrástranzakciót rögzíti, a visszatérítés saját
  * Barion-azonosítóját még nem — lásd w3-schema-fin, refunds[].refundTransactionId):
  * - a forrástranzakcióhoz (RelatedId) kapcsolódó Refund / RefundToBankCard /
- *   RefundToBankAccount tranzakciók nem sikertelen összege ↔ a rögzített
- *   sikeres visszatérítések összege;
+ *   RefundToBankAccount tranzakciók SIKERES összege ↔ a rögzített sikeres
+ *   visszatérítések összege;
+ * - folyamatban lévő visszatérítés-tranzakció (Codex, PR #307): nem számít
+ *   visszatérítettnek, mert a pénz még nem biztos, hogy célba ért. Ha
+ *   visszatérítettnek vennénk, a nálunk sikeresként rögzített, de a Barionban
+ *   még függő visszatérítés az egy héttel későbbi újraellenőrzésen
+ *   „egyezik”-kel zárulna, és többé senki nem nézné meg;
  * - sikertelen státuszú visszatérítés-tranzakció;
  * - sztornó-tranzakció (StornoUnSuccessfulRefundTo…);
  * - a fizetés Total-ja kisebb, mint a végösszeg mínusz a rögzített
@@ -43,8 +48,8 @@ import { loadActiveRefundIntent } from '../refund/intent-store'
  *   completed payment, this can be lower than at payment creation time”,
  *   PaymentState v4).
  * Aktív visszatérítési szándéknál (a saját visszatérítésünk épp fut) az
- * összeg-eltérés várható, ezért akkor csak a sikertelen és a sztornózott
- * visszatérítésre riasztunk.
+ * összeg-eltérés és a folyamatban lévő tranzakció várható, ezért akkor csak a
+ * sikertelen és a sztornózott visszatérítésre riasztunk.
  */
 
 const REFUND_TYPES: ReadonlySet<string> = new Set([
@@ -75,16 +80,19 @@ export const REFUND_RECONCILIATION_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000
 export type RefundReconciliationFinding =
   | 'foreign-refund'
   | 'recorded-refund-missing'
+  | 'refund-in-progress'
   | 'failed-refund'
   | 'refund-reversal'
   | 'total-below-recorded'
 
 export interface RefundReconciliationComparison {
   findings: RefundReconciliationFinding[]
-  /** A Barion szerint (nem sikertelen) visszatérített összeg, Ft. */
+  /** A Barion szerint sikeresen visszatérített összeg, Ft. */
   barionRefundedHuf: number
   /** A rendelésen rögzített sikeres visszatérítések összege, Ft. */
   recordedRefundedHuf: number
+  /** A Barionban még folyamatban lévő visszatérítés-tranzakciók száma. */
+  inProgressRefundCount: number
   failedRefundCount: number
   reversalCount: number
   barionTotal: number | null
@@ -135,11 +143,12 @@ export function compareRefundsWithPaymentState(
   )
   const refunds = related.filter((tx) => REFUND_TYPES.has(String(tx.TransactionType)))
   const reversals = related.filter((tx) => REVERSAL_TYPES.has(String(tx.TransactionType)))
+  const inProgress = refunds.filter((tx) => IN_PROGRESS_STATUSES.has(String(tx.Status)))
   const failed = refunds.filter(
     (tx) => tx.Status !== 'Succeeded' && !IN_PROGRESS_STATUSES.has(String(tx.Status)),
   )
   const barionRefunded = refunds
-    .filter((tx) => !failed.includes(tx))
+    .filter((tx) => tx.Status === 'Succeeded')
     .reduce((sum, tx) => sum + amountOf(tx), 0)
   const recorded = recordedRefundedHuf(order)
   const barionTotal =
@@ -149,11 +158,15 @@ export function compareRefundsWithPaymentState(
   if (reversals.length > 0) findings.push('refund-reversal')
   if (failed.length > 0) findings.push('failed-refund')
   if (!options.activeRefundIntent) {
+    if (inProgress.length > 0) findings.push('refund-in-progress')
     if (barionRefunded > recorded) findings.push('foreign-refund')
     if (barionRefunded < recorded) findings.push('recorded-refund-missing')
     const snapshot = order.totalHufSnapshot
+    // A kisebb Total-t a nem rögzített és a még folyamatban lévő
+    // visszatérítés is megmagyarázza; ezekről már szól a saját találatuk.
     if (
       !findings.includes('foreign-refund') &&
+      !findings.includes('refund-in-progress') &&
       barionTotal !== null &&
       typeof snapshot === 'number' &&
       barionTotal < snapshot - recorded
@@ -165,6 +178,7 @@ export function compareRefundsWithPaymentState(
     findings,
     barionRefundedHuf: barionRefunded,
     recordedRefundedHuf: recorded,
+    inProgressRefundCount: inProgress.length,
     failedRefundCount: failed.length,
     reversalCount: reversals.length,
     barionTotal,
@@ -176,7 +190,10 @@ const FINDING_TEXT: Record<RefundReconciliationFinding, string> = {
     'a Barionban több visszatérítés látszik, mint amennyit a rendszer rögzített (valószínűleg a ' +
     'Barion felületén indított visszatérítés)',
   'recorded-refund-missing':
-    'a rendszer több sikeres visszatérítést rögzített, mint amennyit a Barion mutat',
+    'a rendszer több sikeres visszatérítést rögzített, mint amennyit a Barion sikeresnek mutat',
+  'refund-in-progress':
+    'a Barionban folyamatban lévő (még nem sikeres) visszatérítés-tranzakció van: nem biztos, ' +
+    'hogy a pénz célba ért',
   'failed-refund': 'a Barionban sikertelen visszatérítés-tranzakció van',
   'refund-reversal':
     'a Barion sztornózta egy sikertelen kártyás visszatérítést (StornoUnSuccessfulRefundToBankCard): ' +
@@ -261,6 +278,7 @@ export async function runRefundReconciliation(
     barionStatus: state.Status,
     barionRefundedHuf: comparison.barionRefundedHuf,
     recordedRefundedHuf: comparison.recordedRefundedHuf,
+    inProgressRefundCount: comparison.inProgressRefundCount,
     failedRefundCount: comparison.failedRefundCount,
     reversalCount: comparison.reversalCount,
     barionTotal: comparison.barionTotal,
@@ -268,7 +286,10 @@ export async function runRefundReconciliation(
     activeRefundIntent,
   }
   if (comparison.findings.length === 0) {
-    const hadActivity = comparison.barionRefundedHuf > 0 || comparison.recordedRefundedHuf > 0
+    const hadActivity =
+      comparison.barionRefundedHuf > 0 ||
+      comparison.recordedRefundedHuf > 0 ||
+      comparison.inProgressRefundCount > 0
     log.info('visszatérítés-egyeztetés: a Barion és a rendelés adatai egyeznek', context)
     return hadActivity ? 'match' : 'no-refund-activity'
   }

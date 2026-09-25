@@ -51,6 +51,7 @@ import {
 } from './lib/appointment/validation'
 import { validateContactSubmissionData } from './lib/contact-submission'
 import { budapestDateTimeString } from './lib/date/budapest'
+import { checkConnectionBudget, PG_POOL_MAX } from './lib/db-connection-budget'
 import {
   appointmentCustomerEmail,
   appointmentStaffEmail,
@@ -656,6 +657,9 @@ async function ensureContactForm(payload: Payload): Promise<void> {
 async function onInit(payload: Payload): Promise<void> {
   registerPoolErrorHandler(payload)
   registerWebhookProcessors(payload)
+  // A pool mérete csak a mért max_connections-höz képest állítható (AGENTS.md);
+  // nem dob, a mérés hibája csak figyelmeztetés.
+  await checkConnectionBudget(payload.db.pool, logger)
   await ensureHomeBaseline(payload)
   await ensureContactForm(payload)
   // C9: a lábléc hírlevél-űrlapja UGYANOLYAN telepítési előfeltétel, mint a
@@ -901,16 +905,11 @@ export default buildConfig({
         // A statement_timeout a futó lekérdezést öli; ez a tétlen sessiont.
         // Aktív hosszú migrate/seed nem esik bele.
         idle_in_transaction_session_timeout: 60_000,
-        // Pool-méret (a-callback-7, a-szamlazz-11): a `pg` alapértelmezett 10-e
-        // kevés volt. Egy callback-átmenet csúcsán egy kérés akár 4 kapcsolatot
-        // fog (session-zár + rendelés-zár + ügyfél-zár + lekérdezés), egy
-        // számla-job 2–3-at; 4 ilyen egyszerre elfogyasztotta a 10-et, és a
-        // teljes oldal a 10 s-os connectionTimeoutMillis-ig állt. A 20 egy
-        // replikával (railway.json numReplicas: 1) a Postgres alapértelmezett
-        // max_connections = 100 értékének ötöde: a deploy-átfedés (két konténer
-        // egyszerre), a migrate-futás és a mentés is bőven belefér. Replikaszám-
-        // emelésnél ezt is újra kell számolni (replikák × max < max_connections).
-        max: 20,
+        // Pool-méret (a-callback-7, a-szamlazz-11): az indoklás és a
+        // max_connections induláskori mérése (onInit) a
+        // src/lib/db-connection-budget.ts-ben. Replikaszám-emelésnél a mérési
+        // sort újra meg kell nézni.
+        max: PG_POOL_MAX,
       },
       // Dev drizzle-push ki: interaktív TÁBLATÖRLÉS-prompt, amin a nem-interaktív
       // futás örökre megakad; rossz DATABASE_URI mellett adatot törölne.

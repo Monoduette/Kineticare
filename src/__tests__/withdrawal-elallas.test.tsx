@@ -281,6 +281,22 @@ describe('submitWithdrawal: rögzítés, átvételi elismervény, stáb-értesí
     expect(hivasok[1].text).toContain('NEM sikerült elküldeni a vevőnek: küldd el kézzel, még ma.')
   })
 
+  it('visszatartott elismervénynél (spam-csapda): rögzít, a vevő címére nem megy levél, a stáb ellenőrzést és kézi elismervényt kér', async () => {
+    const { eredmeny, bejegyzesek, hivasok, sorok } = futtat({ holdReceipt: true })
+
+    expect(await eredmeny).toMatchObject({
+      recorded: true,
+      receiptSent: false,
+      staffNotified: true,
+    })
+    expect(bejegyzesek.map((b) => b.action)).toEqual(['withdrawal-request'])
+    expect(bejegyzesek[0]).toMatchObject({ after: { honeypotFilled: true } })
+    expect(hivasok.map((h) => h.to)).toEqual([['stab@example.test', 'masik@example.test']])
+    expect(hivasok[0].text).toContain('rejtett spam-csapda')
+    expect(hivasok[0].text).toContain('küldd el kézzel az elismervényt még ma')
+    expect(riasztasok(sorok)).toEqual([])
+  })
+
   it('élesben a noop-szolgáltató nem elküldés: sem elismervény, sem stáb-levél nem számít kimentnek', async () => {
     const { send } = kuldo([{ ok: true, provider: 'noop' }])
     const { eredmeny, sorok, bejegyzesek } = futtat({ send })
@@ -442,12 +458,27 @@ describe('POST /api/elallas: a végpont kapui', () => {
     })
   })
 
-  it('honeypot: látszólagos siker, feldolgozás nélkül', async () => {
-    const { handler, submit } = vegpont()
-    const valasz = await handler(keres({ ...ERTEKEK, website: 'http://spam.example' }))
-    expect(valasz.status).toBe(200)
-    expect(submit).not.toHaveBeenCalled()
-  })
+  // Codex (PR #307): a spam-csapda mezőt a böngésző automatikus kitöltése is
+  // kitöltheti, a jognyilatkozat ezért nem veszhet el egy látszólagos siker
+  // mögött. Turnstile nélkül az elismervény a stáb ellenőrzéséig visszamarad.
+  it.each<[string, Record<string, string>, boolean]>([
+    ['Turnstile nélkül: rögzül, az elismervény visszamarad', {}, true],
+    [
+      'Turnstile-lal igazolt embernél: a szokásos feldolgozás',
+      { TURNSTILE_SECRET_KEY: 'DUMMY-NEM-VALODI-TITOK' },
+      false,
+    ],
+  ])(
+    'kitöltött spam-csapda mező: a nyilatkozat nem vész el, %s',
+    async (_eset, env, holdReceipt) => {
+      const { handler, submit } = vegpont({ env, verifyTurnstile: async () => true })
+      const valasz = await handler(keres({ ...ERTEKEK, website: 'https://autofill.example' }))
+      expect(valasz.status).toBe(200)
+      expect(await valasz.json()).toMatchObject({ ok: true, reference: 'EL-1' })
+      expect(submit).toHaveBeenCalledTimes(1)
+      expect(submit.mock.calls[0][0].holdReceipt).toBe(holdReceipt)
+    },
+  )
 
   it('ugyanarra a címre a 4. beküldés 10 percen belül 429 (levélbombázás ellen)', async () => {
     const { handler, submit } = vegpont()

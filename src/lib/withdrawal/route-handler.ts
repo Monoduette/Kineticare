@@ -20,12 +20,17 @@ import { parseWithdrawalRequestBody } from './validation'
 /**
  * POST /api/elallas: az elállási funkció végpontja.
  *
- * Sorrend: eredet-ellenőrzés → korlátos törzs → validáció → honeypot →
- * IP-keret → Turnstile → címkeret → feldolgozás
- * (src/lib/withdrawal/service.ts). Ugyanazok a kapuk, mint az ingyenes kurzus
- * igénylésén (src/lib/free-course/route-handler.ts), mert a végpont minden
- * sikeres hívása levelet küld a MEGADOTT címre, tehát keret nélkül
- * levélbombázásra lehetne használni. A címkeret viszont a Turnstile UTÁN áll
+ * Sorrend: eredet-ellenőrzés → korlátos törzs → validáció → IP-keret →
+ * Turnstile → címkeret → feldolgozás (src/lib/withdrawal/service.ts). A
+ * kitöltött spam-csapda mező (honeypot) nem dobja el a nyilatkozatot (Codex,
+ * PR #307): a mezőt a böngésző automatikus kitöltése is kitöltheti, a
+ * jognyilatkozat pedig nem veszhet el egy látszólagos siker mögött. Ha a
+ * Turnstile embert igazolt, a mező nem számít; ha nem, a nyilatkozat rögzül és
+ * a stáb értesül, de az elismervény a stáb ellenőrzéséig visszamarad (a
+ * megadott címre robot ne küldethessen levelet). Ugyanazok a kapuk, mint az
+ * ingyenes kurzus igénylésén (src/lib/free-course/route-handler.ts), mert a
+ * végpont minden sikeres hívása levelet küld a MEGADOTT címre, tehát keret
+ * nélkül levélbombázásra lehetne használni. A címkeret viszont a Turnstile UTÁN áll
  * (indokát lásd lent). Bejelentkezés nem kell (NKFH-tájékoztató, 2026. 07. 17.).
  *
  * Minden elutasító üzenet megmondja a másik utat is: az elállás e-mailben is
@@ -117,18 +122,6 @@ export function createWithdrawalHandler(
     }
     const body = parsed.body
 
-    // Honeypot: botnál látszólagos siker, rögzítés és levél NÉLKÜL.
-    if (body.honeypot.length > 0) {
-      log.warn('elállás: honeypot kitöltve, a beküldés eldobva', { cimzett: maskEmail(body.email) })
-      const fake: WithdrawalSuccessBody = {
-        ok: true,
-        reference: 'EL-0000000000',
-        receivedAt: new Date().toISOString(),
-        receiptSent: true,
-      }
-      return NextResponse.json(fake, { status: 200 })
-    }
-
     // Sorrend: IP-keret → Turnstile → címkeret. A címkeret a Turnstile UTÁN
     // számol, különben bárki, aki ismeri a vevő címét, három elbukó
     // (Turnstile nélküli) kéréssel tíz percre kizárhatná a vevőt a törvényes
@@ -139,7 +132,8 @@ export function createWithdrawalHandler(
     if (ipLimited) return ipLimited
 
     const secret = env.TURNSTILE_SECRET_KEY
-    if (typeof secret === 'string' && secret.length > 0) {
+    const turnstileChecked = typeof secret === 'string' && secret.length > 0
+    if (turnstileChecked) {
       const verify =
         deps.verifyTurnstile ?? ((token: string | null) => verifyTurnstileToken({ secret, token }))
       if (!(await verify(body.turnstileToken))) {
@@ -148,6 +142,19 @@ export function createWithdrawalHandler(
         })
         return NextResponse.json({ error: WITHDRAWAL_TURNSTILE_ERROR }, { status: 400 })
       }
+    }
+
+    // A spam-csapda mező csak Turnstile nélkül tartja vissza az elismervényt:
+    // ha a Turnstile embert igazolt, a kitöltött mező szinte biztosan a böngésző
+    // automatikus kitöltése.
+    const holdReceipt = body.honeypot.length > 0 && !turnstileChecked
+    if (body.honeypot.length > 0) {
+      log.warn(
+        holdReceipt
+          ? 'elállás: a spam-csapda mező ki volt töltve, a nyilatkozat rögzül, az elismervény a stáb ellenőrzéséig visszamarad'
+          : 'elállás: a spam-csapda mező ki volt töltve, de a Turnstile embert igazolt, a feldolgozás a szokásos',
+        { cimzett: maskEmail(body.email) },
+      )
     }
 
     const emailLimited = checkLimit(
@@ -167,6 +174,7 @@ export function createWithdrawalHandler(
         logger: log,
         env,
         headers: request.headers,
+        holdReceipt,
       })
       // A nyilatkozat akkor érkezett meg, ha BÁRMELY tartós nyoma megvan: a
       // műveletnapló, a stáb levele vagy a vevő elismervénye. Ha egyik sincs,

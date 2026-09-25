@@ -2076,6 +2076,28 @@ describe('r-barion-7 — lezárt (cancelled) fizetésre érkező callback', () =
     expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
   })
 
+  // Codex (PR #307): két átfedő callback a késői siker körül. Mindkettő még
+  // nem lezárt eseményre ütemeződik (normál futás). Az első Canceled-et kér le,
+  // és lezárja az eseményt, mielőtt a második a zárhoz ér; a második friss
+  // Succeeded-je nem veszhet el duplikátumként a késői-siker ellenőrzésig.
+  it('az átfedő második futás a zár alatt már lezárt (cancelled) eseményt talál: a friss Succeeded paid-re viszi', async () => {
+    const { POST, capture, order, docs } = setup()
+    fetchMock
+      .mockResolvedValueOnce(getStateResponse('Canceled'))
+      .mockResolvedValueOnce(getStateResponse('Succeeded'))
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    const second = await POST(makeBarionRequest(PAYMENT_ID))
+    expect(await second.json()).toEqual({ ok: true, status: 'received' })
+    expect(capture.tasks).toHaveLength(2)
+    await capture.runAll()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(order?.status).toBe('paid')
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
+    expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
+  })
+
   it('24 óránál régebbi rendelés: duplikátum, GetState nélkül', async () => {
     const { POST, capture, order } = setup({
       order: cancelledOrder(CANCELLED_RECHECK_MAX_ORDER_AGE_MS + 60_000),
@@ -2276,6 +2298,49 @@ describe('visszatérítés-egyeztetés: saját, folyamatban lévő visszatérít
       compareRefundsWithPaymentState(order, state, { activeRefundIntent: false }).findings,
     ).toEqual(['foreign-refund'])
   })
+
+  // Codex (PR #307): a folyamatban lévő visszatérítés-tranzakció nem számít
+  // visszatérítettnek. Szándék nélkül nyitott ügy (az egy héttel későbbi
+  // újraellenőrzés különben „egyezik”-kel zárná le), a saját, épp futó
+  // visszatérítésünk mellett viszont várható.
+  it.each<[string, number, boolean, string[]]>([
+    [
+      'nálunk sikeresként rögzített, szándék nélkül',
+      5000,
+      false,
+      ['refund-in-progress', 'recorded-refund-missing'],
+    ],
+    [
+      'nálunk nem rögzített (a Barion felületén indított), szándék nélkül',
+      0,
+      false,
+      ['refund-in-progress'],
+    ],
+    ['nálunk nem rögzített, a saját futó visszatérítésünk mellett', 0, true, []],
+  ])(
+    'a Barionban folyamatban lévő (Started) visszatérítés nem számít visszatérítettnek: %s',
+    (_eset, recordedHuf, activeRefundIntent, findings) => {
+      const recorded = {
+        ...order,
+        refunds:
+          recordedHuf > 0
+            ? [
+                {
+                  transactionId: source.TransactionId,
+                  amountHuf: recordedHuf,
+                  status: 'Succeeded' as const,
+                  refundedAt: '2026-09-18T10:00:00.000Z',
+                  type: 'partial' as const,
+                },
+              ]
+            : [],
+      }
+      const pending = { ...state, Transactions: [source, { ...refund, Status: 'Started' }] }
+      const comparison = compareRefundsWithPaymentState(recorded, pending, { activeRefundIntent })
+      expect(comparison.findings).toEqual(findings)
+      expect(comparison.barionRefundedHuf).toBe(0)
+    },
+  )
 
   it('aktív szándék mellett is riaszt a sikertelen és a sztornózott visszatérítésre', () => {
     const failing = {

@@ -50,7 +50,7 @@ import type { OrderRefundEntry } from './refund-order'
  *   fejléce), de ma még a hívók egy tágabb zárján belül: a
  *   visszatérítés-helyreállítás koordinátor-zárja (`refund-recovery:order:<id>`,
  *   refund-recovery.ts), illetve a pénztár duplavásárlás-ágán a
- *   `checkout:<vevő>:<termék>` zár (start-checkout.ts) alatt. Ezért korlátos
+ *   vevőnkénti `checkout:<vevő>` zár (start-checkout.ts) alatt. Ezért korlátos
  *   az időkerete (REFUND_NOTICE_TIME_BUDGET_MS). Ha a folyamat a
  *   lezárás és a küldés között áll le, a levél elmarad: ez elfogadott, mert
  *   a dupla értesítés rosszabb, mint az elmaradt udvariassági levél. A

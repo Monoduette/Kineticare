@@ -257,10 +257,10 @@ describe('checkout-zár — sorosítás (TOCTOU)', () => {
     // A zár soros: egyszerre legfeljebb egy védett szakasz futott.
     expect(lockState.maxConcurrent).toBe(1)
     expect(lockState.events).toEqual([
-      'enter:checkout:7:42',
-      'exit:checkout:7:42',
-      'enter:checkout:7:42',
-      'exit:checkout:7:42',
+      'enter:checkout:7',
+      'exit:checkout:7',
+      'enter:checkout:7',
+      'exit:checkout:7',
     ])
 
     // Pontosan EGY rendelés jött létre; a második kérés 409-cel elhasalt.
@@ -276,13 +276,21 @@ describe('checkout-zár — sorosítás (TOCTOU)', () => {
     expect(reason.message).toContain('nemrég már indult egy fizetés')
   })
 
-  it('a zár kulcsa felhasználó–termék páronkénti (más termék nem várakozik)', async () => {
+  // Codex (PR #307): az e-mail-szintű visszaélési korlátok (abuse-limits.ts) a
+  // vevő összes rendelését számolják, ezért a zár vevőnkénti: ugyanannak a
+  // vevőnek két különböző kurzusa is sorba áll, különben mindkét párhuzamos
+  // kérés a korlát alatt látná a számot.
+  it('a zár kulcsa vevőnkénti: ugyanannak a vevőnek két különböző kurzusa is sorba áll', async () => {
     fetchMock.mockResolvedValue(barionStartSuccess())
     const { payload } = createStatefulPayload()
 
-    await startCheckout({ payload, user: mockUser, input: happyInput })
+    await Promise.allSettled([
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+      startCheckout({ payload, user: mockUser, input: { ...happyInput, productId: 43 } }),
+    ])
 
-    expect(lockState.events[0]).toBe('enter:checkout:7:42')
+    expect(lockState.maxConcurrent).toBe(1)
+    expect(new Set(lockState.events)).toEqual(new Set(['enter:checkout:7', 'exit:checkout:7']))
   })
 
   it('a Barion Payment/Start a záron KÍVÜL fut (a zár nem tart hálózati hívás alatt)', async () => {
@@ -298,7 +306,7 @@ describe('checkout-zár — sorosítás (TOCTOU)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchDuringLock).toBe(false)
     // A védett szakasz már lezárult, mire a Barion-hívás elindult.
-    expect(lockState.events).toEqual(['enter:checkout:7:42', 'exit:checkout:7:42'])
+    expect(lockState.events).toEqual(['enter:checkout:7', 'exit:checkout:7'])
   })
 })
 
@@ -333,10 +341,10 @@ describe('checkout-zár — VENDÉG (fiók nélküli) vásárlás', () => {
     // A zár soros, és a kulcs a VENDÉG e-mailjére szól (nincs fiókazonosító).
     expect(lockState.maxConcurrent).toBe(1)
     expect(lockState.events).toEqual([
-      'enter:checkout:guest:vendeg@example.test:42',
-      'exit:checkout:guest:vendeg@example.test:42',
-      'enter:checkout:guest:vendeg@example.test:42',
-      'exit:checkout:guest:vendeg@example.test:42',
+      'enter:checkout:guest:vendeg@example.test',
+      'exit:checkout:guest:vendeg@example.test',
+      'enter:checkout:guest:vendeg@example.test',
+      'exit:checkout:guest:vendeg@example.test',
     ])
 
     // Pontosan EGY rendelés jött létre — a második a fizetés ELŐTT elakadt.
@@ -352,13 +360,13 @@ describe('checkout-zár — VENDÉG (fiók nélküli) vásárlás', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('a vendég zárkulcsa e-mail + termék páronkénti (checkout:guest:<email>:<productId>)', async () => {
+  it('a vendég zárkulcsa az e-mail-cím (checkout:guest:<email>)', async () => {
     fetchMock.mockResolvedValue(barionStartSuccess())
     const { payload } = createStatefulPayload()
 
     await startCheckout({ payload, input: guestInput })
 
-    expect(lockState.events[0]).toBe('enter:checkout:guest:vendeg@example.test:42')
+    expect(lockState.events[0]).toBe('enter:checkout:guest:vendeg@example.test')
   })
 })
 
@@ -491,10 +499,10 @@ describe('checkout-zár — Barion-hívás csak a záron KÍVÜL', () => {
     expect(locksHeldDuringFetch).toEqual([0])
     // Két zárolt kör: olvasás, majd a lekérdezett állapottal döntés.
     expect(lockState.events).toEqual([
-      'enter:checkout:7:42',
-      'exit:checkout:7:42',
-      'enter:checkout:7:42',
-      'exit:checkout:7:42',
+      'enter:checkout:7',
+      'exit:checkout:7',
+      'enter:checkout:7',
+      'exit:checkout:7',
     ])
     expect(fetchMock).not.toHaveBeenCalled()
   })

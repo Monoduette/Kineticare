@@ -20,6 +20,30 @@ import type { Order, Product, User } from '../../payload-types'
  * vevőt. Ezt külön esetek védik (fizetett és elutasított Start nem számít).
  */
 
+/**
+ * A valódi advisory-zár helyén kulcsonkénti in-memory mutex (mint a
+ * checkout-lock.test.ts-ben): a zár nélküli teszt-út a párhuzamos kéréseket
+ * nem sorosítaná, így a korlát zár alatti számolása nem volna mérhető.
+ */
+const lockChains = new Map<string, Promise<unknown>>()
+vi.mock('../../lib/advisory-lock', () => ({
+  withAdvisoryLock: async <T>(
+    _payload: unknown,
+    lockKey: string,
+    fn: () => Promise<T>,
+  ): Promise<T> => {
+    const run = (lockChains.get(lockKey) ?? Promise.resolve()).then(fn)
+    lockChains.set(
+      lockKey,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    )
+    return run
+  },
+}))
+
 const DUMMY_POS_KEY = 'DUMMY-POSKEY-NEM-VALODI-TITOK'
 const NOW = new Date('2026-09-24T12:00:00.000Z')
 const GUEST_EMAIL = 'vendeg@example.test'
@@ -75,17 +99,20 @@ function matches(order: StoredOrder, where: unknown): boolean {
 function storePayload(initial: StoredOrder[]) {
   const orders = [...initial]
   let nextId = 1000
-  const product = {
-    id: 42,
-    sku: 'KURZUS-ALAP',
-    status: 'published',
-    priceInHUF: 5000,
-    priceInHUFEnabled: true,
-    shortDescription: 'Alap kurzus',
-  } as unknown as Product
+  const product = (id: number) =>
+    ({
+      id,
+      sku: id === 42 ? 'KURZUS-ALAP' : `KURZUS-${id}`,
+      status: 'published',
+      priceInHUF: 5000,
+      priceInHUFEnabled: true,
+      shortDescription: 'Alap kurzus',
+    }) as unknown as Product
   const payload = {
     findByID: vi.fn(async (args: { collection: string; id: number }) =>
-      args.collection === 'orders' ? orders.find((order) => order.id === args.id) : product,
+      args.collection === 'orders'
+        ? orders.find((order) => order.id === args.id)
+        : product(Number(args.id)),
     ),
     find: vi.fn(
       async (args: { collection: string; where?: unknown; sort?: string; limit?: number }) => {
@@ -101,13 +128,15 @@ function storePayload(initial: StoredOrder[]) {
     ),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       nextId += 1
+      const items = data.items as Array<{ product: number }> | undefined
+      const productId = items?.[0]?.product ?? 42
       const stored: StoredOrder = {
         id: nextId,
         status: String(data.status),
         customer: typeof data.customer === 'number' ? data.customer : null,
         customerEmail: String(data.customerEmail),
         createdAt: NOW.toISOString(),
-        items: [{ product: 42 }],
+        items: [{ product: productId }],
         orderNumber: `KH-2026-${String(nextId).padStart(6, '0')}`,
       }
       orders.push(stored)
@@ -115,7 +144,14 @@ function storePayload(initial: StoredOrder[]) {
         ...data,
         ...stored,
         totalHufSnapshot: 5000,
-        items: [{ product: 42, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 5000 }],
+        items: [
+          {
+            product: productId,
+            quantity: 1,
+            titleSnapshot: productId === 42 ? 'KURZUS-ALAP' : `KURZUS-${productId}`,
+            priceHufSnapshot: 5000,
+          },
+        ],
       } as unknown as Order
     }),
     update: vi.fn(async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
@@ -220,6 +256,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   fetchMock.mockReset()
   resetAlertThrottle()
+  lockChains.clear()
 })
 
 async function checkoutError(promise: Promise<unknown>): Promise<CheckoutError> {
@@ -268,6 +305,30 @@ describe('a-checkout-9 — nyitott fizetések e-mail-címenként', () => {
     const error = await checkoutError(startCheckout({ payload, user, input: guestInput, now: NOW }))
     expect(error.status).toBe(409)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // Codex (PR #307): a korlát a vevő összes rendelését számolja, ezért a zárnak
+  // is vevőnkéntinek kell lennie. Termékenkénti zár mellett két párhuzamos
+  // kérés két különböző kurzusra mindkettő a korlát alatt látná a számot, és
+  // mindkettő rendelést és Barion-fizetést indítana.
+  it('két párhuzamos kérés ugyanarra a címre, két különböző kurzusra: a korlát nem léphető át', async () => {
+    const { payload, orders } = storePayload([
+      earlier(1, 'payment_pending', 10),
+      earlier(2, 'payment_pending', 5),
+    ])
+
+    const results = await Promise.allSettled([
+      startCheckout({ payload, input: guestInput, now: NOW }),
+      startCheckout({ payload, input: { ...guestInput, productId: 43 }, now: NOW }),
+    ])
+
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected'])
+    const rejected = results.find((result) => result.status === 'rejected')
+    const reason = (rejected as PromiseRejectedResult).reason as CheckoutError
+    expect(reason.status).toBe(409)
+    expect(reason.message).toContain('3 befejezetlen fizetés')
+    expect(orders.filter((order) => order.status === 'payment_pending')).toHaveLength(3)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('a fizetési ablakon túli (lejárt) függő sor nem tartja fogva a vevőt: 2 élő + 1 lejárt → a fizetés indul', async () => {

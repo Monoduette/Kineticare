@@ -1083,10 +1083,15 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     })) as Order
 
   /**
-   * A KRITIKUS SZAKASZ: duplavásárlás-ellenőrzés + rendelés-létrehozás egyben,
-   * felhasználó–termék páronkénti advisory-zár alatt (processzek között is
-   * soros). A zár a legszűkebb hatókörre szól, hogy a párhuzamos, MÁS terméket
-   * vagy MÁS vevőt érintő checkout ne várakozzon.
+   * A KRITIKUS SZAKASZ: duplavásárlás-ellenőrzés, visszaélési korlátok és
+   * rendelés-létrehozás egyben, vevőnkénti advisory-zár alatt (processzek
+   * között is soros). A MÁS vevőt érintő checkout nem várakozik. Ugyanannak a
+   * vevőnek két különböző kurzusa viszont sorba áll (Codex, PR #307): az
+   * e-mail-szintű korlátok (abuse-limits.ts) a vevő összes rendelését számolják,
+   * így termékenkénti zár mellett két párhuzamos kérés mindkettője a korlát
+   * alatt láthatná a számot, és mindkettő rendelést és Barion-fizetést indítana.
+   * A védett szakasz rövid (adatbázis-olvasás és -írás, a Barion a záron kívül),
+   * így a sorba állás csak ugyanannak a vevőnek a párhuzamos kéréseit lassítja.
    *
    * A ZÁRKULCS vendégnél a MEGLÉVŐ fiók azonosítója (ha van), különben az
    * e-mail-cím — így ugyanaz a vevő akkor is egy sorban marad, ha az egyik
@@ -1098,8 +1103,8 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
    */
   const lockKey =
     buyer.existingUser !== null
-      ? `checkout:${buyer.existingUser.id}:${productId}`
-      : `checkout:guest:${buyer.email}:${productId}`
+      ? `checkout:${buyer.existingUser.id}`
+      : `checkout:guest:${buyer.email}`
   const runLocked = async <T>(fn: () => Promise<T>): Promise<T> => {
     try {
       return await withCheckoutLockSlot(() => withAdvisoryLock(payload, lockKey, fn, log))

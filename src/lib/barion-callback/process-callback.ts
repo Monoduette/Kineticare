@@ -594,7 +594,9 @@ export interface RunBarionCallbackEventParams {
  *    eredmény, a zár alatt a státuszgép rögzíti);
  * 2. session-szintű callback-zár (dedikált kapcsolat, nincs tétlen
  *    tranzakció) → processWebhook friss olvasással: ha közben egy másik futás
- *    lezárta, no-op;
+ *    lezárta, no-op. Kivétel a közben cancelled-re zárt esemény sikeres
+ *    előre-lekérés mellett: azt a lezárt fizetés újraellenőrzéseként
+ *    feldolgozzuk (Codex, PR #307);
  * 3. a zár elengedése UTÁN a paid-mellékhatás (onOrderPaid, soha nem dob).
  *
  * Egy elavult előre-lekérés nem árt: az állapotgép monoton (paid-ről nincs
@@ -636,7 +638,17 @@ export async function runBarionCallbackEvent(
       params.payload,
       callbackLockKey(params.paymentId),
       async () => {
-        if (params.mode === 'recheck-cancelled') {
+        // A lezárt (cancelled) eseményt akkor is újraértékeljük, ha a route
+        // normál futást ütemezett, de a zár előtti GetState sikeres fizetést
+        // hozott (Codex, PR #307). Két átfedő callbacknél az első futás
+        // Canceled-et kérhet le, és lezárhatja az eseményt, mielőtt a második
+        // (még nem lezárt eseményre ütemezett) futás a zárhoz ér; a
+        // processWebhook a lezárt eseményt duplikátumként kezelné, és a friss
+        // Succeeded elveszne a késői-siker ellenőrzésig, miközben a
+        // köszönőoldal újabb fizetésre hív. A 'Succeeded' az egyetlen paid-re
+        // képzett státusz (mapBarionPaymentStatus).
+        const prefetchedPaid = prefetchedState.ok && prefetchedState.state.Status === 'Succeeded'
+        if (params.mode === 'recheck-cancelled' || prefetchedPaid) {
           const existing = await store.find({
             collection: 'webhook-events',
             where: {

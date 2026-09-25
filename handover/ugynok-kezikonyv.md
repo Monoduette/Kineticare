@@ -1110,8 +1110,10 @@ szerverhibákról, `src/instrumentation.ts` köti be), `cache-tags.ts`,
 ## 9. Jobok
 
 `src/jobs/index.ts`. Workerek: `ENABLE_JOB_WORKERS=true`. Dev-ben ki.
-Élesben hiányzó flag → **warn** (`job_workerek_kikapcsolva`), nem
-fail-closed boot.
+Nem éles címen a hiányzó flag → **warn** (`job_workerek_kikapcsolva`). Az
+éles címen boot-hiba, hacsak nincs mellette `JOB_WORKERS_OFF_CONFIRM=igen`
+nyugtázás (W1): ekkor RIASZTÁS szól, és a bolt kiszolgál. A bukó új verzió
+healthcheckje miatt a Railway a régit hagyja futni.
 
 | Task                       | Queue                 | Mikor                   | Mit                        |
 | -------------------------- | --------------------- | ----------------------- | -------------------------- |
@@ -1398,8 +1400,8 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | Kulcs                                         | Szerep                                                                                                                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ENABLE_JOB_WORKERS`                          | `true` = cron workerek                                                                                                                                     |
-| `JOB_WORKERS_OFF_CONFIRM`                     | `igen` = a workerek tudatos kikapcsolása az éles címen; nélküle `ENABLE_JOB_WORKERS=true` hiányában az app nem indul. Az `.env.example` még nem jelöli     |
-| `BARION_SEND_3DS`                             | `false` = a Barion Start négy 3DS-blokkja kimarad (vészkapcsoló); üresen bekapcsolva. Az `.env.example` még nem jelöli                                     |
+| `JOB_WORKERS_OFF_CONFIRM`                     | `igen` = a workerek tudatos kikapcsolása az éles címen; nélküle `ENABLE_JOB_WORKERS=true` hiányában az app nem indul. Az `.env.example` jelöli.            |
+| `BARION_SEND_3DS`                             | `false` = a Barion Start négy 3DS-blokkja kimarad (vészkapcsoló); üresen bekapcsolva. Az `.env.example` jelöli.                                            |
 | `PAYLOAD_MEDIA_DIR`                           | élesben `/app/media` volume                                                                                                                                |
 | `EXTRA_ALLOWED_ORIGINS`                       | DNS-cutover CORS                                                                                                                                           |
 | `NEXT_PUBLIC_ALLOW_INDEXING`                  | `true` = nincs noindex-kapu                                                                                                                                |
@@ -1481,8 +1483,10 @@ Migráció-őrök: `docs/ci-orok.md`. G3: meglévő migráció immutábilis;
 új pár + `npx tsx src/scripts/update-migration-checksums.ts`.
 
 pg pool (`payload.config.ts`): keepalive, idle 30s, statement/query 30s,
-`idle_in_transaction_session_timeout` 60s, `pool.max` **szándékosan
-nincs** (W3). A pool `error` eseményét kezelni kell.
+`idle_in_transaction_session_timeout` 60s, `pool.max` 20 (W1, a-callback-7).
+A `max_connections`-t minden induláskor mérjük (onInit,
+`src/lib/db-connection-budget.ts`); ha két konténer × `pool.max` + 10
+tartalék nem fér bele, RIASZTÁS. A pool `error` eseményét kezelni kell.
 
 Média: élesben volume. Induláskor `ensureMediaFiles` a repó-forrásból
 visszatölti a hiányzó fájlt, az id megmarad.
@@ -1573,8 +1577,8 @@ A mérvadó lista a `docs/feladatlista.md`; ha ütközik ezzel a
 szakasszal, az nyer. A K1–K6 / W1–W20 / J2 kódja a `main`en van (#148).
 A 2026-08-30-i állapotból maradt:
 
-- **W3:** Railway `max_connections` × replica mérése; `pool.max` szándékos
-  nyitva.
+- **W3:** `pool.max` 20 (W1); a `max_connections` mérése minden induláskor a
+  deploy-naplóban, szűkös keretnél RIASZTÁS. A beágyazott zár kérdése nyitva.
 - **C6:** consent E2E harness kész; staging valódi PostHog/GA4 kulccsal
   hátra (`E2E_EXPECT_ANALYTICS=1`).
 - **C10:** Dependabot-kör figyelése.

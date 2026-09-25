@@ -104,8 +104,11 @@ export function withdrawalReceiptEmail(
  * - `failed`: biztosan nem ment ki (elutasítás, kivétel, élesben noop).
  * - `uncertain`: az SMTP a levél tartalmának átadása UTÁN szakadt meg, a levél
  *   célba érhetett; vak kézi pótlás kettőzné (src/lib/email/retry.ts).
+ * - `held`: az űrlap rejtett spam-csapda mezője ki volt töltve, ezért
+ *   automatikusan nem ment ki (Codex, PR #307): a stáb dönti el, valódi
+ *   vevőtől jött-e, és akkor kézzel küldi el.
  */
-export type WithdrawalReceiptDelivery = 'sent' | 'failed' | 'uncertain'
+export type WithdrawalReceiptDelivery = 'sent' | 'failed' | 'uncertain' | 'held'
 
 /**
  * A rendelés állapota a stábnak, az admin feliratával (src/plugins/ecommerce.ts
@@ -132,6 +135,11 @@ const RECEIPT_LINES: Readonly<Record<WithdrawalReceiptDelivery, string>> = {
   uncertain:
     'Az átvételi elismervény kézbesítése bizonytalan, a levél célba érhetett: nézd meg a ' +
     'küldési naplóban, és csak akkor küldd el kézzel, ha nem ért célba.',
+  held:
+    'Az átvételi elismervény NEM ment ki automatikusan, mert az űrlap rejtett spam-csapda ' +
+    'mezője ki volt töltve. Ezt robot és a böngésző automatikus kitöltése is okozhatta. Ha a ' +
+    'nyilatkozat valódi vevőtől jött, küldd el kézzel az elismervényt még ma (45/2014. Korm. ' +
+    'rendelet 22. § (1c)); ha robot küldte, nincs teendő.',
 }
 
 export function withdrawalStaffEmail(

@@ -80,6 +80,16 @@ export interface SubmitWithdrawalDeps {
   findOrder?: (orderNumber: string) => Promise<WithdrawalOrderMatch | null>
   /** A hivatalos kapcsolati cím (K14); alapból a Kapcsolat oldal feloldója. */
   loadSupportEmail?: () => Promise<string>
+  /**
+   * Az elismervény visszatartása (Codex, PR #307): az űrlap rejtett
+   * spam-csapda mezője ki volt töltve, és Turnstile-ellenőrzés nem igazolta az
+   * embert. A nyilatkozat ilyenkor is rögzül, és a stáb értesül, mert a mezőt a
+   * böngésző automatikus kitöltése is kitöltheti, a jognyilatkozat pedig nem
+   * veszhet el némán. A megadott címre viszont nem megy automatikus levél, hogy
+   * a végpont ne legyen robotok levélküldő-relé; a stáb ellenőriz, és valódi
+   * vevőnél kézzel küldi az elismervényt.
+   */
+  holdReceipt?: boolean
 }
 
 export interface WithdrawalOutcome {
@@ -186,6 +196,7 @@ export async function submitWithdrawal(deps: SubmitWithdrawalDeps): Promise<With
       orderNumber: order?.orderNumber ?? null,
       orderStatus: order?.status ?? null,
       emailMatchesOrder: emailMatches,
+      ...(deps.holdReceipt === true ? { honeypotFilled: true } : {}),
     },
     ...(deps.headers ? { req: { headers: deps.headers } } : {}),
   })
@@ -211,89 +222,101 @@ export async function submitWithdrawal(deps: SubmitWithdrawalDeps): Promise<With
     reference,
   }
 
-  // 2. Átvételi elismervény. A stáb-levélnek három állapot kell: a bizonytalan
+  // 2. Átvételi elismervény. A stáb-levélnek négy állapot kell: a bizonytalan
   // (SMTP a tartalom átadása után szakadt meg) kézbesítésnél a levél célba
-  // érhetett, ezért ott nem vakon pótolni kell, hanem előbb ellenőrizni.
+  // érhetett, ezért ott nem vakon pótolni kell, hanem előbb ellenőrizni; a
+  // visszatartottnál (spam-csapda) pedig előbb azt, hogy valódi vevő küldte-e.
   let receiptSent = false
   let receiptDelivery: WithdrawalReceiptDelivery = 'failed'
-  try {
-    const template = withdrawalReceiptEmail({
-      ...mailBase,
-      sentAt: budapestDateTimeString(now()),
-      supportEmail,
-      termsUrl: serverUrl ? `${serverUrl}/aszf` : null,
-    })
-    const { result, attempts } = await sendWithRetry(
-      send,
-      {
-        to: email,
-        ...template,
-        replyTo: supportEmail,
-        idempotencyKey: `withdrawal-receipt:${id}`,
-      },
-      {
-        delaysMs: WITHDRAWAL_RETRY_DELAYS_MS,
-        sleep,
-        onRetry: ({ attempt, result: failed }) => {
-          log.warn('elállás: az átvételi elismervény küldése sikertelen, újrapróbálom', {
-            attempt,
-            error: failed.error === undefined ? undefined : maskEmailsInText(failed.error),
-          })
-        },
-      },
+  if (deps.holdReceipt === true) {
+    receiptDelivery = 'held'
+    log.warn(
+      'elállás: a spam-csapda mező ki volt töltve, az átvételi elismervény nem ment ki automatikusan; a stáb-értesítő ellenőrzést kér',
+      { cimzett: maskEmail(email) },
     )
-    receiptSent = isDelivered(result, production)
-    receiptDelivery = receiptSent
-      ? 'sent'
-      : !result.ok && result.deliveryUncertain === true
-        ? 'uncertain'
-        : 'failed'
-    if (receiptSent) {
-      const receiptRecorded = await writeAuditLog({
-        store: deps.auditStore ?? auditLogStore(deps.payload),
-        action: WITHDRAWAL_RECEIPT_AUDIT_ACTION,
-        entityType: order ? 'orders' : 'withdrawal',
-        entityId: order ? order.id : reference,
-        after: {
-          reference,
-          recipient: email,
-          sentAt: now().toISOString(),
-          provider: result.provider,
-          providerMessageId: result.id ?? null,
-          attempts,
-        },
+  } else {
+    try {
+      const template = withdrawalReceiptEmail({
+        ...mailBase,
+        sentAt: budapestDateTimeString(now()),
+        supportEmail,
+        termsUrl: serverUrl ? `${serverUrl}/aszf` : null,
       })
-      if (!receiptRecorded) {
-        log.warn('elállás: az elismervény kiment, de a küldés nem került a műveletnaplóba', {
-          provider: result.provider,
-          providerMessageId: result.id ?? null,
-        })
-      }
-    } else {
-      log.error(
-        (receiptDelivery === 'uncertain'
-          ? 'RIASZTÁS: elállási nyilatkozat érkezett, de a vevőnek járó átvételi elismervény ' +
-            'kézbesítése bizonytalan: az SMTP-kapcsolat a levél tartalmának átadása után ' +
-            'megszakadt, a levél célba érhetett. Nézd meg az SMTP-szolgáltató küldési naplójában, ' +
-            'és csak akkor küldd el kézzel, ha nem ért célba. '
-          : 'RIASZTÁS: elállási nyilatkozat érkezett, de a vevőnek járó átvételi elismervény ' +
-            'NEM ment ki: küldd el kézzel a nyilatkozat tartalmával és a küldés időpontjával. ') +
-          'A 45/2014. Korm. rendelet 22. § (1c) szerint az elismervény haladéktalanul jár. A ' +
-          'nyilatkozat a Műveletnaplóban van, a hivatkozási számával.',
+      const { result, attempts } = await sendWithRetry(
+        send,
         {
-          attempts,
-          provider: result.provider,
+          to: email,
+          ...template,
+          replyTo: supportEmail,
+          idempotencyKey: `withdrawal-receipt:${id}`,
+        },
+        {
+          delaysMs: WITHDRAWAL_RETRY_DELAYS_MS,
+          sleep,
+          onRetry: ({ attempt, result: failed }) => {
+            log.warn('elállás: az átvételi elismervény küldése sikertelen, újrapróbálom', {
+              attempt,
+              error: failed.error === undefined ? undefined : maskEmailsInText(failed.error),
+            })
+          },
+        },
+      )
+      receiptSent = isDelivered(result, production)
+      receiptDelivery = receiptSent
+        ? 'sent'
+        : !result.ok && result.deliveryUncertain === true
+          ? 'uncertain'
+          : 'failed'
+      if (receiptSent) {
+        const receiptRecorded = await writeAuditLog({
+          store: deps.auditStore ?? auditLogStore(deps.payload),
+          action: WITHDRAWAL_RECEIPT_AUDIT_ACTION,
+          entityType: order ? 'orders' : 'withdrawal',
+          entityId: order ? order.id : reference,
+          after: {
+            reference,
+            recipient: email,
+            sentAt: now().toISOString(),
+            provider: result.provider,
+            providerMessageId: result.id ?? null,
+            attempts,
+          },
+        })
+        if (!receiptRecorded) {
+          log.warn('elállás: az elismervény kiment, de a küldés nem került a műveletnaplóba', {
+            provider: result.provider,
+            providerMessageId: result.id ?? null,
+          })
+        }
+      } else {
+        log.error(
+          (receiptDelivery === 'uncertain'
+            ? 'RIASZTÁS: elállási nyilatkozat érkezett, de a vevőnek járó átvételi elismervény ' +
+              'kézbesítése bizonytalan: az SMTP-kapcsolat a levél tartalmának átadása után ' +
+              'megszakadt, a levél célba érhetett. Nézd meg az SMTP-szolgáltató küldési naplójában, ' +
+              'és csak akkor küldd el kézzel, ha nem ért célba. '
+            : 'RIASZTÁS: elállási nyilatkozat érkezett, de a vevőnek járó átvételi elismervény ' +
+              'NEM ment ki: küldd el kézzel a nyilatkozat tartalmával és a küldés időpontjával. ') +
+            'A 45/2014. Korm. rendelet 22. § (1c) szerint az elismervény haladéktalanul jár. A ' +
+            'nyilatkozat a Műveletnaplóban van, a hivatkozási számával.',
+          {
+            attempts,
+            provider: result.provider,
+            cimzett: maskEmail(email),
+            error: result.error === undefined ? undefined : maskEmailsInText(result.error),
+          },
+        )
+      }
+    } catch (error) {
+      log.error(
+        'RIASZTÁS: elállási nyilatkozat érkezett, de az átvételi elismervény összeállítása vagy ' +
+          'küldése kivétellel leállt. Küldd el kézzel a nyilatkozat tartalmával és a küldés időpontjával.',
+        {
           cimzett: maskEmail(email),
-          error: result.error === undefined ? undefined : maskEmailsInText(result.error),
+          error: error instanceof Error ? error.message : String(error),
         },
       )
     }
-  } catch (error) {
-    log.error(
-      'RIASZTÁS: elállási nyilatkozat érkezett, de az átvételi elismervény összeállítása vagy ' +
-        'küldése kivétellel leállt. Küldd el kézzel a nyilatkozat tartalmával és a küldés időpontjával.',
-      { cimzett: maskEmail(email), error: error instanceof Error ? error.message : String(error) },
-    )
   }
 
   // 3. Stáb-értesítő.
@@ -364,6 +387,7 @@ export async function submitWithdrawal(deps: SubmitWithdrawalDeps): Promise<With
     orderFound: order !== null,
     recorded,
     receiptSent,
+    receiptHeld: deps.holdReceipt === true,
     staffNotified,
   })
   return { reference, receivedAt, recorded, receiptSent, staffNotified }
