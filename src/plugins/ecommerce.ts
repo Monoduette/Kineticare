@@ -338,9 +338,10 @@ function sameInstant(left: unknown, right: unknown): boolean {
  * A napló szerinti legutóbb közzétett állapot keresésének eredménye:
  * - `snapshot`: megvan, és a fő sort azóta csak naplózott írás érte;
  * - `none`: a naplóban nincs élő, közzétett oldal;
- * - `unverified`: van pillanatkép, de utána a fő sort legalább egyszer
- *   naplózatlanul írták (elveszett bejegyzés), így nem bizonyos, hogy ez a
- *   legutóbb közzétett állapot.
+ * - `unverified`: van pillanatkép, de nem bizonyos, hogy ez a legutóbb
+ *   közzétett állapot: utána a fő sort legalább egyszer naplózatlanul írták
+ *   (elveszett bejegyzés), vagy a pillanatkép egy párhuzamos írás előtti,
+ *   elavult olvasás.
  */
 type SnapshotLookup =
   { kind: 'snapshot'; snapshot: PublishedProduct } | { kind: 'none' } | { kind: 'unverified' }
@@ -380,6 +381,24 @@ type SnapshotLookup =
  * a visszavont kurzuson) így egyszer tulajdonosi megerősítést kér: ez a
  * biztonságos irány.
  *
+ * Hiánytalan lánc mellett a pillanatkép mindig egy bejegyzés „before” oldala:
+ * a nem élő fő sorhoz láncolt legújabb bejegyzés „after” oldala maga is a
+ * nem élő sor, és minden régebbi „after” ugyanaz a sor-írás, mint az újabb
+ * bejegyzés (nem élő) „before” oldala. Az „after” oldal tehát csak hézagos
+ * láncban lehet élő (ekkor `unverified`); hogy egy bejegyzésen belül az
+ * „after” az újabb állapot, az hiánytalan láncnál nem figyelhető meg.
+ *
+ * PR #305 rev1-b (breaker, B1): a „before” oldalt a napló a mentés előtt, sorzár
+ * nélkül olvassa (src/plugins/audit.ts auditProductBeforeChange), így
+ * párhuzamos mentésnél elavult lehet. Ha a tulajdonos közzétett áremelése és a
+ * munkatárs visszavonása egyszerre fut, a visszavonás a sorzárra vár, a
+ * „before” oldala viszont még az emelés előtti ár; az emelés bejegyzése a
+ * nála régebbi. Ezért a „before” pillanatkép csak akkor mérce, ha a következő
+ * (régebbi) bejegyzés „after” oldala nem későbbi írás nála; ha későbbi, a
+ * pillanatkép elavult: `unverified`. Azonos időt nem várunk el: egy élő
+ * kurzus naplózatlan mentése (például csak a cím változik) a két bejegyzés
+ * között szabályos, és a visszavonás „before” oldala ekkor is a friss sor.
+ *
  * A lekérdezés a kurzus minden bejegyzését lapozza (a lánchoz a közzétett oldal
  * nélküli lomtár- és visszaállítás-bejegyzések is kellenek), amíg élő oldalt
  * nem talál. Rögzített ablak nem jó: minden lomtár + „visszaállítás
@@ -398,6 +417,9 @@ async function findLastPublishedSnapshot(
   // bejegyzés „before” oldalának írási ideje.
   let expectedWrittenAt: unknown = row.updatedAt
   let intact = true
+  // A hiánytalan láncon talált „before” pillanatkép; a következő (régebbi)
+  // bejegyzés dönti el, hogy nem elavult-e.
+  let found: PublishedProduct | null = null
   for (let page = 1; ; page += 1) {
     const result = await req.payload.find({
       collection: 'audit-logs',
@@ -415,15 +437,28 @@ async function findLastPublishedSnapshot(
     for (const entry of result.docs) {
       const after = asRecord(entry.after)
       const before = asRecord(entry.before)
+      if (found !== null) {
+        const olderWrittenAt = toValidDate(after?.updatedAt)
+        const foundWrittenAt = toValidDate(found.updatedAt)
+        return olderWrittenAt !== null &&
+          foundWrittenAt !== null &&
+          olderWrittenAt.getTime() > foundWrittenAt.getTime()
+          ? { kind: 'unverified' }
+          : { kind: 'snapshot', snapshot: found }
+      }
       intact = intact && sameInstant(after?.updatedAt, expectedWrittenAt)
-      for (const snapshot of [after, before]) {
-        if (isLivePublishedRow(snapshot)) {
-          return intact ? { kind: 'snapshot', snapshot } : { kind: 'unverified' }
-        }
+      if (isLivePublishedRow(after)) {
+        return intact ? { kind: 'snapshot', snapshot: after } : { kind: 'unverified' }
       }
       expectedWrittenAt = before?.updatedAt
+      if (isLivePublishedRow(before)) {
+        if (!intact) return { kind: 'unverified' }
+        found = before
+      }
     }
-    if (result.hasNextPage !== true) return { kind: 'none' }
+    if (result.hasNextPage !== true) {
+      return found === null ? { kind: 'none' } : { kind: 'snapshot', snapshot: found }
+    }
   }
 }
 
@@ -537,7 +572,7 @@ async function productReference(options: GuardOptions): Promise<ProductReference
     const lookup = await findLastPublishedSnapshot(req, id, row)
     if (lookup.kind === 'snapshot') return { row, lastPublished: lookup.snapshot, unknown: false }
     if (lookup.kind === 'unverified') {
-      logger.warn('kurzus ár-őr: a közzétett pillanatkép után naplózatlan írás történt', {
+      logger.warn('kurzus ár-őr: a közzétett pillanatkép nem igazolható a napló láncán', {
         productId: String(id),
       })
       return { row, lastPublished: null, unknown: true }

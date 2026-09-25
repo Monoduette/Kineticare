@@ -404,9 +404,13 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     )
   })
 
-  it('H3: egy bejegyzésen belül az „after” az újabb állapot', async () => {
-    // Közzétett árváltás 99 000-ről 49 000-re, utána visszavonás: a mérce 49 000.
-    // A visszavonás bejegyzése elveszett helyett naplózott: a lánc hiánytalan.
+  it('H3: visszavonás után a visszavonás előtti ár (49 000) a mérce; a régebbi bejegyzés ugyanakkor írt élő oldala nem teszi bizonytalanná', async () => {
+    // Közzétett árváltás 99 000-ről 49 000-re, utána visszavonás: a mérce a
+    // visszavonás „before” oldala (49 000). A régebbi bejegyzés élő „after”
+    // oldala ugyanaz a sor-írás (azonos `updatedAt`), tehát a pillanatkép
+    // nem elavult (vö. a B1 versenyhelyzettel, ahol későbbi). Hogy egy
+    // bejegyzésen belül az „after” az újabb állapot, hiánytalan láncnál nem
+    // figyelhető meg (lásd findLastPublishedSnapshot).
     const unpublished = { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 24_000 }
     const { req } = fakeReq({
       published: rewritten(unpublished),
@@ -569,6 +573,25 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
           audit: [
             ...loggedHistory([{ before: mistyped, after: mistyped }]),
             { after: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT } },
+          ],
+        },
+      ],
+      // PR #305 rev1-b (breaker, B1): a visszavonás „before” oldala a
+      // párhuzamos, közzétett áremelés előtti, elavult olvasás (12 900); az
+      // emelés bejegyzése (79 500) a nála régebbi, de később írt sor.
+      [
+        'a pillanatkép elavult: a régebbi bejegyzés közzétett írása későbbi nála',
+        {
+          published: rewritten(mistyped),
+          audit: [
+            {
+              before: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT },
+              after: rewritten(mistyped),
+            },
+            {
+              before: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT },
+              after: { ...PAID_PUBLISHED, updatedAt: CREATE_LOGGED_AT },
+            },
           ],
         },
       ],

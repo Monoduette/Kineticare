@@ -1280,4 +1280,99 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     }
     expect(result).toContainEqual({ path: 'priceInHUF', message: OWNER_ONLY_CHANGE_MESSAGE })
   }, 120_000)
+
+  /*
+   * PR #305 rev1-b (breaker, B1): a napló a visszavonás „before” oldalát a
+   * mentés előtt, sorzár nélkül olvassa. A tulajdonos 10 000 Ft-os élő
+   * kurzuson közzétesz egy 79 500 Ft-os emelést, közben a munkatárs
+   * visszavonja a közzétételt; a sorrendet egy külső kapcsolat sorzára rögzíti
+   * (az emelés áll be elsőnek). A visszavonás „before” oldala így még a
+   * 10 000 Ft-os sor, pedig a legutóbb közzétett ár 79 500 Ft volt. Ha ez az
+   * elavult pillanatkép mérce, a tulajdonos 7 950 Ft-os elütését (nem kisebb a
+   * 10 000 felénél) a munkatárs megerősítés nélkül tette volna közzé.
+   */
+  it('PR #305 rev1-b (B1): párhuzamos áremelés és visszavonás után az elavult „before” pillanatkép nem mérce, a 7 950 Ft csak megerősítéssel élesedik', async () => {
+    const pg = await import('pg')
+    const client = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await client.connect()
+    await observer.connect()
+    try {
+      const id = await createPublished('b1-race', { priceInHUF: 10_000 })
+      const holderPid = await backendPid(client)
+      await client.query('BEGIN')
+      await client.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id])
+      const raise = save(id, owner, { priceInHUF: 79_500, _status: 'published' })
+      expect(await untilWaitersBehind(observer, holderPid, 1)).toBe(true)
+      const unpublish = save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })
+      expect(await untilWaitersBehind(observer, holderPid, 2)).toBe(true)
+      await client.query('COMMIT')
+      expect(await raise).toBe('OK')
+      expect(await unpublish).toBe('OK')
+      expect((await mainRow(id))._status).toBe('draft')
+
+      await autosave(id, owner, { priceInHUF: 7_950 })
+      await expectConfirmationRequired(id)
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined)
+      await client.end()
+      await observer.end()
+    }
+  }, 120_000)
+
+  /*
+   * Ismert súrlódás (PR #305 rev1-b, breaker B3, B4, B4b), a biztonságos
+   * irányban. Két admin-művelet a visszavont kurzus fő sorát naplóbejegyzés
+   * nélkül írja, mert egyik naplózott mező sem változik:
+   * - a már visszavont kurzus újabb visszavonása (dupla kattintás, második
+   *   fül, tömeges visszavonás, API-újrapróbálás);
+   * - a munkatárs verzió-visszaállítása (a kurzus piszkozat marad, a napló
+   *   „before” pillanatképe ezen az úton elvész).
+   * A napló-lánc ezzel megszakad, ezért a változatlan, korábban közzétett ár
+   * újbóli közzététele is a tulajdonos megerősítését kéri. Ez egy elveszett
+   * közzétételi bejegyzéstől nem különböztethető meg (BRK305-1/2), tehát itt
+   * nem lazítható. A javítás a naplóé (src/plugins/audit.ts: minden nem
+   * piszkozat fő sor-írás naplózása, a verzió-visszaállítás pillanatképével);
+   * ha az elkészül, ezek az elvárások megfordulnak (a munkatárs közzéteheti).
+   */
+  it('ismert súrlódás (B4, B4b): a visszavont kurzus második visszavonása után a változatlan 79 500 Ft is a tulajdonos megerősítését kéri', async () => {
+    const id = await createPublished('b4-double-unpublish')
+    expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+
+    expect(await save(id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    expect(await save(id, owner, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: unknownPriceReferenceMessage('rendes', 79_500),
+    })
+    expect((await mainRow(id))._status).toBe('draft')
+    expect(
+      await save(id, owner, {
+        _status: 'published',
+        [PRODUCT_CONFIRMATIONS_KEY]: { priceInHUF: 79_500 },
+      }),
+    ).toBe('OK')
+    expect((await mainRow(id))._status).toBe('published')
+  }, 120_000)
+
+  it('ismert súrlódás (B3): a munkatárs verzió-visszaállítása után a visszavont kurzus változatlan árát a munkatárs nem teheti közzé', async () => {
+    const id = await createPublished('b3-staff-restore')
+    const versionId = await publishedVersionId(id)
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await restoreVersion(versionId, staff)
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'draft',
+      priceInHUF: 79_500,
+    })
+
+    expect(await save(id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    expect((await mainRow(id))._status).toBe('draft')
+  }, 120_000)
 })
