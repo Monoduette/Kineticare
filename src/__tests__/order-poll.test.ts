@@ -2,6 +2,7 @@ import { fixture as refundFixture } from './refund-fixture'
 import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { EVENT_JOB_STALE_AFTER_MS } from '../jobs/live-jobs'
 import { DEFAULT_ALERT_COOLDOWN_MS, resetAlertThrottle } from '../lib/alert-throttle'
 import { BarionApiError, type BarionPaymentStateResponse } from '../lib/barion'
 import {
@@ -113,6 +114,8 @@ interface SetupOptions {
   stateOverrides?: Partial<BarionPaymentStateResponse>
   /** Barion webhook-events sorok (az árva-rendelés keresőjéhez). */
   webhookEvents?: Array<{ id: number; externalId: string; result?: string | null }>
+  /** payload-jobs sorok (a számla-resweep élő-job szűrőjéhez, jobs/live-jobs.ts). */
+  jobs?: Array<Record<string, unknown>>
 }
 
 /** A where `createdAt` tartomány-feltételei (a valódi DB is alkalmazza őket). */
@@ -210,6 +213,10 @@ function setup(options: SetupOptions = {}) {
       if (collection === 'webhook-events') {
         const events = options.webhookEvents ?? []
         return { docs: events.map((event) => ({ ...event })), totalDocs: events.length }
+      }
+      if (collection === 'payload-jobs') {
+        const jobs = options.jobs ?? []
+        return { docs: jobs.map((job) => ({ ...job })), totalDocs: jobs.length }
       }
       finds.push({
         ...(where !== undefined ? { where } : {}),
@@ -673,6 +680,77 @@ describe('order-poll — számla-resweep', () => {
 
     expect(queuedInvoices).toHaveLength(0)
     expect(summary.invoiceRequeued).toBe(0)
+  })
+
+  /** Egy invoice-issue job sora, ahogy a Payload tárolja (payload-jobs). */
+  const invoiceJob = (orderId: number, state: Record<string, unknown>) => ({
+    id: orderId * 10,
+    taskSlug: 'invoice-issue',
+    input: { orderId },
+    processing: false,
+    hasError: false,
+    completedAt: null,
+    updatedAt: new Date(NOW - 60_000).toISOString(),
+    ...state,
+  })
+
+  // Hibavadász B (PR #307): az order-poll a saját queue-jában minden tickben
+  // lefut, a számlajobok viszont tickenként csak hárman. Élő számlajob mellé a
+  // resweep nem tesz újabbat, különben egy Számlázz.hu-kimaradás alatt
+  // rendelésenként tucatnyi duplikátum gyűlik össze.
+  it.each([
+    ['sorban vár', {}],
+    ['éppen fut', { processing: true }],
+  ])('ha a rendelés számlajobja %s, a resweep nem állít sorba újabbat', async (_eset, state) => {
+    const withJob = createPendingOrder({ id: 202, status: 'paid', invoiceStatus: 'none' })
+    const withoutJob = createPendingOrder({ id: 203, status: 'paid', invoiceStatus: 'none' })
+    const { payload, fetchState, onPaid, queueInvoice, invoicingEnabled, queuedInvoices } = setup({
+      pending: [],
+      paidResweep: [withJob, withoutJob],
+      jobs: [invoiceJob(202, state)],
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      invoicingEnabled,
+      now: NOW,
+    })
+
+    expect(queuedInvoices).toEqual([203])
+    expect(summary.invoiceRequeued).toBe(1)
+  })
+
+  it.each([
+    ['lefutott', { completedAt: new Date(NOW - 60_000).toISOString() }],
+    ['a próbálkozásai után hibával zárult', { hasError: true }],
+    [
+      'futás közben elhalt',
+      {
+        processing: true,
+        updatedAt: new Date(NOW - EVENT_JOB_STALE_AFTER_MS - 60_000).toISOString(),
+      },
+    ],
+  ])('ha a rendelés számlajobja %s, a resweep újra sorba állítja', async (_eset, state) => {
+    const paidOrder = createPendingOrder({ id: 202, status: 'paid', invoiceStatus: 'none' })
+    const { payload, fetchState, onPaid, queueInvoice, invoicingEnabled, queuedInvoices } = setup({
+      pending: [],
+      paidResweep: [paidOrder],
+      jobs: [invoiceJob(202, state)],
+    })
+
+    await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      invoicingEnabled,
+      now: NOW,
+    })
+
+    expect(queuedInvoices).toEqual([202])
   })
 
   it("régi (10+ perces) 'pending' számla → resweep (a worker elhalt közben)", async () => {

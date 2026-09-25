@@ -1,5 +1,6 @@
 import type { Payload } from 'payload'
 
+import { liveJobInputs } from '../../jobs/live-jobs'
 import type { Order } from '../../payload-types'
 import { releaseThrottledAlert, shouldEmitThrottledAlert } from '../alert-throttle'
 import { emitAlert } from '../alerts/emit'
@@ -496,6 +497,26 @@ async function resweepInvoices(
   const queueInvoice =
     deps.queueInvoice ?? ((orderId: number) => queueInvoiceIssueJob(deps.payload, orderId, log))
 
+  // Hibavadász B (PR #307): az order-poll a saját queue-jában minden tickben
+  // lefut, az order-maintenance queue viszont tickenként csak három jobot
+  // vesz fel. Ha a resweep a már élő (sorban álló, újrapróbáló vagy futó)
+  // számlajobú rendelést is újra sorba állítaná, egy Számlázz.hu-kimaradás
+  // alatt rendelésenként tucatnyi duplikátum gyűlne össze, és a helyesbítő- és
+  // stornójobok órákig várnának mögöttük. Ha az élő jobok nem olvashatók, a
+  // resweep szűrés nélkül fut: a számla-kiállítás maga idempotens.
+  const liveInvoiceOrderIds = new Set<unknown>()
+  if (candidates.docs.length > 0) {
+    try {
+      for (const input of await liveJobInputs(deps.payload, 'invoice-issue', now)) {
+        liveInvoiceOrderIds.add(input.orderId)
+      }
+    } catch (error) {
+      log.warn('order-poll: az élő számlajobok nem olvashatók, a resweep szűrés nélkül fut', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   // A megpróbált és az elbukott sorba állítások száma. A kettő egyezése az
   // EGYETLEN jel arról, hogy a job-sor maga nem működik: ilyenkor a
   // `invoiceRequeued: 0` NEM azt jelenti, hogy nem volt teendő.
@@ -508,6 +529,9 @@ async function resweepInvoices(
       if (Number.isFinite(updatedAtMs) && now - updatedAtMs < INVOICE_PENDING_STALE_MS) {
         continue // friss pending — valószínűleg most dolgozik rajta egy worker
       }
+    }
+    if (liveInvoiceOrderIds.has(order.id)) {
+      continue // már van élő számlajobja: az fut le, új nem kell mellé
     }
     attempted += 1
     const queued = await queueInvoice(order.id)

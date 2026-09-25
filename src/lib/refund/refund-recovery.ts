@@ -42,6 +42,7 @@ import {
 import { CORRECTIVE_LOCAL_ERROR_PREFIX } from '../szamlazz/corrective'
 import { legacyCorrectiveKulsoAzon } from '../szamlazz/kulso-azon'
 import { isCorrectiveRetryExpired, REFUND_DOCUMENT_GUARD_REFUSAL } from '../szamlazz/refund-guard'
+import { liveJobInputs } from '../../jobs/live-jobs'
 import { fetchPaymentState, type BarionPaymentStateResponse } from '../barion'
 import { formatPriceHuf } from '../format-price'
 import {
@@ -594,26 +595,11 @@ async function correctiveRetryQueueable(
   return !(await readReceipt(payload, intent, REFUND_INVOICE_RETRY_QUEUED_ACTION))
 }
 
-/** A helyesbítő keresés-átvétel jobjának taskja (jobs/tasks/corrective-invoice-issue.ts). */
-const CORRECTIVE_JOB_TASK = 'corrective-invoice-issue'
-
-/**
- * Ennyi idő után számít elhaltnak a futóként (`processing`) jelölt
- * helyesbítő-job. Egy futás a Számlázz.hu-hívásokra a zárban legfeljebb 45
- * másodpercet használ (LOCKED_SECTION_HTTP_BUDGET_MS, szamlazz/lock-budget.ts),
- * a zárra várás és a lezárás írásai ennél rövidebbek. A futás közben elhalt
- * folyamat (deploy, összeomlás) sorát a Payload 3.88 nem engedi el: a sor
- * `processing` marad, de a job már nem fut tovább.
- */
-export const CORRECTIVE_JOB_STALE_AFTER_MS = 15 * 60 * 1000
-
 /**
  * Él-e még a helyesbítő sorba állított jobja ehhez a visszatérítéshez: vár a
- * következő futására, vagy éppen fut. A Payload a hibára futott jobot a
- * `retries` erejéig futtatja újra, utána `hasError`-ral zárja, a lefutott job
- * pedig `completedAt`-et kap. A jobot semmi nem állítja újra sorba, ezért a
- * panel csak élő job mellett ígérhet háttérbeli újrapróbálást (hibavadász C,
- * PR #307).
+ * következő futására, vagy éppen fut (jobs/live-jobs.ts). A jobot semmi nem
+ * állítja újra sorba, ezért a panel csak élő job mellett ígérhet háttérbeli
+ * újrapróbálást (hibavadász C, PR #307).
  */
 async function correctiveJobAlive(
   payload: Payload,
@@ -621,24 +607,8 @@ async function correctiveJobAlive(
   refundSeq: number,
   nowMs: number,
 ): Promise<boolean> {
-  const jobs = await payload.find({
-    collection: 'payload-jobs',
-    where: {
-      and: [{ taskSlug: { equals: CORRECTIVE_JOB_TASK } }, { completedAt: { exists: false } }],
-    },
-    depth: 0,
-    pagination: false,
-    overrideAccess: true,
-  })
-  return jobs.docs.some((job) => {
-    const input = job.input
-    if (job.taskSlug !== CORRECTIVE_JOB_TASK || job.completedAt || job.hasError === true)
-      return false
-    if (!isRecord(input) || input.orderId !== orderId || input.refundSeq !== refundSeq) return false
-    if (!job.processing) return true
-    const since = Date.parse(job.updatedAt)
-    return Number.isFinite(since) && nowMs - since < CORRECTIVE_JOB_STALE_AFTER_MS
-  })
+  const inputs = await liveJobInputs(payload, 'corrective-invoice-issue', nowMs)
+  return inputs.some((input) => input.orderId === orderId && input.refundSeq === refundSeq)
 }
 
 /** A bizonylat elakadásának mondata: mi történt, újrapróbálja-e a rendszer, mi a teendő (a-refund-4). */
