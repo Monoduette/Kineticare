@@ -292,10 +292,6 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
       const delay = REFUND_NOTICE_RETRY_DELAYS_MS[attempts - 1]
       if (
         result.ok ||
-        // Az SMTP-kapcsolat a tartalom átadása után szakadt meg: a levél célba
-        // érhetett, és SMTP-n nincs idempotencia, az újraküldés második levelet
-        // íratna a vevőnek.
-        result.deliveryUncertain === true ||
         result.retryable !== true ||
         deliveryUncertain(result) ||
         delay === undefined ||
@@ -311,22 +307,6 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
         },
       )
       await sleep(delay)
-    }
-    if (!result.ok && result.deliveryUncertain === true) {
-      // A levél célba érhetett (SMTP: a kapcsolat a tartalom átadása után
-      // szakadt meg, lásd SendResult.deliveryUncertain). A „NEM ment ki, küldd
-      // el kézzel” itt második levelet íratna a vevőnek, ezért a riasztás előbb
-      // ellenőrzést kér, ahogy a visszaigazolónál is (order-paid.ts).
-      log.error(
-        'RIASZTÁS: a vevői visszatérítési értesítő kézbesítése BIZONYTALAN. Az SMTP-kapcsolat a levél tartalmának átadása után megszakadt, a szerver átvehette, ezért automatikus újraküldés nincs. Nézd meg az SMTP-szolgáltató naplójában (vagy kérdezd meg a vevőt), megérkezett-e; csak akkor küldd el kézzel, ha nem.',
-        {
-          alertCode: ALERT_CODES.visszateritesiErtesitoBizonytalan,
-          cimzett: maskEmail(recipient),
-          attempts,
-          error: result.error === undefined ? undefined : maskEmailsInText(result.error),
-        },
-      )
-      return
     }
     if (!result.ok) {
       const uncertain = result.retryable !== false || deliveryUncertain(result)
