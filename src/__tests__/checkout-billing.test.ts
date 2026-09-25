@@ -593,7 +593,7 @@ describe('planCheckoutSubmission — a beküldés a MÓDOSÍTOTT állapotból é
     expect(plan.focusElementId).toBe('kc-field-billingCity')
   })
 
-  it('több hibás mezőnél az első hiányzó elem a megjelenítési sorrendben első mező', () => {
+  it('több hibás mezőnél az első hiányzó elem a megjelenítési sorrend szerinti első mező', () => {
     let values = withBillingValue(prefillBillingForm(PROFILE), 'zip', '')
     values = withBillingValue(values, 'street', '')
     const plan = planCheckoutSubmission(context(values))
