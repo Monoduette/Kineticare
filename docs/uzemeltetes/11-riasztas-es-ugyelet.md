@@ -68,14 +68,21 @@ A változók értékét senkinek ne küldd el, és ne írd a repóba.
 
 A kód a levélben és a naplóban is szerepel. A saját kóddal küldött riasztások:
 
-| Kód                                    | Mit jelent                                            | Teendő                                           |
-| -------------------------------------- | ----------------------------------------------------- | ------------------------------------------------ |
-| `fuggo-fizetes-24-ora`                 | Egy rendelés egy napja „Fizetésre vár”                | [02](02-fizetett-de-nincs-hozzaferes.md) 4. pont |
-| `refund-ellenorzesre-var`              | Visszatérítés kimenete tisztázatlan                   | [06](06-visszaterites.md) 4. pont                |
-| `automatikus-visszaterites-sikertelen` | Dupla fizetés automatikus visszatérítése nem sikerült | [06](06-visszaterites.md) 5. pont                |
-| `beragadt-job`                         | Beragadt háttérfeladatot zárt le a rendszer           | Nincs, csak ha naponta többször jön: fejlesztő   |
-| `utemezes-ellenorzes-hiba`             | Az ütemezés nem éri el az adatbázist                  | Ha egy óránál tovább tart: fejlesztő             |
-| `napi-osszesito-hiba`                  | A napi összesítő nem állt össze                       | Fejlesztő; addig nézd az Irányítópultot          |
+| Kód                                             | Mit jelent                                                                                               | Teendő                                                                       |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `fuggo-fizetes-24-ora`                          | Egy rendelés egy napja „Fizetésre vár”                                                                   | [02](02-fizetett-de-nincs-hozzaferes.md) 4. pont                             |
+| `refund-ellenorzesre-var`                       | Visszatérítés kimenete tisztázatlan                                                                      | [06](06-visszaterites.md) 4. pont                                            |
+| `automatikus-visszaterites-sikertelen`          | Dupla fizetés automatikus visszatérítése nem sikerült                                                    | [06](06-visszaterites.md) 5. pont                                            |
+| `beragadt-job`                                  | Beragadt háttérfeladatot zárt le a rendszer                                                              | Nincs, csak ha naponta többször jön: fejlesztő                               |
+| `utemezes-ellenorzes-hiba`                      | Az ütemezés nem éri el az adatbázist                                                                     | Ha egy óránál tovább tart: fejlesztő                                         |
+| `napi-osszesito-hiba`                           | A napi összesítő nem állt össze                                                                          | Fejlesztő; addig nézd az Irányítópultot                                      |
+| `visszaterites-barion-elteres`                  | A Barion szerint visszatérített összeg eltér a rendelésen rögzítettől, ezért új visszatérítés nem indult | Ne indíts visszatérítést: [06](06-visszaterites.md) 4. pont 3. lépés         |
+| `visszaterites-barion-elutasitotta`             | A Barion elutasította a tulajdonosi visszatérítést, pénz nem mozdult                                     | A panel megírja az okot; kevés egyenlegnél [06](06-visszaterites.md) 3. pont |
+| `visszaterites-kimenete-ismeretlen`             | A Barion válaszából nem derül ki, megtörtént-e a visszatérítés                                           | [06](06-visszaterites.md) 4. pont                                            |
+| `visszaterites-rogzitese-elakadt`               | A Barion visszaigazolta a visszatérítést, de a rendelésen még nincs rögzítve                             | [06](06-visszaterites.md) 4. pont: Feldolgozás folytatása                    |
+| `visszaterites-feldolgozasa-elakadt`            | A pénz visszament, de a hozzáférés vagy a számla rendezése elakadt                                       | A panel megírja a teendőt; [06](06-visszaterites.md) 4. pont                 |
+| `automatikus-visszaterites-kimenete-ismeretlen` | Dupla fizetés automatikus visszatérítésének kimenete bizonytalan                                         | [06](06-visszaterites.md) 5. pont                                            |
+| `visszaterites-ujraellenorzes-elmaradt`         | Egy visszatérítés egy héttel későbbi Barion-ellenőrzése elmaradt                                         | Lásd lent: a heti újraellenőrzés                                             |
 
 A régebbi riasztások kódja az üzenet első mondatrészéből képződik (ékezet
 nélkül, kötőjellel). A leggyakoribbak:
@@ -94,3 +101,28 @@ nélkül, kötőjellel). A leggyakoribbak:
 Minden más kódnál: nézd meg a Railway naplóját a `@alertCode:<kód>` szűrővel,
 és ha a teendő nem egyértelmű, küldd el a fejlesztőnek a kódot és a
 rendelésszámot.
+
+## A heti újraellenőrzés: `visszaterites-ujraellenorzes-elmaradt`
+
+Egy kártyás visszatérítés napokkal később is meghiúsulhat. Ezért a rendszer
+minden visszatérítést nagyjából egy héttel később (a visszatérítés utáni
+hetedik és nyolcadik nap között) egyszer újra megnéz a Barionnál. Pénzt ez az
+ellenőrzés nem mozgat, csak jelez. Ha nem sikerül lefuttatni, a rendszer
+többet nem próbálja, és ezt a riasztást küldi. A riasztás `reason` mezője
+mondja meg, miért maradt el:
+
+| `reason`               | Mit jelent                                                                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kiserletek-elfogytak` | Az ellenőrzés háromszor átmeneti hibával (például időtúllépéssel vagy Barion-fojtással) bukott, nagyjából hatórás szünetekkel.                                                                                         |
+| `vegleges-hiba`        | A Barion végleges hibát adott erre a fizetésre, például nem ismeri. Ez jellemzően Barion-környezetváltás után fordul elő.                                                                                              |
+| `globalis-hiba`        | Az ellenőrzés az egész futásra leállt (hitelesítési hiba, hibás PaymentState-útvonal vagy Barion-kiesés), és a visszatérítés egy órán belül kiesett volna az ellenőrzési időszakból.                                   |
+| `sav-lejart`           | Egy korábbi sikertelen vagy elhalasztott kísérlet után a visszatérítés sikeres ellenőrzés nélkül lépett ki a 7–8 napos időszakból. A riasztás az utolsó hibafajtát (`failureClass`) és a kísérletek számát is megadja. |
+
+**Teendő mindegyiknél:** nézd meg a Barion-fiókban a riasztásban szereplő
+rendelés fizetését. Ha a visszatérítés sikertelen, vagy sztornózták
+(`StornoUnSuccessfulRefundToBankCard`), a vevő nem kapta meg a pénzt: küldd el
+a fejlesztőnek a rendelésszámot. Ha a visszatérítés rendben van, nincs teendő.
+
+Egy Barion-kiesés alatti deploy után a `globalis-hiba` RIASZTÁS hamis is lehet
+(a már ellenőrzött visszatérítésről is jöhet); a kézi ellenőrzés ettől még
+biztonságos.
