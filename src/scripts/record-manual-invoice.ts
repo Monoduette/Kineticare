@@ -1,22 +1,29 @@
 /**
- * CLI: kézzel kiállított számla számának rögzítése egy 'failed' számlájú
- * rendelésen (W1B-3; runbook: docs/uzemeltetes/05-szamla-storno-helyesbito-kezi.md).
+ * CLI: kézzel kiállított (vagy a Számlázz.hu-fiókban megtalált) számla
+ * számának rögzítése egy 'failed' számlájú rendelésen (W1B-3; runbook:
+ * docs/uzemeltetes/05-szamla-storno-helyesbito-kezi.md).
  *
- *   npm run record:manual-invoice -- --order KH-2026-000123 --invoice E-KIN-2026-42 [--teljesites 2026-09-24]
- *     → próbafutás: kiírja, mit változtatna, és minden okot, amiért nem írna.
+ *   npm run record:manual-invoice -- --order KH-2026-000123 --invoice E-KIN-2026-42 --teljesites 2026-09-24
+ *     → próbafutás: kiírja, mit változtatna, a számlával összevetendő adatokat,
+ *       és minden okot, amiért nem írna.
  *   OWNER_MANUAL_INVOICE_CONFIRM=igen npm run record:manual-invoice -- …
  *     → tényleges írás; a végén MANUAL_INVOICE_RECORD_OK.
  *
- * A szabályok és a zár: src/lib/szamlazz/manual-invoice-record.ts. A script
- * csak a kapcsolókat olvassa, a kaput kezeli és a kimenetet írja.
+ * A kapcsolókat a script a Payload indítása ELŐTT ellenőrzi: egy elütés 2-es
+ * kóddal és a használati sorral áll meg, adatbázis-kapcsolat nélkül. A
+ * szabályok és a zár: src/lib/szamlazz/manual-invoice-record.ts. A script csak
+ * a kapcsolókat olvassa, a kaput kezeli és a kimenetet írja.
  */
 
+import { userInfo } from 'node:os'
 import { pathToFileURL } from 'node:url'
 
 import type { Payload } from 'payload'
 
 import { createLogger, type Logger } from '../lib/logger'
 import {
+  budapestDay,
+  manualInvoiceHuf,
   recordManualInvoiceNumber,
   type RecordManualInvoiceResult,
 } from '../lib/szamlazz/manual-invoice-record'
@@ -26,11 +33,11 @@ export const MANUAL_INVOICE_CONFIRM_ENV = 'OWNER_MANUAL_INVOICE_CONFIRM'
 export interface ManualInvoiceArgs {
   order: string
   invoice: string
-  teljesites?: string
+  teljesites: string
 }
 
 const USAGE =
-  'Használat: npm run record:manual-invoice -- --order <rendelésszám> --invoice <számlaszám> [--teljesites ÉÉÉÉ-HH-NN]'
+  'Használat: npm run record:manual-invoice -- --order <rendelésszám> --invoice <számlaszám> --teljesites ÉÉÉÉ-HH-NN'
 
 type ArgKey = keyof ManualInvoiceArgs
 const KEYS: readonly ArgKey[] = ['order', 'invoice', 'teljesites']
@@ -59,14 +66,14 @@ export function parseManualInvoiceArgs(argv: readonly string[]): ManualInvoiceAr
     }
     parsed[key] = value
   }
-  if (parsed.order === undefined || parsed.invoice === undefined) {
-    return `A --order és az --invoice kötelező. ${USAGE}`
+  if (
+    parsed.order === undefined ||
+    parsed.invoice === undefined ||
+    parsed.teljesites === undefined
+  ) {
+    return `A --order, az --invoice és a --teljesites kötelező (a teljesítés dátuma a kézi számlán áll). ${USAGE}`
   }
-  return {
-    order: parsed.order,
-    invoice: parsed.invoice,
-    ...(parsed.teljesites !== undefined ? { teljesites: parsed.teljesites } : {}),
-  }
+  return { order: parsed.order, invoice: parsed.invoice, teljesites: parsed.teljesites }
 }
 
 export function isManualInvoiceConfirmed(
@@ -83,13 +90,30 @@ export function formatManualInvoiceReport(result: RecordManualInvoiceResult): st
     for (const reason of result.reasons) lines.push(`  - ${reason}`)
     return lines
   }
+  const { facts } = result
+  const refunds =
+    facts.refunds.length === 0
+      ? 'nincs'
+      : facts.refunds
+          .map(
+            (entry) =>
+              `${budapestDay(entry.refundedAt) ?? 'ismeretlen nap'}: ${manualInvoiceHuf(entry.amountHuf)}`,
+          )
+          .join(', ')
+  const check = [
+    `végösszeg a megrendeléskor: ${facts.totalHuf === null ? 'nem ismert' : manualInvoiceHuf(facts.totalHuf)}`,
+    `a fizetés napja (a számla teljesítési dátuma): ${facts.paidDate ?? 'nem ismert'}`,
+    `visszatérítések: ${refunds}`,
+  ]
   const change = [
     `rendelés: ${result.orderNumber}`,
     `számla állapota: ${result.before.invoiceStatus ?? 'nincs'} → issued`,
     `számlaszám: ${result.before.invoiceNumber ?? 'nincs'} → ${result.invoiceNumber}`,
-    `teljesítés: ${result.before.invoiceCompletionDate ?? 'nincs'} → ${result.completionDate ?? 'nincs megadva'}`,
+    `teljesítés: ${result.before.invoiceCompletionDate ?? 'nincs'} → ${result.completionDate}`,
     `a korábbi hiba szövege megmarad: ${result.before.invoiceLastError ?? 'nincs'}`,
   ]
+  lines.push('Vesd össze a kézi számlával:')
+  for (const item of check) lines.push(`  - ${item}`)
   if (result.status === 'dry-run') {
     lines.push(
       `PRÓBAFUTÁS, semmi nem íródott. Íráshoz futtasd újra ${MANUAL_INVOICE_CONFIRM_ENV}=igen beállítással. Ezt változtatnám:`,
@@ -107,21 +131,19 @@ export function formatManualInvoiceReport(result: RecordManualInvoiceResult): st
 }
 
 /**
- * A CLI lépései a Payload-példány megszerzése után (a teszt ezt hívja a
- * valódi határon, a script-indítás nélkül). Visszatérés: a kilépési kód.
+ * A CLI lépései a kapcsolók ellenőrzése és a Payload-példány megszerzése
+ * után (a teszt ezt hívja a valódi határon). Visszatérés: a kilépési kód.
  */
 export async function runRecordManualInvoice(options: {
   payload: Payload
-  argv: readonly string[]
+  args: ManualInvoiceArgs
   env: Readonly<Record<string, string | undefined>>
   invoicePrefix?: string
+  /** Aki a futást indította; a műveletnaplóba kerül. */
+  operator?: string | null
   log: Logger
 }): Promise<number> {
-  const args = parseManualInvoiceArgs(options.argv)
-  if (typeof args === 'string') {
-    options.log.error(args)
-    return 2
-  }
+  const { args } = options
   const dryRun = !isManualInvoiceConfirmed(options.env)
   options.log.info(
     dryRun
@@ -132,9 +154,10 @@ export async function runRecordManualInvoice(options: {
     payload: options.payload,
     orderNumber: args.order,
     invoiceNumber: args.invoice,
-    ...(args.teljesites !== undefined ? { completionDate: args.teljesites } : {}),
+    completionDate: args.teljesites,
     dryRun,
     ...(options.invoicePrefix !== undefined ? { invoicePrefix: options.invoicePrefix } : {}),
+    operator: options.operator ?? null,
     logger: options.log,
   })
   for (const line of formatManualInvoiceReport(result)) options.log.info(line)
@@ -146,8 +169,31 @@ export async function runRecordManualInvoice(options: {
   return 0
 }
 
+/** A futtató operációs-rendszer-felhasználó (a műveletnapló „ki futtatta” adata); ha nem olvasható, null. */
+function operatingSystemUser(): string | null {
+  try {
+    return userInfo().username.trim() || null
+  } catch {
+    return null
+  }
+}
+
 async function main(): Promise<number> {
   const log = createLogger({ script: 'record-manual-invoice' })
+  // Előbb a kapcsolók: egy elütés ne indítsa el a Payloadot (adatbázis,
+  // onInit, háttérfeladatok), csak a használati sort írja ki.
+  const args = parseManualInvoiceArgs(process.argv.slice(2))
+  if (typeof args === 'string') {
+    log.error(args)
+    return 2
+  }
+  // A script egyszeri futás: a háttérfeladat-ütemező (webhook-retry,
+  // order-maintenance) ne induljon el benne. `railway run` alatt az éles
+  // környezet ENABLE_JOB_WORKERS=true értékével a helyi folyamat az éles
+  // jobokat futtatná, amíg ki nem lép. A jobs-konfig a payload.config
+  // importjakor épül fel (src/jobs/index.ts buildJobsConfig), ezért az import
+  // ELŐTT kapcsoljuk ki.
+  process.env.ENABLE_JOB_WORKERS = 'false'
   const [{ getPayload }, { default: config }, { getSzamlazzConfig }] = await Promise.all([
     import('payload'),
     import('../payload.config'),
@@ -164,9 +210,10 @@ async function main(): Promise<number> {
   const payload = await getPayload({ config })
   return runRecordManualInvoice({
     payload,
-    argv: process.argv.slice(2),
+    args,
     env: process.env,
     ...(invoicePrefix !== undefined ? { invoicePrefix } : {}),
+    operator: operatingSystemUser(),
     log,
   })
 }

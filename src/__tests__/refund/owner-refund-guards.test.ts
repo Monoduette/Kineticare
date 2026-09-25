@@ -4,9 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { documents, fixture, provider, store } from '../refund-fixture'
 import { BarionApiError, type BarionPaymentStateResponse } from '../../lib/barion'
 import type { Logger } from '../../lib/logger'
-import { refundInvoiceGate } from '../../lib/refund/invoice-gate'
 import { refundOrder } from '../../lib/refund/refund-order'
+import { issueInvoiceForOrder } from '../../lib/szamlazz/invoice'
 import { recordManualInvoiceNumber } from '../../lib/szamlazz/manual-invoice-record'
+import { SzamlazzApiError, type SzamlazzClientConfig } from '../../lib/szamlazz/types'
 
 /**
  * A tulajdonosi visszatérítés 2. körös őrei a szolgáltatás határán
@@ -89,22 +90,110 @@ describe('K12: bekapcsolt számlázásnál tulajdonosi visszatérítés csak ki�
     },
   )
 
-  // W1B-3, W1B-7: a 'failed' szöveg nem ígérheti, hogy a számla magától
-  // elkészül, és a ténylegesen létező lépést kell megneveznie.
-  it('failed: a szöveg nem biztat várakozásra, hanem a kézi számlát és a szám rögzítését kéri', () => {
-    const message = refundInvoiceGate(
-      { invoiceStatus: 'failed', invoiceNumber: null },
-      true,
-    )?.message
-    expect(message).not.toMatch(/amíg a számla el nem készül/u)
-    expect(message).toContain('Állítsd ki a számlát kézzel a Számlázz.hu-ban')
-    expect(message).toContain('rögzítse a számla számát a rendelésen')
-  })
+  // W1B-3, W1B-7 és a törő B1: a 'failed' állapotban a számla sokszor MÁR
+  // létezik a Számlázz.hu-ban. Az állapotot a valódi számlakiállító
+  // (invoice.ts) állítja elő; a tulajdonosnak adott 409-es szöveg nem biztat
+  // várakozásra, az első teendője a keresés, és megtiltja az új számlát, ha a
+  // régi megvan (különben ugyanarra az eladásra két NAV-számla jutna).
+  const INVOICE_CONFIG: SzamlazzClientConfig = {
+    enabled: true,
+    apiUrl: 'https://www.szamlazz.hu/szamla/',
+    agentKey: 'DUMMY-agent-key',
+    invoicePrefix: 'KIN',
+    vatMode: 'AAM',
+    timeoutMs: 1000,
+  }
+  type IssuerDeps = Pick<Parameters<typeof issueInvoiceForOrder>[0], 'queryByKulsoAzon' | 'postXml'>
+  const loud = () => {
+    throw new Error('a számlajob ebben az esetben nem küldhet be')
+  }
+  it.each<[string, number, IssuerDeps, RegExp]>([
+    [
+      '71/152: a Számlázz.hu szerint a számla már létezik',
+      0,
+      {
+        queryByKulsoAzon: async () => null,
+        postXml: async () => {
+          throw new SzamlazzApiError({
+            message: 'SYNTHETIC duplikátum',
+            kind: 'duplicate',
+            agentErrors: [{ code: '152', message: 'SYNTHETIC' }],
+            retryable: false,
+          })
+        },
+      },
+      /71\/152/u,
+    ],
+    [
+      'egy korábbi beküldés után végleges lekérdezési hiba: a számla létezhet',
+      1,
+      {
+        queryByKulsoAzon: async () => {
+          throw new SzamlazzApiError({
+            message: 'SYNTHETIC lekérdezési hiba',
+            kind: 'agent',
+            agentErrors: [{ code: '3', message: 'SYNTHETIC' }],
+            retryable: false,
+          })
+        },
+        postXml: loud,
+      },
+      /létrehozhatta a számlát/u,
+    ],
+  ])(
+    'failed (%s): 409, és a szöveg előbb keresést kér, csak utána kézi kiállítást',
+    async (_label, invoiceAttempts, deps, lastError) => {
+      vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')
+      const f = fixture()
+      Object.assign(f.order, {
+        invoiceStatus: 'pending',
+        invoiceNumber: null,
+        invoiceAttempts,
+        invoiceLastError: null,
+        customerSnapshot: {
+          name: 'Teszt Vevő',
+          email: 'vevo@example.test',
+          billingZip: '1111',
+          billingCity: 'Budapest',
+          billingStreet: 'Fő utca 1.',
+        },
+        items: [
+          { product: 42, quantity: 1, priceHufSnapshot: 20000, titleSnapshot: 'Kézterápia alapok' },
+        ],
+      })
+      const outcome = await issueInvoiceForOrder({
+        payload: f.payload,
+        orderId: f.order.id,
+        config: INVOICE_CONFIG,
+        resolvePaidMoment: async () => ({
+          paidAt: new Date('2026-09-05T10:00:00.000Z'),
+          paidDate: '2026-09-05',
+        }),
+        ...deps,
+      })
+      expect(outcome).toMatchObject({ outcome: 'failed' })
+      expect(f.order.invoiceStatus).toBe('failed')
+      expect(f.order.invoiceLastError).toMatch(lastError)
+
+      const error = await start(f).catch((caught: unknown) => caught)
+      expect(error).toMatchObject({ status: 409 })
+      expect(provider.state).not.toHaveBeenCalled()
+      expect(provider.refund).not.toHaveBeenCalled()
+      const message = (error as Error).message
+      expect(message).not.toMatch(/amíg a számla el nem készül/u)
+      const search = message.search(/keress rá|keresd meg/u)
+      expect(search).toBeGreaterThanOrEqual(0)
+      expect(message.search(/állítsd ki kézzel/iu)).toBeGreaterThan(search)
+      expect(message).toMatch(/megvan, ne állíts ki újat/u)
+      expect(message).toContain('rögzítse a számla számát a rendelésen')
+    },
+  )
 
   it('failed és leállt automatika: 409; a kézi számla számának rögzítése után a visszatérítés a kézi számlához fut le', async () => {
     vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')
     const f = fixture()
     Object.assign(f.order, {
+      createdAt: '2026-09-05T09:55:00.000Z',
       invoiceStatus: 'failed',
       invoiceNumber: null,
       invoiceLastError: 'A számla automatikus kiállítása leállt: SYNTHETIC',

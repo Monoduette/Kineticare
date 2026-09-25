@@ -48,10 +48,13 @@ vissza. Ezért először:
 4. Vezesd fel az eltéréslistára ([08](08-havi-egyeztetes.md)): rendelésszám,
    kézi számla száma, miért kellett.
 5. Küldd el az üzemeltetőnek a rendelésszámot, a kézi számla sorszámát és a
-   teljesítés dátumát. Az üzemeltető így rögzíti a rendelésen:
+   teljesítés dátumát (mindhárom kötelező). Az üzemeltető így rögzíti a
+   rendelésen:
    - próbafutás, ami semmit nem ír, csak megmutatja, mit változtatna, és ha
      valami nem stimmel, miért nem írna:
-     `npm run record:manual-invoice -- --order KH-ÉÉÉÉ-NNNNNN --invoice <sorszám> --teljesites ÉÉÉÉ-HH-NN`;
+     `npm run record:manual-invoice -- --order KH-ÉÉÉÉ-NNNNNN --invoice <sorszám> --teljesites ÉÉÉÉ-HH-NN`.
+     Kiírja a rendelés végösszegét, a fizetés napját és a korábbi
+     visszatérítéseket is: ezeket vesse össze a kézi számlával;
    - ha a próbafutás rendben van, ugyanez `OWNER_MANUAL_INVOICE_CONFIRM=igen`
      beállítással. A rögzítés a Műveletnaplóba is bekerül.
 

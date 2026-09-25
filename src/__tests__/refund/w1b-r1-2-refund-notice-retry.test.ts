@@ -14,6 +14,9 @@ import type { Order, RefundIntent } from '../../payload-types'
 
 const INTENT_ID = 11
 const KEY = `refund:${INTENT_ID}`
+const SUBJECT_HINT = 'a vevő címére küldött „Visszatérítés: KH-2026-000123” tárgyú levelet'
+const TEMPLATE_MODULE = '../../lib/email/templates/refund'
+const EMAIL_MODULE = '../../lib/email'
 
 interface LoggedError {
   message: string
@@ -48,12 +51,17 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.doUnmock(TEMPLATE_MODULE)
+  vi.doUnmock(EMAIL_MODULE)
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
 
-async function send(responses: Array<() => Response | Promise<Response>>) {
+async function send(
+  responses: Array<() => Response | Promise<Response>>,
+  options: { sleep?: (ms: number) => Promise<void> } = {},
+) {
   const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => {
     const next = responses.shift()
     if (!next) throw new Error('UNEXPECTED EXTRA RESEND CALL')
@@ -93,6 +101,7 @@ async function send(responses: Array<() => Response | Promise<Response>>) {
     logger: log,
     sleep: async (ms) => {
       sleeps.push(ms)
+      await options.sleep?.(ms)
     },
   })
   const keys = fetchMock.mock.calls.map(
@@ -132,7 +141,7 @@ describe('a vevői értesítő átmeneti Resend-hiba után ugyanazzal a kulccsal
 })
 
 describe('a záró riasztás megkülönbözteti a biztos és a bizonytalan elmaradást', () => {
-  it('tartós időtúllépés: három kérés, bizonytalan riasztás a kulccsal, „NEM ment ki” nélkül', async () => {
+  it('tartós időtúllépés: három kérés, bizonytalan riasztás a levél tárgyával, „NEM ment ki” nélkül', async () => {
     const result = await send([timeout, timeout, timeout])
     expect(result.calls).toBe(3)
     expect(result.keys).toEqual([KEY, KEY, KEY])
@@ -142,9 +151,13 @@ describe('a záró riasztás megkülönbözteti a biztos és a bizonytalan elmar
     expect(alert?.message).toMatch(
       /^RIASZTÁS: a vevői visszatérítési értesítő kiküldése bizonytalan/u,
     )
-    expect(alert?.message).toContain(KEY)
+    // A Resend felületén biztosan kereshető fogódzó: a címzett és a tárgy.
+    expect(alert?.message).toContain(`keresd meg a Resend felületén (Emails) ${SUBJECT_HINT}`)
     expect(alert?.message).not.toContain('NEM ment ki')
-    expect(alert?.context.alertCode).toBe('visszateritesi-ertesito-bizonytalan')
+    expect(alert?.context).toMatchObject({
+      alertCode: 'visszateritesi-ertesito-bizonytalan',
+      idempotencyKey: KEY,
+    })
     expect(result.audits).toEqual([])
   })
 
@@ -161,21 +174,97 @@ describe('a záró riasztás megkülönbözteti a biztos és a bizonytalan elmar
     expect(result.errors[0]?.context.alertCode).toBe('visszateritesi-ertesito-nem-ment-ki')
   })
 
-  it('lassú időtúllépéseknél az időkeret megállítja: két kérés, és a panel 30 másodperce alatt marad', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    const start = Date.now()
-    // Egy valódi Resend-időtúllépés 10 másodpercig tart (email/resend.ts).
-    const slowTimeout = () => {
-      vi.setSystemTime(Date.now() + 10_000)
-      return timeout()
+  // A w1-fogyasztoi ág SMTP-szolgáltatója a levél lezárása után megszakadt
+  // kapcsolatot `retryable: false, deliveryUncertain: true` eredménnyel adja
+  // (a levél célba érhetett). Ez nem végleges elutasítás: a „küldd el kézzel”
+  // a vevőnek második levelet íratna.
+  it('bizonytalan kézbesítés (SMTP): egy kérés, újrapróbálás nélkül, bizonytalan riasztás', async () => {
+    const uncertain = {
+      ok: false,
+      provider: 'smtp',
+      retryable: false,
+      deliveryUncertain: true,
+      error: 'SMTP kapcsolat megszakadt a levél lezárása után',
     }
-    const result = await send([slowTimeout, slowTimeout, slowTimeout])
-    expect(result.calls).toBe(2)
-    expect(result.sleeps).toEqual([1000])
-    const elapsed = Date.now() - start + result.sleeps.reduce((sum, ms) => sum + ms, 0)
-    expect(elapsed).toBeLessThan(30_000)
-    expect(result.errors.map((entry) => entry.context.alertCode)).toEqual([
-      'visszateritesi-ertesito-bizonytalan',
-    ])
+    const sendMail = vi.fn(async () => uncertain)
+    vi.doMock(EMAIL_MODULE, async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../../lib/email')>()),
+      sendMail,
+    }))
+    const result = await send([])
+    expect(sendMail).toHaveBeenCalledTimes(1)
+    expect(result.calls).toBe(0)
+    expect(result.sleeps).toEqual([])
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]?.message).not.toContain('NEM ment ki')
+    expect(result.errors[0]?.message).toContain('a levélküldő szolgáltató naplójában')
+    expect(result.errors[0]?.context.alertCode).toBe('visszateritesi-ertesito-bizonytalan')
   })
+
+  // Váratlan kivétel: innen nem tudható, hogy a levél előtt vagy után jött,
+  // ezért nem mondhatja, hogy a levél NEM ment ki.
+  it('váratlan kivétel (a sablon dob): nem dob tovább, bizonytalan riasztás a rendelésszámmal', async () => {
+    vi.doMock(TEMPLATE_MODULE, async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../../lib/email/templates/refund')>()),
+      refundNoticeEmail: () => {
+        throw new Error('SYNTHETIC sablonhiba')
+      },
+    }))
+    const result = await send([])
+    expect(result.calls).toBe(0)
+    expect(result.errors).toHaveLength(1)
+    const [alert] = result.errors
+    expect(alert?.message).toMatch(/^RIASZTÁS: .*kiküldése bizonytalan/u)
+    expect(alert?.message).not.toContain('NEM ment ki')
+    expect(alert?.message).toContain('a KH-2026-000123 rendelésszámot a tárgyában viselő levelet')
+    expect(alert?.context).toMatchObject({
+      alertCode: 'visszateritesi-ertesito-bizonytalan',
+      idempotencyKey: KEY,
+    })
+  })
+})
+
+describe('az időkeret az értesítő teljes idejét korlátozza', () => {
+  // A szolgáltatói válasz és az injektált szünet is a (hamisított) órát
+  // viszi előre, így a mért idő az értesítő kezdetétől a végéig tart.
+  const after =
+    (ms: number, answer: () => Response): (() => Response) =>
+    () => {
+      vi.setSystemTime(Date.now() + ms)
+      return answer()
+    }
+  const upstream = () => new Response('upstream', { status: 503 })
+  const slowTimeout = () => {
+    vi.setSystemTime(Date.now() + 10_000)
+    return timeout()
+  }
+  it.each([
+    // Törő B4: lassú 5xx-ek után a harmadik, 10 másodperces kísérlet már nem fér bele.
+    [
+      'kétszer 5,5 s-os 503, majd egy időtúllépés',
+      [after(5_500, upstream), after(5_500, upstream), slowTimeout],
+      2,
+      12_000,
+    ],
+    ['két 10 s-os időtúllépés', [slowTimeout, slowTimeout, slowTimeout], 2, 21_000],
+    ['gyors átmeneti hibák', [upstream, upstream, upstream], 3, 4_000],
+  ] as const)(
+    '%s: a kísérletek száma és az értesítő ideje a 21 másodperces kereten belül',
+    async (_label, answers, calls, elapsedMs) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      const start = Date.now()
+      const result = await send([...answers], {
+        sleep: async (ms) => {
+          vi.setSystemTime(Date.now() + ms)
+        },
+      })
+      const elapsed = Date.now() - start
+      expect(result.calls).toBe(calls)
+      expect(elapsed).toBe(elapsedMs)
+      expect(elapsed).toBeLessThanOrEqual(21_000)
+      expect(result.errors.map((entry) => entry.context.alertCode)).toEqual([
+        'visszateritesi-ertesito-bizonytalan',
+      ])
+    },
+  )
 })

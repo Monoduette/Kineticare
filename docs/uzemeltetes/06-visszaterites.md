@@ -44,9 +44,11 @@ automatikus visszatérítése dupla fizetésnél (5. pont).
    írj, ha riasztás jön ([11](11-riasztas-es-ugyelet.md)):
    - `visszateritesi-ertesito-nem-ment-ki`: a levél nem ment ki, írd meg a
      vevőnek a rendelésszámmal és az összeggel;
-   - `visszateritesi-ertesito-bizonytalan`: a levél kimehetett. Előbb nézd meg
-     a Resend naplójában a riasztásban álló `refund:<azonosító>` kulcsú
-     levelet, és csak akkor írj, ha nincs ott, különben a vevő két levelet kap.
+   - `visszateritesi-ertesito-bizonytalan`: a levél kimehetett. Előbb a Resend
+     felületén (resend.com → Emails) keress rá a vevő címére (a rendelésen
+     áll): ha a riasztás idejéből ott van a „Visszatérítés: <rendelésszám>”
+     tárgyú levél, a levél kiment, ne írj. Csak akkor írj, ha nincs ott,
+     különben a vevő két levelet kap.
 7. Ha 2 óra múlva sincs stornó vagy helyesbítő: [05](05-szamla-storno-helyesbito-kezi.md).
 
 ## 3. Ha a visszatérítés nem indul el
@@ -67,18 +69,20 @@ látod, szólj az üzemeltetőnek.
 **A számla automatikus kiállítása nem sikerült.** A panel ezt írja: „A számla
 automatikus kiállítása nem sikerült, ezért a visszatérítés most nem
 indítható.” Ilyenkor várni hiába: a rendszer ezt a számlát magától már nem
-állítja ki.
+állítja ki. A számla ettől még létezhet: egy korábbi beküldés létrehozhatta,
+vagy korábban már kézzel kiállítottad.
 
-1. Állítsd ki a számlát kézzel a Számlázz.hu-ban
-   ([05](05-szamla-storno-helyesbito-kezi.md) 2. pont), vagy ha a Számlázz.hu-ban
-   már megvan, használd azt (05, 1. pont).
-2. Küldd el az üzemeltetőnek a rendelésszámot, a számla sorszámát és a
-   teljesítés dátumát. Ő rögzíti a rendelésen:
-   `npm run record:manual-invoice` (előbb próbafutás, utána
+1. Előbb keress rá a rendelésszámra a Számlázz.hu-ban
+   ([05](05-szamla-storno-helyesbito-kezi.md) 1. pont). Ha a számla megvan,
+   **ne állíts ki újat**: ugyanarra az eladásra két számla kerülne a NAV-hoz.
+2. Csak ha nincs meg, állítsd ki kézzel (05, 2. pont).
+3. Küldd el az üzemeltetőnek a rendelésszámot, a megtalált vagy kézzel
+   kiállított számla sorszámát és a teljesítés dátumát. Ő rögzíti a
+   rendelésen: `npm run record:manual-invoice` (előbb próbafutás, utána
    `OWNER_MANUAL_INVOICE_CONFIRM=igen`).
-3. Ezután frissítsd a rendelést: a panel engedi a visszatérítést, és a stornó
-   vagy a helyesbítő a kézi számlához készül el.
-4. Ha a vevő elállt a vásárlástól, még aznap szólj az üzemeltetőnek: az
+4. Ezután frissítsd a rendelést: a panel engedi a visszatérítést, és a stornó
+   vagy a helyesbítő a rögzített számlához készül el.
+5. Ha a vevő elállt a vásárlástól, még aznap szólj az üzemeltetőnek: az
    elállás után 14 napon belül vissza kell fizetni a pénzt.
 
 **Más összeg ment már vissza.** A panel ezt írja: „A Barion adatai szerint

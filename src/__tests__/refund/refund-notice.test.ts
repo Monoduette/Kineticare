@@ -282,21 +282,25 @@ describe('a visszatérítési értesítő kiküldése a lezárás után', () => 
     },
   )
 
-  it('éles környezetben a beállítatlan e-mail-szolgáltató (noop) RIASZTÁS, a visszatérítés lezárul', async () => {
+  it('éles környezetben a beállítatlan e-mail-szolgáltató (noop) RIASZTÁS a saját kódjával, a visszatérítés lezárul', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     const f = fixture()
     Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
-    const { log, errors } = spyLogger()
+    const { log, errors, contexts } = spyLogger()
     await expect(
       refundOrder({ ...f.options, input: { operationKey: 'A'.repeat(43) }, logger: log }),
     ).resolves.toMatchObject({ type: 'full' })
     expect(store.intents.get(f.payload)?.state).toBe('committed')
     expect(mail.send).toHaveBeenCalledTimes(1)
-    expect(
-      errors.filter(
-        (message) => message.startsWith('RIASZTÁS') && message.includes('e-mail-szolgáltató'),
-      ),
-    ).toHaveLength(1)
+    const alerts = errors
+      .map((message, index) => ({ message, context: contexts[index] }))
+      .filter(
+        ({ message }) => message.startsWith('RIASZTÁS') && message.includes('e-mail-szolgáltató'),
+      )
+    expect(alerts).toHaveLength(1)
+    // A runbook 11 kódonként írja le a teendőt; kód nélkül a szövegből képzett,
+    // ott nem szereplő azonosító menne a levélbe.
+    expect(alerts[0]?.context?.alertCode).toBe('visszateritesi-ertesito-nincs-szolgaltato')
   })
 
   it('nem éles környezetben a noop szolgáltató nem riaszt', async () => {

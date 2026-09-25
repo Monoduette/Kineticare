@@ -4,7 +4,9 @@ import type { Order } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { auditLogStore, writeAuditLog } from '../audit'
 import { budapestDateString, isIsoDateString } from '../date/budapest'
+import { formatPriceHuf } from '../format-price'
 import { logger as rootLogger, type Logger } from '../logger'
+import { resolveOrderPaidMoment } from './paid-date'
 
 /**
  * Kézzel kiállított számla számának rögzítése egy 'failed' számlájú
@@ -13,12 +15,14 @@ import { logger as rootLogger, type Logger } from '../logger'
  * Miért kell: a K12 kapu (src/lib/refund/invoice-gate.ts) a tulajdonosi
  * visszatérítést csak kiállított számla után engedi. Ha a számla automatikus
  * kiállítása 'failed' lett (végleges Számlázz.hu-elutasítás, kimerült
- * kísérletek, INVOICE_AUTOMATION_STOPPED), a tulajdonos a 05-ös útmutató
- * szerint kézzel állítja ki a számlát a Számlázz.hu-ban. A rendelés számlázási
- * mezői rendszer-írásúak (access/system-written.ts), ezért a számot az
- * üzemeltető ezzel a modullal rögzíti (`npm run record:manual-invoice`). Az
- * 'issued' állapot után a kapu magától kinyílik, és a szokásos visszatérítés a
- * valódi számlához készít stornót vagy helyesbítőt.
+ * kísérletek, INVOICE_AUTOMATION_STOPPED), a tulajdonos előbb megkeresi a
+ * számlát a Számlázz.hu-ban (egy korábbi beküldés létrehozhatta), és csak ha
+ * nincs meg, állítja ki kézzel a 05-ös útmutató szerint. A rendelés számlázási
+ * mezői rendszer-írásúak (access/system-written.ts), ezért a megtalált vagy
+ * kézzel kiállított számla számát az üzemeltető ezzel a modullal rögzíti
+ * (`npm run record:manual-invoice`). Az 'issued' állapot után a kapu magától
+ * kinyílik, és a szokásos visszatérítés a valódi számlához készít stornót vagy
+ * helyesbítőt.
  *
  * Amit szándékosan NEM tesz:
  * - a 'failed' állapotot nem állítja vissza 'pending'-re: a leállt vagy kézzel
@@ -29,6 +33,13 @@ import { logger as rootLogger, type Logger } from '../logger'
  * - 'none', 'pending' vagy már kiállított számlájú rendelésen nem ír: ott a
  *   számlajob még dolgozhat, vagy már van szám, és egy második szám kettős
  *   számlát jelentene.
+ *
+ * A teljesítés dátuma KÖTELEZŐ (W1B-3 törő B2): a számlán mindig ott áll, és
+ * két adóügyi fogyasztó olvassa. Az alanyi adómentességi keret számlálója
+ * (alerts/aam.ts) csak teljesítési dátummal számolja a rendelést, a későbbi
+ * helyesbítő pedig az eredeti teljesítési dátumot ismétli (NAV: a helyesbítő
+ * teljesítési hónapja nem térhet el). A dátum nem lehet jövőbeli, és nem lehet
+ * korábbi a rendelés létrehozásának budapesti napjánál (évszám-elütés).
  *
  * Párhuzamosság: az írás ugyanazon az advisory-záron fut, mint a számla
  * kiállítása (`invoice:<orderId>`, invoice.ts issueInvoiceForOrder). A két
@@ -57,12 +68,14 @@ export interface RecordManualInvoiceInput {
   payload: Payload
   orderNumber: string
   invoiceNumber: string
-  /** A kézi számla teljesítési dátuma (YYYY-MM-DD), ha ismert. */
-  completionDate?: string
+  /** A kézi számla teljesítési dátuma (YYYY-MM-DD), a számláról másolva. Kötelező. */
+  completionDate: string
   /** Igaz: csak kiírja, mit tenne; semmit nem ír. */
   dryRun: boolean
   /** A beállított számlaszám-előtag (SZAMLAZZ_INVOICE_PREFIX); eltérésnél figyelmeztet. */
   invoicePrefix?: string
+  /** Aki a futást indította (a CLI-ben az operációs rendszer felhasználója); a műveletnaplóba kerül. */
+  operator?: string | null
   logger?: Logger
 }
 
@@ -72,6 +85,16 @@ export interface ManualInvoiceOrderState {
   invoiceNumber: string | null
   invoiceCompletionDate: string | null
   invoiceLastError: string | null
+}
+
+/** A rendelés adatai, amelyeket az üzemeltető a kézi számlával összevet. */
+export interface ManualInvoiceOrderFacts {
+  /** A végösszeg a megrendeléskor (Ft); ennyiről szól a számla. */
+  totalHuf: number | null
+  /** A fizetés (hozzáférés-nyitás) budapesti napja: a számla teljesítési dátuma. */
+  paidDate: string | null
+  /** A rendelés eddigi visszatérítései. */
+  refunds: Array<{ amountHuf: number; refundedAt: string; type: string }>
 }
 
 export type RecordManualInvoiceResult =
@@ -85,8 +108,9 @@ export type RecordManualInvoiceResult =
       orderId: number
       orderNumber: string
       invoiceNumber: string
-      completionDate: string | null
+      completionDate: string
       before: ManualInvoiceOrderState
+      facts: ManualInvoiceOrderFacts
       warnings: string[]
       /** Csak 'recorded' esetén értelmes: bekerült-e a műveletnaplóba. */
       auditRecorded: boolean
@@ -102,13 +126,25 @@ function orderState(order: Order): ManualInvoiceOrderState {
   }
 }
 
-/** Szóköz, sortörés és vezérlőkarakter nélküli, nyomtatható szöveg. */
-const PRINTABLE_TOKEN = /^[^\s\p{C}]+$/u
+/** Szóköz, tabulátor vagy sortörés a számban. */
+const WHITESPACE = /\s/u
+
+/**
+ * A Számlázz.hu sorszáma ELŐTAG-ÉV-SORSZÁM alakú (e-számlán „E-” kezdettel),
+ * az előtag legfeljebb 5 ékezet nélküli nagybetű vagy számjegy
+ * (https://tudastar.szamlazz.hu/gyik/szamlaszam-formatumok-mikor-kell-megadni,
+ * https://tudastar.szamlazz.hu/gyik/elotagok-beallitasa-uj-szamlatomb-hasznalatahoz).
+ * Ezért csak nyomtatható ASCII-karaktert fogadunk el: a PDF-ből másolt
+ * kötőjel-hasonmás (U+2010, U+2011, U+2013) vagy egy cirill betű ránézésre
+ * ugyanaz, de a Számlázz.hu nem ismeri, és a hiba csak a visszatérítés UTÁN,
+ * a stornó vagy a helyesbítő beküldésekor derülne ki.
+ */
+const PRINTABLE_ASCII = /^[\x21-\x7E]+$/u
 
 /** A bemenet ellenőrzése adatbázis nélkül: a hibák listája (üres, ha rendben). */
 export function validateManualInvoiceInput(input: {
   invoiceNumber: string
-  completionDate?: string
+  completionDate: string
 }): string[] {
   const reasons: string[] = []
   const number = input.invoiceNumber.trim()
@@ -120,36 +156,58 @@ export function validateManualInvoiceInput(input: {
         `A számla száma túl hosszú (${String(number.length)} karakter, legfeljebb ${String(MANUAL_INVOICE_NUMBER_MAX_LENGTH)}). Ellenőrizd, hogy csak a sorszámot adtad-e meg.`,
       )
     }
-    if (!PRINTABLE_TOKEN.test(number)) {
+    if (WHITESPACE.test(number)) {
       reasons.push(
-        'A számla számában szóköz vagy nem nyomtatható karakter van. Másold ki pontosan a Számlázz.hu-ból a sorszámot.',
+        'A számla számában szóköz vagy sortörés van. Másold ki pontosan a Számlázz.hu-ból a sorszámot.',
+      )
+    } else if (!PRINTABLE_ASCII.test(number)) {
+      reasons.push(
+        'A számla számában nem nyomtatható vagy nem szabványos karakter van (például PDF-ből másolt, kötőjelnek látszó jel vagy cirill betű). A Számlázz.hu sorszámában csak ékezet nélküli betű, számjegy és kötőjel áll: írd be kézzel, vagy másold ki a Számlázz.hu felületéről.',
       )
     }
   }
-  if (input.completionDate !== undefined) {
-    const date = input.completionDate.trim()
-    if (!isIsoDateString(date)) {
-      reasons.push(
-        `A teljesítés dátuma nem ÉÉÉÉ-HH-NN alakú valós dátum (${date}). Például: 2026-09-24.`,
-      )
-    } else if (date > budapestDateString()) {
-      reasons.push(
-        `A teljesítés dátuma a jövőben van (${date}). A kézi számla teljesítési dátumát add meg.`,
-      )
-    }
+  const date = typeof input.completionDate === 'string' ? input.completionDate.trim() : ''
+  if (date.length === 0) {
+    reasons.push(
+      'Hiányzik a teljesítés dátuma. Add meg a kézi számlán álló teljesítési dátumot (--teljesites ÉÉÉÉ-HH-NN): ehhez igazodik a későbbi helyesbítő számla és az alanyi adómentességi keret számlálója.',
+    )
+  } else if (!isIsoDateString(date)) {
+    reasons.push(
+      `A teljesítés dátuma nem ÉÉÉÉ-HH-NN alakú valós dátum (${date}). Például: 2026-09-24.`,
+    )
+  } else if (date > budapestDateString()) {
+    reasons.push(
+      `A teljesítés dátuma a jövőben van (${date}). A kézi számla teljesítési dátumát add meg.`,
+    )
   }
   return reasons
 }
 
-/** Eltér-e a szám a beállított előtagtól (a Számlázz.hu sorszáma pl. „E-KIN-2026-12”). */
+/**
+ * Eltér-e a szám a beállított előtagtól. A Számlázz.hu sorszáma
+ * „<előtag>-<év>-<sorszám>”, e-számlán „E-<előtag>-…” (pl. „E-KIN-2026-12”).
+ */
 function lacksPrefix(invoiceNumber: string, prefix: string | undefined): boolean {
   const wanted = prefix?.trim() ?? ''
   if (wanted === '') return false
-  return !invoiceNumber.split('-').includes(wanted)
+  return !(invoiceNumber.startsWith(`${wanted}-`) || invoiceNumber.startsWith(`E-${wanted}-`))
+}
+
+/** Egy ISO időpont budapesti naptári napja; null, ha az érték nem olvasható. */
+export function budapestDay(value: unknown): string | null {
+  const ms = typeof value === 'string' ? Date.parse(value) : Number.NaN
+  return Number.isNaN(ms) ? null : budapestDateString(new Date(ms))
+}
+
+/** Forintösszeg az üzemeltetői kimenethez; a nem értelmezhető érték nem állítja meg a futást. */
+export function manualInvoiceHuf(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? formatPriceHuf(value)
+    : 'ismeretlen összeg'
 }
 
 /** Az állapot-feltételek a zár alatt újraolvasott rendelésen. */
-function orderReasons(order: Order): string[] {
+function orderReasons(order: Order, completionDate: string): string[] {
   const reasons: string[] = []
   if (order.status === 'refunded') {
     reasons.push(
@@ -181,6 +239,20 @@ function orderReasons(order: Order): string[] {
       reasons.push(
         'A rendelésnél a számla automatikus kiállítása el sem indult (vagy a számlázás ki van kapcsolva). Ilyenkor a rendszer még kiállíthatja a számlát, ezért kézi szám nem rögzíthető.',
       )
+  }
+  // A formátumhibát a bemenet-ellenőrzés már jelezte; itt csak a valós dátum
+  // alsó határa számít: a teljesítés nem előzheti meg a rendelést.
+  if (isIsoDateString(completionDate)) {
+    const created = budapestDay(order.createdAt)
+    if (created === null) {
+      reasons.push(
+        'A rendelés létrehozásának ideje nem olvasható, ezért a teljesítés dátuma nem ellenőrizhető. Jelezd a fejlesztőnek.',
+      )
+    } else if (completionDate < created) {
+      reasons.push(
+        `A teljesítés dátuma (${completionDate}) korábbi, mint a rendelés létrehozásának napja (${created}). Ellenőrizd a kézi számlán a dátumot, különösen az évszámot.`,
+      )
+    }
   }
   return reasons
 }
@@ -237,6 +309,67 @@ async function findSingleOrder(
   return { order: matches[0] as Order }
 }
 
+/** A kézi számlával összevetendő adatok a zár alatt újraolvasott rendelésből. */
+async function orderFacts(
+  payload: Payload,
+  order: Order,
+  log: Logger,
+): Promise<{ facts: ManualInvoiceOrderFacts; paidDateReadable: boolean }> {
+  let paidDate: string | null = null
+  let paidDateReadable = true
+  try {
+    paidDate = (await resolveOrderPaidMoment(payload, order))?.paidDate ?? null
+  } catch (error) {
+    paidDateReadable = false
+    log.warn('kézi számlaszám rögzítése: a fizetés napja nem olvasható', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+  const total = order.totalHufSnapshot
+  return {
+    facts: {
+      totalHuf: typeof total === 'number' && Number.isFinite(total) ? total : null,
+      paidDate,
+      refunds: (order.refunds ?? []).map((entry) => ({
+        amountHuf: entry.amountHuf,
+        refundedAt: entry.refundedAt,
+        type: entry.type,
+      })),
+    },
+    paidDateReadable,
+  }
+}
+
+/** Figyelmeztetések, amelyek nem akadályozzák az írást, de az üzemeltetőnek látnia kell őket. */
+function factWarnings(
+  facts: ManualInvoiceOrderFacts,
+  paidDateReadable: boolean,
+  completionDate: string,
+): string[] {
+  const warnings: string[] = []
+  if (!paidDateReadable) {
+    warnings.push(
+      'A fizetés napja most nem olvasható, ezért nem tudtam összevetni a teljesítés dátumával. Ellenőrizd a kézi számlán.',
+    )
+  } else if (facts.paidDate !== null && facts.paidDate !== completionDate) {
+    warnings.push(
+      `A megadott teljesítési dátum (${completionDate}) eltér a fizetés napjától (${facts.paidDate}). Ellenőrizd, hogy a kézi számlán valóban ez áll-e; a 05-ös útmutató szerint a teljesítés dátuma a fizetés napja.`,
+    )
+  }
+  if (facts.refunds.length > 0) {
+    const list = facts.refunds
+      .map(
+        (entry) =>
+          `${budapestDay(entry.refundedAt) ?? 'ismeretlen nap'}: ${manualInvoiceHuf(entry.amountHuf)}`,
+      )
+      .join(', ')
+    warnings.push(
+      `A rendelésen már van visszatérítés (${list}). A kézi számla a megrendeléskori végösszegről szóljon, és ellenőrizd, hogy a visszatérítéshez elkészült-e a helyesbítő számla (05-ös útmutató, 4. pont).`,
+    )
+  }
+  return warnings
+}
+
 /**
  * A kézi számlaszám rögzítése. Próbafutásban (`dryRun`) csak kiértékel;
  * éles futásban a zár alatt újraolvasott rendelésen ír, és egy
@@ -247,7 +380,10 @@ export async function recordManualInvoiceNumber(
 ): Promise<RecordManualInvoiceResult> {
   const orderNumber = input.orderNumber.trim()
   const invoiceNumber = input.invoiceNumber.trim()
-  const completionDate = input.completionDate?.trim() || null
+  // A típus kötelezővé teszi, de egy JavaScript-hívó (vagy a jövőbeli admin-
+  // művelet hibás űrlapja) kihagyhatja: ilyenkor is elutasítás legyen, ne
+  // TypeError és ne dátum nélküli rögzítés.
+  const completionDate = typeof input.completionDate === 'string' ? input.completionDate.trim() : ''
   const log = (input.logger ?? rootLogger).child({
     module: 'manual-invoice-record',
     orderNumber,
@@ -260,16 +396,8 @@ export async function recordManualInvoiceNumber(
       `A számla száma nem a beállított „${input.invoicePrefix ?? ''}” előtaggal szerepel. Ellenőrizd, hogy valóban ennek a rendelésnek a Kineticare-számláját adtad-e meg.`,
     )
   }
-  if (completionDate === null) {
-    warnings.push(
-      'Teljesítési dátum nélkül a helyesbítő számla a kiállítás napját kapja, és az alanyi adómentességi keret számlálója nem veszi figyelembe ezt a számlát. Ha tudod, add meg a --teljesites kapcsolóval.',
-    )
-  }
 
-  const inputReasons = validateManualInvoiceInput({
-    invoiceNumber,
-    ...(input.completionDate !== undefined ? { completionDate: input.completionDate } : {}),
-  })
+  const inputReasons = validateManualInvoiceInput({ invoiceNumber, completionDate })
   if (orderNumber.length === 0) inputReasons.unshift('A rendelésszám üres.')
   if (orderNumber.length === 0) return { status: 'refused', reasons: inputReasons, warnings }
 
@@ -298,7 +426,7 @@ export async function recordManualInvoiceNumber(
           warnings,
         }
       }
-      const reasons = [...inputReasons, ...orderReasons(order)]
+      const reasons = [...inputReasons, ...orderReasons(order, completionDate)]
       if (invoiceNumber.length > 0) {
         const others = await numberUsedElsewhere(input.payload, order.id, invoiceNumber)
         if (others.length > 0) {
@@ -313,6 +441,8 @@ export async function recordManualInvoiceNumber(
       }
 
       const before = orderState(order)
+      const { facts, paidDateReadable } = await orderFacts(input.payload, order, log)
+      warnings.push(...factWarnings(facts, paidDateReadable, completionDate))
       if (input.dryRun) {
         return {
           status: 'dry-run',
@@ -321,6 +451,7 @@ export async function recordManualInvoiceNumber(
           invoiceNumber,
           completionDate,
           before,
+          facts,
           warnings,
           auditRecorded: false,
         }
@@ -332,12 +463,16 @@ export async function recordManualInvoiceNumber(
         data: {
           invoiceStatus: 'issued',
           invoiceNumber,
-          ...(completionDate !== null ? { invoiceCompletionDate: completionDate } : {}),
+          invoiceCompletionDate: completionDate,
         },
         depth: 0,
         overrideAccess: true,
       })) as Order
-      if (updated.invoiceStatus !== 'issued' || updated.invoiceNumber !== invoiceNumber) {
+      if (
+        updated.invoiceStatus !== 'issued' ||
+        updated.invoiceNumber !== invoiceNumber ||
+        updated.invoiceCompletionDate !== completionDate
+      ) {
         throw new Error(
           `A rendelés mentése után a számla állapota nem a várt (${String(updated.invoiceStatus)}); a rögzítés nem biztos, nézd meg a rendelést.`,
         )
@@ -367,6 +502,7 @@ export async function recordManualInvoiceNumber(
           invoiceNumber,
           invoiceCompletionDate: completionDate,
           recordedBy: MANUAL_INVOICE_RECORDED_BY,
+          operator: input.operator?.trim() || null,
           recordedAt: new Date().toISOString(),
         },
       })
@@ -383,6 +519,7 @@ export async function recordManualInvoiceNumber(
         invoiceNumber,
         completionDate,
         before,
+        facts,
         warnings,
         auditRecorded,
       }
