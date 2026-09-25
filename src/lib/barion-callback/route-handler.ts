@@ -113,29 +113,49 @@ function allowedCallbackSourceIps(): readonly string[] {
 }
 
 /**
- * Egy már paid-re zárt fizetésre érkező újabb callback visszatérítés-egyeztetést
- * indít. Időablakos fojtás NINCS: egy korábbi kézbesítés nem nyelheti el a
- * pár perccel később, a Barion felületén indított visszatérítés callbackjét
- * (annak jelzése különben elveszne, mert később semmi nem venné fel). A
- * PaymentState-terhelést a fetchPaymentState PaymentId-nkénti kapuja korlátozza
- * (legfeljebb egy hívás 5,5 s-onként); itt csak az egyidejű kézbesítések
- * vonódnak össze: amíg egy egyeztetés függőben van vagy fut, az újabb
- * kézbesítés csak megjelöli, és a futó egyeztetés a végén (a kapun át) még
- * egyszer lefut. Így PaymentId-nként egyszerre legfeljebb egy egyeztetés él, és
- * jelzés nem vész el. A nyilvántartás a handler-példányé (az útvonal modulja
- * egyetlen példányt hoz létre, tehát folyamatszintű).
+ * Egy ismert PaymentId-re érkező kézbesítések PaymentId-nkénti összevonása.
+ *
+ * - Paid-re zárt fizetésnél az újabb callback visszatérítés-egyeztetést indít.
+ *   Egy korábbi kézbesítés nem nyelheti el a pár perccel később, a Barion
+ *   felületén indított visszatérítés callbackjét (annak jelzése különben
+ *   elveszne, mert később semmi nem venné fel).
+ * - Nem lezárt eseménynél a kézbesítés feldolgozást indít (a-callback-8).
+ *
+ * Amíg egy kör-sorozat él, az újabb kézbesítés csak megjelöli, és a sorozat még
+ * egy kört fut. Így PaymentId-nként egyszerre legfeljebb egy kör él, és jelzés
+ * nem vész el. A körök között legalább CALLBACK_ROUND_MIN_INTERVAL_MS telik el
+ * (hibavadászat, W1). Az ismert PaymentId-ra érkező kézbesítés nincs IP-hez
+ * kötve (a Barion címe változhat), ezért egy kézbesítés-áradat nem függhet a
+ * forrástól. Korábban a nem lezárt eseményre minden kézbesítés külön
+ * feldolgozást ütemezett. A GetState-kapu az egyidejű hívóknak egy közös
+ * ígéretet ad, így mind egyszerre ért a callback-zárhoz, és mindegyik egy
+ * pool-kapcsolatot fogott, amíg a zárra várt: egy áradat a teljes poolt
+ * elvihette. A paid eseménynél pedig az áradat 5,5 s-onként új GetState-et
+ * váltott ki, amit a Barion elárasztásnak vehet (Troubleshooting: „Flooding
+ * the Barion servers with unnecessary API calls may lead to suspension of the
+ * shop”). A nyilvántartás a handler-példányé (az útvonal modulja egyetlen
+ * példányt hoz létre, tehát folyamatszintű).
  */
-interface PaidReconciliationSlot {
-  /** Mióta áll fenn (egy beragadt bejegyzés ne tiltsa örökre az egyeztetést). */
+interface CallbackSlot {
+  /** Az utolsó kör kezdete (egy beragadt bejegyzés ne tiltsa örökre a köröket). */
   since: number
-  /** Futás közben érkezett újabb kézbesítés: a futás végén még egy kör kell. */
+  /** A kör közben vagy utána érkezett újabb kézbesítés: még egy kör kell. */
   dirty: boolean
 }
 /**
- * Ennél régebbi bejegyzés beragadtnak számít (egy egyeztetés a kapuval, a 429
- * utáni várakozással és két 15 s-os timeouttal is jóval rövidebb).
+ * Ennél régebbi bejegyzés beragadtnak számít (egy kör a kapuval, a 429 utáni
+ * várakozással, két 15 s-os timeouttal és a zárral, plusz a körök közti
+ * szünet is jóval rövidebb).
  */
-const PAID_RECONCILIATION_STALE_MS = 5 * 60 * 1000
+const CALLBACK_SLOT_STALE_MS = 5 * 60 * 1000
+/**
+ * Két kör között ennyi idő legalább eltelik PaymentId-nként. A Barion egy
+ * fizetés állapotváltásairól percek különbséggel küld callbacket, a
+ * köszönőoldal és az order-poll pedig maga is lekérdez, így a késleltetés a
+ * valódi forgalmat nem lassítja érdemben; egy áradatot viszont percenként egy
+ * GetState-re szorít.
+ */
+export const CALLBACK_ROUND_MIN_INTERVAL_MS = 60 * 1000
 /** Lezárt (cancelled) fizetés újraellenőrzése: csak ennél fiatalabb rendelésre (r-barion-7). */
 export const CANCELLED_RECHECK_MAX_ORDER_AGE_MS = 24 * 60 * 60 * 1000
 /** A lezárt fizetés újraellenőrzésének fojtása PaymentId-nként. */
@@ -245,7 +265,50 @@ function guarded(log: Logger, what: string, task: () => Promise<void>): () => Pr
 
 export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
   const schedule = deps.schedule ?? ((task: () => Promise<void>) => after(task))
-  const paidReconciliationSlots = new Map<string, PaidReconciliationSlot>()
+  const paidReconciliationSlots = new Map<string, CallbackSlot>()
+  const processingSlots = new Map<string, CallbackSlot>()
+
+  /**
+   * Kör-sorozat ütemezése PaymentId-nként összevonva (lásd CallbackSlot). A
+   * kör előtt érkezett kézbesítéseket a kör már látja (a GetState utánuk megy
+   * ki); a kör közben vagy a szünetben érkezők kérnek még egy kört. A `round`
+   * nem dobhat (guarded).
+   */
+  const scheduleCoalesced = (
+    slots: Map<string, CallbackSlot>,
+    paymentId: string,
+    round: () => Promise<void>,
+  ): 'utemezve' | 'osszevonva' => {
+    const nowMs = Date.now()
+    const slot = slots.get(paymentId)
+    if (slot !== undefined && nowMs - slot.since < CALLBACK_SLOT_STALE_MS) {
+      slot.dirty = true
+      return 'osszevonva'
+    }
+    const own: CallbackSlot = { since: nowMs, dirty: false }
+    slots.set(paymentId, own)
+    schedule(async () => {
+      try {
+        for (;;) {
+          own.dirty = false
+          own.since = Date.now()
+          await round()
+          const waitMs = own.since + CALLBACK_ROUND_MIN_INTERVAL_MS - Date.now()
+          if (waitMs > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, waitMs))
+          }
+          if (!own.dirty) {
+            break
+          }
+        }
+      } finally {
+        if (slots.get(paymentId) === own) {
+          slots.delete(paymentId)
+        }
+      }
+    })
+    return 'utemezve'
+  }
 
   return async function POST(request: Request): Promise<Response> {
     const requestId = getRequestId(request.headers) ?? generateRequestId()
@@ -356,45 +419,25 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
           // a-callback-6, a-refund-7: a paid lezárás után érkező callback a
           // Barion szerint egy újabb tranzakció (tipikusan visszatérítés, akár a
           // Barion felületén indított). Könnyű egyeztetés a háttérben, állapot-
-          // és pénzmozgás nélkül; az egyidejű kézbesítések összevonva (lásd
-          // paidReconciliationSlots).
-          const nowMs = Date.now()
-          const slot = paidReconciliationSlots.get(paymentId)
-          const pending = slot !== undefined && nowMs - slot.since < PAID_RECONCILIATION_STALE_MS
+          // és pénzmozgás nélkül; a kézbesítések összevonva (lásd CallbackSlot).
+          const refundReconciliation = scheduleCoalesced(
+            paidReconciliationSlots,
+            paymentId,
+            guarded(eventLog, 'a visszatérítés-egyeztetés', async () => {
+              const order = await findOrderByPaymentId(payload, paymentId)
+              if (order) {
+                await runRefundReconciliation({
+                  payload,
+                  order,
+                  trigger: 'callback',
+                  logger: eventLog,
+                })
+              }
+            }),
+          )
           eventLog.info('barion-callback: kézbesítés egy már paid eseményre — no-op 200', {
-            refundReconciliation: pending ? 'osszevonva' : 'utemezve',
+            refundReconciliation,
           })
-          if (pending) {
-            slot.dirty = true
-          } else {
-            const ownSlot: PaidReconciliationSlot = { since: nowMs, dirty: false }
-            paidReconciliationSlots.set(paymentId, ownSlot)
-            schedule(
-              guarded(eventLog, 'a visszatérítés-egyeztetés', async () => {
-                try {
-                  // A futás ELŐTT érkezett kézbesítéseket ez a futás már látja
-                  // (a GetState utánuk megy ki); csak a futás KÖZBEN érkezők
-                  // kérnek még egy kört.
-                  do {
-                    ownSlot.dirty = false
-                    const order = await findOrderByPaymentId(payload, paymentId)
-                    if (order) {
-                      await runRefundReconciliation({
-                        payload,
-                        order,
-                        trigger: 'callback',
-                        logger: eventLog,
-                      })
-                    }
-                  } while (ownSlot.dirty)
-                } finally {
-                  if (paidReconciliationSlots.get(paymentId) === ownSlot) {
-                    paidReconciliationSlots.delete(paymentId)
-                  }
-                }
-              }),
-            )
-          }
           return jsonResponse({ ok: true, status: 'duplicate' })
         }
         if (record.result === 'cancelled') {
@@ -471,16 +514,15 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
           // kell futnia; processed-re itt nem zárjuk.
         }
 
-        // Minden nem terminális rekord újra ütemeződik (a-callback-8):
-        // 'failed' = a Barion retry-lépcső újra kézbesítette → azonnali újrapróbálás;
+        // Minden nem terminális rekord újra feldolgozást kér (a-callback-8):
+        // 'failed' = a Barion retry-lépcső újra kézbesítette → újrapróbálás;
         // nem terminális eredmény (pending_repoll) = a fizetés korábban még függő
         // volt, EZ a kézbesítés hozza a végleges státuszt (B4);
-        // 'received' eredmény nélkül = egy feldolgozás épp fut. Korábban ezt nem
-        // ütemeztük, így ha a futó feldolgozás még a KORÁBBI (függő) állapotot
-        // látta, a most jelzett végleges állapot csak a percenkénti retryvel
-        // érkezett meg. A callback-zár sorba állítja a kettőt, a második friss
-        // olvasással no-op, ha az első már lezárta.
-        schedule(runProcessing)
+        // 'received' eredmény nélkül = egy feldolgozás épp fut: ha az még a
+        // KORÁBBI (függő) állapotot látta, a most jelzett végleges állapotért
+        // még egy kör kell. PaymentId-nként összevonva (lásd CallbackSlot): egy
+        // kézbesítés-áradat sem indít párhuzamos, zárra váró feldolgozásokat.
+        scheduleCoalesced(processingSlots, paymentId, runProcessing)
         return jsonResponse({ ok: true, status: 'received' })
       }
 
@@ -541,7 +583,7 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
       }
 
       // 2. AZONNALI 200 — a feldolgozás aszinkron (a GetState-re NEM várunk).
-      schedule(runProcessing)
+      scheduleCoalesced(processingSlots, paymentId, runProcessing)
       return jsonResponse({ ok: true, status: 'accepted' })
     } catch (error) {
       // Infrastrukturális hiba (DB elérhetetlen): 500, hogy a Barion retry-lépcsője

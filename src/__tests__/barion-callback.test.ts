@@ -807,9 +807,10 @@ describe('(b) duplikált callback — EXACTLY ONCE', () => {
     expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
   })
 
-  // a-callback-8: a még futó (received) eseményre érkező kézbesítés is ütemez;
-  // a callback-zár sorba állítja, a második futás friss olvasáson no-op.
-  it('feldolgozás alatt érkező ismétlés (received) → 200, újra ütemez, a második futás no-op', async () => {
+  // a-callback-8: a még futó (received) eseményre érkező kézbesítés is
+  // feldolgozást kér, PaymentId-nként összevonva: a kör előtt érkezettet a kör
+  // GetState-je már látja, így nem indul párhuzamos, zárra váró futás.
+  it('feldolgozás előtt érkező ismétlés (received) → 200, összevonva: egy futás, egy GetState', async () => {
     const { POST, capture, calls, docs } = setup()
     fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
 
@@ -819,14 +820,40 @@ describe('(b) duplikált callback — EXACTLY ONCE', () => {
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
     expect(await second.json()).toEqual({ ok: true, status: 'received' })
-    expect(capture.tasks).toHaveLength(2)
+    expect(capture.tasks).toHaveLength(1)
 
     await capture.runAll()
 
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(calls.update.filter((call) => call.collection === 'orders')).toHaveLength(1)
     expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
     expect(docs).toHaveLength(1)
     expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid', attempts: 1 })
+  })
+
+  // Hibavadászat (W1): az ismert, nem lezárt eseményre érkező kézbesítés-áradat
+  // korábban kézbesítésenként külön feldolgozást ütemezett. A GetState-kapu
+  // közös ígérete után mind egyszerre ért a callback-zárhoz, és mindegyik egy
+  // pool-kapcsolatot fogott, amíg a zárra várt.
+  it('a futó feldolgozás közbeni kézbesítés-áradat nem ütemez új futást: egy további kör, legalább 60 s múlva', async () => {
+    const { POST, capture } = setup()
+    const hivasok: number[] = []
+    fetchMock.mockImplementation(async () => {
+      hivasok.push(Date.now())
+      if (hivasok.length === 1) {
+        for (let i = 0; i < 30; i += 1) {
+          await POST(makeBarionRequest(PAYMENT_ID))
+        }
+      }
+      return getStateResponse('Prepared')
+    })
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    expect(capture.tasks).toHaveLength(0)
+    expect(hivasok).toHaveLength(2)
+    expect((hivasok[1] ?? 0) - (hivasok[0] ?? 0)).toBeGreaterThanOrEqual(60_000)
   })
 
   /**
@@ -1806,6 +1833,34 @@ describe('a-callback-6 / a-egyeztetes-2 — visszatérítés-egyeztetés paid es
     })
   })
 
+  // Hibavadászat (W1): a paid eseményre érkező kézbesítés-áradat korábban
+  // 5,5 s-onként új GetState-et váltott ki (a Barion elárasztásnak veheti,
+  // Troubleshooting); most az egyeztetés körei között legalább egy perc telik el.
+  it('paid eseményre érkező kézbesítés-áradat: az egyeztetés körei között legalább 60 s telik el', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture } = setup({
+      order: createOrder({ status: 'paid' }),
+      initialEvents: [PAID_EVENT],
+    })
+    const hivasok: number[] = []
+    fetchMock.mockImplementation(async () => {
+      hivasok.push(Date.now())
+      if (hivasok.length === 1) {
+        for (let i = 0; i < 10; i += 1) {
+          await POST(makeBarionRequest(PAYMENT_ID, { realIp: '198.51.100.7' }))
+        }
+      }
+      return stateWithTransactions([SOURCE_TX])
+    })
+
+    await POST(makeBarionRequest(PAYMENT_ID, { realIp: '198.51.100.7' }))
+    await capture.runAll()
+
+    expect(capture.tasks).toHaveLength(0)
+    expect(hivasok).toHaveLength(2)
+    expect((hivasok[1] ?? 0) - (hivasok[0] ?? 0)).toBeGreaterThanOrEqual(60_000)
+  })
+
   it('sztornózott kártyás visszatérítés (StornoUnSuccessfulRefundToBankCard): RIASZTÁS a rögzített visszatérítés mellett is', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const order = createOrder({ status: 'refunded' })
@@ -2082,15 +2137,20 @@ describe('r-barion-7 — lezárt (cancelled) fizetésre érkező callback', () =
   // Succeeded-je nem veszhet el duplikátumként a késői-siker ellenőrzésig.
   it('az átfedő második futás a zár alatt már lezárt (cancelled) eseményt talál: a friss Succeeded paid-re viszi', async () => {
     const { POST, capture, order, docs } = setup()
+    const masodik: { valasz: Response | null } = { valasz: null }
     fetchMock
-      .mockResolvedValueOnce(getStateResponse('Canceled'))
+      .mockImplementationOnce(async () => {
+        // A második callback az első kör GetState-je közben érkezik.
+        masodik.valasz = await POST(makeBarionRequest(PAYMENT_ID))
+        return getStateResponse('Canceled')
+      })
       .mockResolvedValueOnce(getStateResponse('Succeeded'))
 
     await POST(makeBarionRequest(PAYMENT_ID))
-    const second = await POST(makeBarionRequest(PAYMENT_ID))
-    expect(await second.json()).toEqual({ ok: true, status: 'received' })
-    expect(capture.tasks).toHaveLength(2)
     await capture.runAll()
+
+    expect(await masodik.valasz?.json()).toEqual({ ok: true, status: 'received' })
+    expect(capture.tasks).toHaveLength(0)
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(order?.status).toBe('paid')
