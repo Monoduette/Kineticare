@@ -3,7 +3,7 @@ import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
 import { BlocksFeature, lexicalEditor } from '@payloadcms/richtext-lexical'
 import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/types'
 import type { JSONSchema4 } from 'json-schema'
-import { appendVersionToQueryKey, getLatestCollectionVersion, NotFound } from 'payload'
+import { APIError, appendVersionToQueryKey, getLatestCollectionVersion, NotFound } from 'payload'
 import type {
   CheckboxFieldValidation,
   CollectionBeforeChangeHook,
@@ -1707,6 +1707,10 @@ async function lockProductRow(req: PayloadRequest, id: number | string): Promise
   return true
 }
 
+/** A nem objektum adatú kurzus-mentés elutasítása (productUpdateLocksRow, 400). */
+const PRODUCT_DATA_NOT_OBJECT_MESSAGE =
+  'A kurzus nem menthető: a kérés adatai nem objektumként érkeztek. A mezőket egy JSON-objektumban küldd.'
+
 /**
  * PR #305 rev2-b (breaker X1): a kurzus minden mentése a kérés tranzakciójában
  * zárolja a fő sort (lockProductRow), MIELŐTT a napló a „before” pillanatképet
@@ -1785,6 +1789,22 @@ async function lockProductRow(req: PayloadRequest, id: number | string): Promise
  * veszi; ott az dönt, hogy a kérés maga küldött-e `deletedAt`-et (lomtárba
  * tétel vagy visszaállítás).
  *
+ * A mentés adata csak objektum lehet (codex4 rev3, breaker X1). A Payload a
+ * JSON-tömb törzset (`PATCH /api/products/:id`, törzs: `[]`) változatlanul
+ * adja a mentésnek; a mező-szintű beforeValidate a tömbre írja a zár előtti
+ * alap értékeit, a mezők beforeChange-e (`{ ...data }`) pedig teljes
+ * objektummá teszi. Amíg a hook a tömböt a zár után ellenőrzés nélkül
+ * engedte tovább, a zár mögött várakozó `[]` mentés a véglegesen törölt
+ * kurzust közzétettként visszaszúrta, a lomtárba tettet élőként hozta vissza,
+ * a tulajdonos áremelését visszaírta (mérve valódi Payload + Postgres mellett,
+ * munkatársi JWT-vel a REST-en is). Ezért a nem objektum adatú mentés a zár
+ * előtt, a kérés-tranzakciótól függetlenül 400-zal áll le; az admin és a
+ * szkriptek mindig objektumot küldenek. Más út nem hoz ide tömböt (mérve): a
+ * tömeges mentés objektummá másolja, a `trash`- vagy visszavonás-jelzős
+ * kérésből az unpublishAndRestoreWritesStayDraft piszkozat-objektumot csinál,
+ * a null és a skaláris törzs pedig már a mező-szintű beforeValidate-en
+ * TypeError-ral elbukik.
+ *
  * A verzió-visszaállítás kimarad a frissítésből: ott a visszaállított verzió
  * értéke a kérés szándéka, a munkatársnál pedig a Payload a tulajdonosi
  * mezőket nem is írja (lásd restoreVersionByNonOwnerStaysDraft). A közben
@@ -1793,15 +1813,24 @@ async function lockProductRow(req: PayloadRequest, id: number | string): Promise
  * várakozó visszaállítás pedig a verzió `deletedAt: null`-jával élőként hozná
  * vissza.
  *
+ * A `_status`-t a tulajdonosi mezőkhöz hasonlóan a commitolt értékre
+ * cseréljük, ha a kérés nem küldte, és a Payload az alapból töltötte (codex4
+ * rev3, breaker X2). A tartalom-job (src/scripts/apply-owner-content.ts)
+ * `_status` nélkül, nem piszkozatként ment; a zár mögött várakozva a
+ * tulajdonos közben közzétett kurzusát levette az oldalról (az alap a függő
+ * autosave-piszkozat volt), a közben visszavont kurzust pedig újra élesítette
+ * (mérve valódi Payload + Postgres mellett). Kimarad a piszkozat-mentés: ott
+ * a Payload a `_status`-t eleve piszkozatra állítja, és csak verziót ír, a
+ * frissítés pedig közzétettnek jelölt, nem validált verziót hagyna. Kimarad a
+ * kifejezetten küldött `_status` (például a Visszavonás: a kérés döntése) és
+ * a lomtár-alakú írás is (a trashWritesStayDraft piszkozata).
+ *
  * A többi mező elavult visszaírása megtörténhet. A tartalmi mezőké (például a
  * leírás) nem ár- vagy láthatósági döntés, és az admin felületen két
- * felhasználó között a Payload dokumentum-zárja a legtöbb átfedést kizárja.
- * Két láthatósági mező kivétel. A `deletedAt`-et a fenti NotFound kezeli; egy
- * `deletedAt` nélküli, `trash: true`-s mentés a közben visszaállított kurzust
- * legfeljebb újra a lomtárba teszi, piszkozatként, ez a biztonságos irány. A
- * `_status` elavult értékét csak a `_status` nélküli, nem piszkozat API-mentés
- * írhatja vissza: az admin minden mentése kifejezetten küldi, a lomtárba
- * tételét pedig a trashWritesStayDraft piszkozatra állítja.
+ * felhasználó között a Payload dokumentum-zárja a legtöbb átfedést kizárja. A
+ * `deletedAt`-et a fenti NotFound kezeli; egy `deletedAt` nélküli,
+ * `trash: true`-s mentés a közben visszaállított kurzust legfeljebb újra a
+ * lomtárba teszi, piszkozatként, ez a biztonságos irány.
  */
 export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
   collection,
@@ -1811,7 +1840,9 @@ export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
   req,
 }) => {
   if (operation !== 'update') return data
-  const id = isPlainRecord(originalDoc) ? originalDoc.id : undefined
+  if (!isPlainRecord(data)) throw new APIError(PRODUCT_DATA_NOT_OBJECT_MESSAGE, 400)
+  if (!isPlainRecord(originalDoc)) return data
+  const id = originalDoc.id
   if (typeof id !== 'number' && typeof id !== 'string') return data
   if (!(await lockProductRow(req, id))) {
     logger.warn('kurzus mentése: a fő sor nem zárolható (nincs kérés-tranzakció)', {
@@ -1828,7 +1859,6 @@ export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
     if (!isPlainRecord(row) || isTrashedRow(row)) throw new NotFound(req.t)
     return data
   }
-  if (!isPlainRecord(data) || !isPlainRecord(originalDoc)) return data
   const args = productUpdateArgs.get(req)
   const committed = await readCommittedUpdateSource(req, collection, id, args)
   if (committed === undefined) throw new NotFound(req.t)
@@ -1861,8 +1891,23 @@ export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
     result[name] = committed[name]
     refreshed.push(name)
   }
+  // A `_status` a kérésből hiányzó, alapból töltött értéknél ugyanígy cserélődik;
+  // a piszkozat-mentés, a kifejezetten küldött érték és a lomtár-alakú írás kimarad.
+  const status = JSON.stringify(result._status)
+  if (
+    args?.draft === false &&
+    !sent.has('_status') &&
+    !result.deletedAt &&
+    '_status' in committed &&
+    status === JSON.stringify(originalDoc._status) &&
+    status !== JSON.stringify(committed._status)
+  ) {
+    if (result === data) result = { ...data }
+    result._status = committed._status
+    refreshed.push('_status')
+  }
   if (refreshed.length > 0) {
-    logger.info('kurzus mentése: a közben commitolt tulajdonosi értékek maradnak', {
+    logger.info('kurzus mentése: a közben commitolt értékek maradnak', {
       productId: String(id),
       fields: refreshed,
     })
@@ -1886,6 +1931,11 @@ type ProductUpdateSource = 'byID' | 'drafts' | 'mainRow'
 /** A kurzus-mentés végleges argumentumaiból az, amire a productUpdateLocksRow épít. */
 interface ProductUpdateArgs {
   source: ProductUpdateSource
+  /**
+   * Piszkozat-mentés (`draft`, a Payload igazságértéke szerint): a `_status`-t a
+   * Payload piszkozatra állítja, és csak verziót ír, ezért az nem frissül.
+   */
+  draft: boolean
   /** `trash: true`: a Payload a lomtárban álló sort is alapnak veszi (appendNonTrashedFilter). */
   trash: boolean
   /** `overrideAccess: true`: a mező-szintű access egyetlen értéket sem vet el. */
@@ -1899,14 +1949,14 @@ const productUpdateArgs = new WeakMap<object, ProductUpdateArgs>()
 /**
  * A productUpdateLocksRow a friss értéket ugyanonnan és ugyanazzal a
  * lomtár-szűrővel olvassa, ahonnan a Payload az alapot vette, és tudnia kell,
- * mely mezőket küldte a kérés. Más forrásból a tömeges mentés verseny nélkül
- * is a tulajdonos függő piszkozatának tulajdonosi mezőit keverné a fő sor
- * többi értéke mellé; szűrő nélkül a lomtárban álló legutóbbi verzióból
- * olvasna, miközben a Payload a lomtáron kívüli fő sort vette alapnak
- * (codex4 rev2, breaker T3). A beforeChange hook a művelet argumentumait nem
- * kapja meg, ezért a művelet elején a kéréshez kötjük őket. Egy kérés
- * egyszerre egy kurzus-műveletet futtat; a tömeges mentés minden dokumentuma
- * ugyanazokat az argumentumokat használja.
+ * mely mezőket küldte a kérés, és hogy piszkozat-mentés-e. Más forrásból a
+ * tömeges mentés verseny nélkül is a tulajdonos függő piszkozatának
+ * tulajdonosi mezőit keverné a fő sor többi értéke mellé; szűrő nélkül a
+ * lomtárban álló legutóbbi verzióból olvasna, miközben a Payload a lomtáron
+ * kívüli fő sort vette alapnak (codex4 rev2, breaker T3). A beforeChange hook
+ * a művelet argumentumait nem kapja meg, ezért a művelet elején a kéréshez
+ * kötjük őket. Egy kérés egyszerre egy kurzus-műveletet futtat; a tömeges
+ * mentés minden dokumentuma ugyanazokat az argumentumokat használja.
  */
 export const productUpdateRemembersSource: CollectionBeforeOperationHook = ({
   args,
@@ -1921,8 +1971,10 @@ export const productUpdateRemembersSource: CollectionBeforeOperationHook = ({
   const rawData: unknown = operationArgs.data
   const data: Record<string, unknown> = isPlainRecord(rawData) ? rawData : {}
   const trashing = data.deletedAt !== undefined && data.deletedAt !== null
+  const draft = Boolean(operationArgs.draft)
   productUpdateArgs.set(req, {
-    source: byID ? 'byID' : Boolean(operationArgs.draft) || trashing ? 'drafts' : 'mainRow',
+    source: byID ? 'byID' : draft || trashing ? 'drafts' : 'mainRow',
+    draft,
     trash: Boolean(operationArgs.trash),
     overrideAccess: operationArgs.overrideAccess === true,
     sentFields: new Set(Object.keys(data).filter((name) => data[name] !== undefined)),

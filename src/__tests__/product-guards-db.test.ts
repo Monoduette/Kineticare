@@ -1,5 +1,12 @@
 import { sql, type SQL } from '@payloadcms/db-postgres/drizzle'
-import { createLocalReq, getPayload, NotFound, type Payload } from 'payload'
+import {
+  APIError,
+  createLocalReq,
+  getPayload,
+  handleEndpoints,
+  NotFound,
+  type Payload,
+} from 'payload'
 import type { Client as PgClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -2432,6 +2439,40 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
   )
 
   /**
+   * PR #305 (codex4 rev3, vezetői átnézés MX1): a `trash: true`-s kérés, amely
+   * maga küld `deletedAt`-et, a közben lomtárba tett kurzuson sem kap
+   * NotFound-ot: a lomtárba tételről vagy a visszaállításról ő maga dönt. Itt
+   * a munkatárs `{ deletedAt: null, _status: 'draft' }` visszaállítása vár a
+   * tulajdonos lomtár-gombja mögött. Soros futtatásnál a visszaállítás a
+   * lomtárba tett kurzust piszkozatként hozza vissza; a `deletedAt`-et
+   * figyelmen kívül hagyó ellenőrzés itt tévesen NotFound-dal állt volna le.
+   */
+  it('PR #305 (codex4 rev3, MX1): a tulajdonos lomtára mögött várakozó, `deletedAt: null`-t küldő visszaállítás piszkozatként hozza vissza a kurzust', async () => {
+    const id = await createPublished('lomtar-visszaallitas')
+    const result = await race(trashes(id, owner), (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { deletedAt: null, _status: 'draft' },
+          trash: true,
+          overrideAccess: false,
+          user: asUser(staff),
+          context,
+        }),
+      ),
+    )
+    const row = await mainRow(id)
+    expect({ ...result, trashed: Boolean(row.deletedAt), _status: row._status }).toEqual({
+      first: 'OK',
+      second: 'OK',
+      secondWaited: true,
+      trashed: false,
+      _status: 'draft',
+    })
+  }, 120_000)
+
+  /**
    * PR #305 (codex4 rev2): a piszkozat-alakú tömeges mentés friss olvasása is a
    * Payload queryDrafts-ét követi: csak a legutóbbi, lomtáron kívüli verziót
    * nézi, a fő sorra nem esik vissza. A munkatárs `?draft=true`-s
@@ -2476,6 +2517,258 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       trashed: false,
     })
   }, 120_000)
+
+  /**
+   * Egy kérés kimenete: 'OK', vagy a Payload API-hibájának HTTP-státusza és
+   * szövege (a NotFound és a 400-as elutasítás is APIError). Más hibát továbbdob.
+   */
+  async function apiOutcome(run: Promise<unknown>): Promise<'OK' | string[]> {
+    try {
+      await run
+      return 'OK'
+    } catch (error) {
+      if (!(error instanceof APIError)) throw error
+      return [`${error.status} ${error.message}`]
+    }
+  }
+
+  /**
+   * A munkatárs JSON-tömb adatú mentése a Local API-n. A REST a
+   * `PATCH /api/products/:id` `[]` törzsét ugyanígy, változatlanul adja a
+   * mentésnek (payload/dist/utilities/addDataAndFileToRequest.js, JSON.parse).
+   */
+  function staffSavesArray(id: number): RaceRequest {
+    return (context) =>
+      apiOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: [] as never,
+          overrideAccess: false,
+          user: asUser(staff),
+          context,
+        }),
+      )
+  }
+
+  /** A munkatárs tokenje a REST-kérésekhez (a createUser helyi tesztjelszavával). */
+  async function staffToken(): Promise<string> {
+    const { token } = await payload.login({
+      collection: 'users',
+      data: { email: String(staff.email), password: `Helyi-teszt-${stamp}-staff` },
+    })
+    if (token === undefined) throw new Error('A munkatárs bejelentkezése nem adott tokent.')
+    return token
+  }
+
+  /**
+   * A munkatárs `PATCH /api/products/:id` kérése JWT-vel és nyers JSON-törzzsel,
+   * a Payload REST-kezelőjén át (a Next catch-all route ugyanezt hívja).
+   */
+  function staffPatchesRest(id: number, token: string, body: string): RaceRequest {
+    return async () => {
+      const response = await handleEndpoints({
+        config: configPromise,
+        request: new Request(`http://localhost:3000/api/products/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `JWT ${token}` },
+          body,
+        }),
+      })
+      if (response.status === 200) return 'OK'
+      const { errors = [] } = (await response.json()) as { errors?: Array<{ message?: string }> }
+      return [`${response.status} ${errors.map((entry) => entry.message).join('; ')}`]
+    }
+  }
+
+  /**
+   * PR #305 (codex4 rev3, breaker X1): a JSON-tömb adatú mentés nem ír. A
+   * mező-szintű beforeValidate a tömbre írja a mentés alapjának értékeit, a
+   * mezők beforeChange-e (`{ ...data }`) pedig teljes objektummá teszi.
+   * 97bc4c7-en a productUpdateLocksRow a tömböt a zár után ellenőrzés nélkül
+   * engedte tovább: a zár mögött várakozó `[]` mentés a közben véglegesen
+   * törölt kurzust közzétett, megvásárolható állapotban szúrta vissza, a
+   * lomtárba tettet élőként hozta vissza (a REST-en is, munkatársi JWT-vel).
+   * Most a hook a zár előtt, 400-zal utasítja el, így a kérés nem is vár.
+   */
+  it('PR #305 (codex4 rev3, breaker X1b): a párhuzamos végleges törlés mellett a munkatárs `[]` adatú mentése 400, a kurzus nem támad fel', async () => {
+    const id = await createPublished('tomb-torles')
+    const result = await race(hardDeletes(id, owner), staffSavesArray(id), {
+      method: 'deleteOne',
+      after: true,
+    })
+    const row = await mainRowOrNull(id)
+    if (row === null) productIds.splice(productIds.indexOf(id), 1)
+    expect({ first: result.first, second: result.second, exists: row !== null }).toEqual({
+      first: 'OK',
+      second: [expect.stringMatching(/^400 /)],
+      exists: false,
+    })
+  }, 120_000)
+
+  it('PR #305 (codex4 rev3, breaker X1d): a párhuzamos lomtár mellett a munkatárs REST `PATCH []` kérése 400, a kurzus a lomtárban marad', async () => {
+    const id = await createPublished('tomb-lomtar-rest')
+    const token = await staffToken()
+    const result = await race(trashes(id, owner), staffPatchesRest(id, token, '[]'))
+    const row = await mainRow(id)
+    expect({
+      first: result.first,
+      second: result.second,
+      trashed: Boolean(row.deletedAt),
+      _status: row._status,
+    }).toEqual({
+      first: 'OK',
+      second: [expect.stringMatching(/^400 /)],
+      trashed: true,
+      _status: 'draft',
+    })
+  }, 120_000)
+
+  /**
+   * A tartalom-job kurzus-mentése (src/scripts/apply-owner-content.ts,
+   * `npm run content:owner`): `overrideAccess`, `draft` és `_status` nélkül,
+   * csak a javított tartalmi mezővel. A `_status`-t a Payload a mentés
+   * alapjából (a legutóbbi verzióból) tölti.
+   */
+  function contentJobSaves(id: number): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { shortDescription: 'Tartalom-job javítása.' },
+          depth: 0,
+          overrideAccess: true,
+          context,
+        }),
+      )
+  }
+
+  /** Egy szkript `_status` nélküli piszkozat-mentése (`draft: true`: csak verziót ír). */
+  function systemSavesDraft(id: number): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { shortDescription: 'Szkript-piszkozat.' },
+          draft: true,
+          depth: 0,
+          overrideAccess: true,
+          context,
+        }),
+      )
+  }
+
+  /** A kurzus fő sorának és legutóbbi verziójának `_status`-a, és hogy lomtárban van-e. */
+  async function visibility(
+    id: number,
+  ): Promise<{ main: unknown; latest: unknown; trashed: boolean }> {
+    const main = await mainRow(id)
+    const latest = (await payload.findByID({
+      collection: 'products',
+      id,
+      depth: 0,
+      draft: true,
+      overrideAccess: true,
+      trash: true,
+    })) as unknown as Doc
+    return { main: main._status, latest: latest._status, trashed: Boolean(main.deletedAt) }
+  }
+
+  /**
+   * PR #305 (codex4 rev3, breaker X2, vezetői átnézés): a kérésből hiányzó
+   * `_status`-t a Payload a zár előtt olvasott alapból tölti, így a zár mögött
+   * várakozó, `_status` nélküli, nem piszkozat mentés az elavult állapotot
+   * írta a fő sorba. 97bc4c7-en a tartalom-job mentése levette az oldalról a
+   * tulajdonos közben közzétett kurzusát (a függő autosave-piszkozat miatt az
+   * alap piszkozat volt), a közben visszavont kurzust pedig újra élesítette.
+   *
+   * Minden sor egyszer egymás után, egyszer versenyben fut; a verseny után a
+   * fő sor és a legutóbbi verzió `_status`-a ugyanaz, mint soros futtatásnál.
+   * Az X2d, X2v és X2t sor a frissítés határait méri: a piszkozat-mentésnél a
+   * Payload a `_status`-t piszkozatra állítja és csak verziót ír (a frissítés
+   * közzétettnek jelölt, nem validált verziót hagyna), a kifejezetten küldött
+   * `_status` (a Visszavonás) a kérés döntése, a lomtár-alakú írást pedig a
+   * trashWritesStayDraft piszkozatra állítja.
+   */
+  it.each<{
+    tag: string
+    who: string
+    decision: string
+    /** A tulajdonos függő autosave-piszkozata: a várakozó mentés alapja piszkozat. */
+    pendingDraft: boolean
+    first: (id: number) => RaceRequest
+    second: (id: number) => RaceRequest
+    expected: { main: string; latest: string; trashed: boolean }
+  }>([
+    {
+      tag: 'X2',
+      who: 'tartalom-job mentés',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: contentJobSaves,
+      expected: { main: 'published', latest: 'published', trashed: false },
+    },
+    {
+      tag: 'X2u',
+      who: 'tartalom-job mentés',
+      decision: 'Visszavonása',
+      pendingDraft: false,
+      first: (id) => unpublishes(id, owner),
+      second: contentJobSaves,
+      expected: { main: 'draft', latest: 'draft', trashed: false },
+    },
+    {
+      tag: 'X2d',
+      who: '`_status` nélküli piszkozat-mentés',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: systemSavesDraft,
+      expected: { main: 'published', latest: 'draft', trashed: false },
+    },
+    {
+      tag: 'X2v',
+      who: 'munkatársi Visszavonás',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: (id) => unpublishes(id, staff),
+      expected: { main: 'draft', latest: 'draft', trashed: false },
+    },
+    {
+      tag: 'X2t',
+      who: 'munkatársi lomtár',
+      decision: 'közzététele',
+      pendingDraft: true,
+      first: (id) => ownerPublishes(id, { seoTitle: 'Tulajdonosi piszkozat' }),
+      second: (id) => trashes(id, staff),
+      expected: { main: 'draft', latest: 'draft', trashed: true },
+    },
+  ])(
+    'PR #305 (codex4 rev3, $tag): a tulajdonos $decision mögött várakozó $who a soros futtatás `_status`-át hagyja',
+    async ({ tag, pendingDraft, first, second, expected }) => {
+      const course = async (order: string) => {
+        const id = await createPublished(`status ${tag} ${order}`)
+        if (pendingDraft) await autosave(id, owner, { seoTitle: 'Tulajdonosi piszkozat' })
+        return id
+      }
+      const serialId = await course('soros')
+      const serial = { first: await first(serialId)({}), second: await second(serialId)({}) }
+      const raceId = await course('verseny')
+      const raced = await race(first(raceId), second(raceId))
+      expect({
+        soros: { ...serial, ...(await visibility(serialId)) },
+        verseny: { ...raced, ...(await visibility(raceId)) },
+      }).toEqual({
+        soros: { first: 'OK', second: 'OK', ...expected },
+        verseny: { first: 'OK', second: 'OK', secondWaited: true, ...expected },
+      })
+    },
+    120_000,
+  )
 
   /**
    * Kontroll (codex4 rev1, breaker BRK-D): a sorzár és a friss olvasás a
