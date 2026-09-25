@@ -14,6 +14,7 @@ import {
   ORPHAN_ORDER_GRACE_MS,
   pollPendingOrders,
   REFUND_RECHECK_BATCH_SIZE,
+  REFUND_RECHECK_MAX_ATTEMPTS,
   RUN_LEVEL_ALERT_COOLDOWN_MS,
   STUCK_ORDER_WARN_MS,
   UNKNOWN_PAYMENT_CANCEL_AFTER_MS,
@@ -5221,5 +5222,300 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
       entry.message.startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
     )
     expect(alert?.context).toMatchObject({ findings: ['refund-reversal'] })
+  })
+
+  // Vezetői minor (rev3): a sikeres, egyező újraellenőrzés után a kulcs a
+  // sávban foglalt marad. Ha a kulcs 'match' után is felszabadulna, minden
+  // egyező visszatérítés 5 percenként GetState-et kapna 24 órán át.
+  it('egyező visszatérítés (match): a következő futás a sávban nem kérdez újra', async () => {
+    const order = refundedOrder(7.5)
+    order.id = 2420
+    const f = setup({ pending: [], paidResweep: [order] })
+    const fetchState = vi.fn(async () =>
+      getStateResponse('Succeeded', {
+        Total: 0,
+        Transactions: (reversedState().Transactions ?? []).filter(
+          (transaction) => transaction.TransactionType !== 'StornoUnSuccessfulRefundToBankCard',
+        ),
+      }),
+    )
+    const { log, errors, infos } = contextLog()
+
+    for (const offset of [0, POLL_INTERVAL_MS]) {
+      await pollPendingOrders({
+        ...f,
+        payload: withLedger(f, order.id),
+        fetchState,
+        now: NOW + offset,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    }
+
+    expect(infos).toContain('visszatérítés-egyeztetés: a Barion és a rendelés adatai egyeznek')
+    expect(fetchState).toHaveBeenCalledTimes(1)
+    expect(errors).toEqual([])
+  })
+
+  const RECHECK_GAVE_UP_ALERT = 'RIASZTÁS: a visszatérítés heti újraellenőrzése ennél a rendelésnél'
+  const gaveUpAlerts = (errors: Array<{ message: string; context: Record<string, unknown> }>) =>
+    errors.filter((entry) => entry.message.startsWith(RECHECK_GAVE_UP_ALERT))
+
+  // Breaker (rev3, major): a végleges hiba a következő futásban is ugyanaz
+  // volna. Rev2 minden hiba után elengedte a kulcsot, így a sor 5 percenként
+  // újra GetState-et kapott a sáv 24 órájában.
+  it.each([
+    ['NotExistingPaymentId (HTTP 400)', () => notExistingPaymentId(400), 'order'],
+    ['hitelesítési hiba (HTTP 401)', () => unauthorized(), 'auth'],
+    [
+      'puszta HTTP 404',
+      () =>
+        new BarionApiError({
+          message: 'Barion API hiba (HTTP 404).',
+          kind: 'http',
+          endpoint: 'GET state',
+          httpStatus: 404,
+        }),
+      'unverified-404',
+    ],
+    [
+      'egyéb 4xx elutasítás (HTTP 400, ModelValidationError)',
+      () =>
+        new BarionApiError({
+          message: 'Barion API hiba (HTTP 400): ModelValidationError',
+          kind: 'http',
+          endpoint: 'GET state',
+          httpStatus: 400,
+          providerErrors: [
+            { ErrorCode: 'ModelValidationError', Title: 'DUMMY', Description: 'DUMMY' },
+          ],
+        }),
+      'unknown',
+    ],
+  ] as const)(
+    'végleges hiba (%s): a sávban nincs újabb GetState, egyetlen RIASZTÁS kéri a kézi ellenőrzést',
+    async (_label, makeError, failureClass) => {
+      const order = refundedOrder(7.5)
+      order.id = 2421
+      const f = setup({ pending: [], paidResweep: [order] })
+      const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+        throw makeError()
+      })
+      const { log, errors } = contextLog()
+
+      for (const offset of [0, POLL_INTERVAL_MS, 2 * POLL_INTERVAL_MS, 3 * POLL_INTERVAL_MS]) {
+        await pollPendingOrders({
+          ...f,
+          payload: withLedger(f, order.id),
+          fetchState,
+          now: NOW + offset,
+          logger: log as never,
+          invoicingEnabled: () => false,
+        })
+      }
+
+      expect(fetchState).toHaveBeenCalledTimes(1)
+      const alerts = gaveUpAlerts(errors)
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0].context).toMatchObject({
+        alertCode: 'visszaterites-ujraellenorzes-elmaradt',
+        orderId: order.id,
+        reason: 'vegleges-hiba',
+        attempts: 1,
+        failureClass,
+      })
+      expect(f.orderUpdateCalls).toEqual([])
+    },
+  )
+
+  // Breaker (rev3): az átmeneti hiba után a sáv újrapróbál, de legfeljebb
+  // REFUND_RECHECK_MAX_ATTEMPTS-szor; utána egyetlen RIASZTÁS, és a sávban csend.
+  it.each([
+    [
+      'HTTP 503',
+      () =>
+        new BarionApiError({
+          message: '503',
+          kind: 'http',
+          endpoint: 'GET state',
+          httpStatus: 503,
+        }),
+      'transport',
+    ],
+    ['időtúllépés', () => transientTimeout(), 'transport'],
+    [
+      'hálózati hiba',
+      () => new BarionApiError({ message: 'DUMMY reset', kind: 'network', endpoint: 'GET state' }),
+      'transport',
+    ],
+    ['HTTP 429 a kapu újrapróbálása után is', () => rateLimited(), 'rate-limited'],
+    [
+      'értelmezhetetlen válasz',
+      () =>
+        new BarionApiError({
+          message: 'DUMMY nem JSON',
+          kind: 'invalid_response',
+          endpoint: 'GET state',
+          httpStatus: 200,
+        }),
+      'unknown',
+    ],
+    ['nem Barion-eredetű kivétel', () => new Error('DUMMY váratlan hiba'), 'unknown'],
+  ] as const)(
+    'átmeneti hiba (%s): legfeljebb REFUND_RECHECK_MAX_ATTEMPTS kísérlet, utána egyetlen RIASZTÁS',
+    async (_label, makeError, failureClass) => {
+      const order = refundedOrder(7.5)
+      order.id = 2422
+      const f = setup({ pending: [], paidResweep: [order] })
+      const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+        throw makeError()
+      })
+      const { log, errors } = contextLog()
+      const alertCountsPerRun: number[] = []
+
+      for (let run = 0; run < REFUND_RECHECK_MAX_ATTEMPTS + 2; run += 1) {
+        await pollPendingOrders({
+          ...f,
+          payload: withLedger(f, order.id),
+          fetchState,
+          now: NOW + run * POLL_INTERVAL_MS,
+          logger: log as never,
+          invoicingEnabled: () => false,
+        })
+        alertCountsPerRun.push(gaveUpAlerts(errors).length)
+      }
+
+      expect(fetchState).toHaveBeenCalledTimes(REFUND_RECHECK_MAX_ATTEMPTS)
+      // A RIASZTÁS csak az utolsó kísérlet után megy ki, és csak egyszer.
+      expect(alertCountsPerRun).toEqual([0, 0, 1, 1, 1])
+      expect(gaveUpAlerts(errors)[0].context).toMatchObject({
+        reason: 'kiserletek-elfogytak',
+        attempts: REFUND_RECHECK_MAX_ATTEMPTS,
+        failureClass,
+      })
+    },
+  )
+
+  it('átmeneti adatbázis-hiba (a friss rendelés-olvasás a GetState után bukik): ugyanaz a kísérlet-plafon', async () => {
+    const order = refundedOrder(7.5)
+    order.id = 2423
+    const f = setup({ pending: [], paidResweep: [order] })
+    const baseFind = (f.payload as unknown as { find: (args: unknown) => Promise<unknown> }).find
+    const freshReads = vi.fn()
+    const payload = {
+      ...(f.payload as unknown as Record<string, unknown>),
+      find: async (args: { collection: string; where?: unknown }) => {
+        if (JSON.stringify(args.where ?? {}).includes(`"id":{"equals":${order.id}}`)) {
+          freshReads()
+          throw new Error('DUMMY Connection terminated unexpectedly')
+        }
+        return baseFind(args)
+      },
+    } as unknown as Payload
+    const fetchState = vi.fn(async () => reversedState())
+    const { log, errors } = contextLog()
+
+    for (let run = 0; run < REFUND_RECHECK_MAX_ATTEMPTS + 2; run += 1) {
+      await pollPendingOrders({
+        ...f,
+        payload,
+        fetchState,
+        now: NOW + run * POLL_INTERVAL_MS,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    }
+
+    expect(freshReads).toHaveBeenCalledTimes(REFUND_RECHECK_MAX_ATTEMPTS)
+    expect(fetchState).toHaveBeenCalledTimes(REFUND_RECHECK_MAX_ATTEMPTS)
+    const alerts = gaveUpAlerts(errors)
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].context).toMatchObject({
+      reason: 'kiserletek-elfogytak',
+      failureClass: 'adatbazis',
+    })
+  })
+
+  // Breaker (rev3): a sáv elején álló, hibázó sorok nem foglalhatják el
+  // futásról futásra az 5-ös GetState-keretet a sáv 6. visszatérítése elől.
+  it.each([
+    ['végleges (NotExistingPaymentId)', () => notExistingPaymentId(400)],
+    [
+      'átmeneti (HTTP 503)',
+      () =>
+        new BarionApiError({
+          message: '503',
+          kind: 'http',
+          endpoint: 'GET state',
+          httpStatus: 503,
+        }),
+    ],
+  ] as const)(
+    '5 hibázó sor (%s) nem éheztetheti ki a sáv 6. visszatérítését: a második futás sorra veszi',
+    async (_label, makeError) => {
+      const orders = [2430, 2431, 2432, 2433, 2434, 2435].map((id, index) => {
+        const order = refundedOrder(7.05 + index * 0.1)
+        order.id = id
+        order.barionPaymentId = `bbbbbbbb-0000-4000-8000-00000000${id}`
+        return order
+      })
+      const f = setup({ pending: [], paidResweep: orders })
+      const payload = {
+        ...(f.payload as unknown as Record<string, unknown>),
+        db: { drizzle: emptyRefundLedger(orders.map((order) => order.id)) },
+      } as unknown as Payload
+      const reversedPaymentId = orders[5].barionPaymentId
+      const fetchState = vi.fn(async (paymentId: string) => {
+        if (paymentId !== reversedPaymentId) throw makeError()
+        return reversedState()
+      })
+      const { log, errors } = contextLog()
+
+      for (const offset of [0, POLL_INTERVAL_MS]) {
+        await pollPendingOrders({
+          ...f,
+          payload,
+          fetchState,
+          now: NOW + offset,
+          logger: log as never,
+          invoicingEnabled: () => false,
+        })
+      }
+
+      const calledIds = fetchState.mock.calls.map(([paymentId]) => paymentId)
+      expect(calledIds.slice(0, REFUND_RECHECK_BATCH_SIZE)).not.toContain(reversedPaymentId)
+      expect(calledIds).toContain(reversedPaymentId)
+      const alert = errors.find((entry) =>
+        entry.message.startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+      )
+      expect(alert?.context).toMatchObject({ findings: ['refund-reversal'] })
+    },
+  )
+
+  it('hitelesítési hiba: a futás többi sávbeli sora nem kap GetState-et ugyanezzel a hibával', async () => {
+    const orders = [2440, 2441].map((id, index) => {
+      const order = refundedOrder(7.2 + index * 0.1)
+      order.id = id
+      order.barionPaymentId = `cccccccc-0000-4000-8000-00000000${id}`
+      return order
+    })
+    const f = setup({ pending: [], paidResweep: orders })
+    const payload = {
+      ...(f.payload as unknown as Record<string, unknown>),
+      db: { drizzle: emptyRefundLedger(orders.map((order) => order.id)) },
+    } as unknown as Payload
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw unauthorized()
+    })
+
+    await pollPendingOrders({
+      ...f,
+      payload,
+      fetchState,
+      now: NOW,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(1)
   })
 })

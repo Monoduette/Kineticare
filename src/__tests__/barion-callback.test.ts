@@ -1936,9 +1936,11 @@ describe('a-callback-6 / a-egyeztetes-2 — visszatérítés-egyeztetés paid es
   // UTÁNI szándék-olvasás hamis „idegen visszatérítés” RIASZTÁS-t adott.
   // A második eset: a teljes saját visszatérítés a GetState várakozása alatt
   // indul és zárul, így aktív szándékot egyik olvasás sem lát; csak a friss
-  // rendelés-olvasás mutatja a rögzített összeget.
+  // rendelés-olvasás mutatja a rögzített összeget. Mindkét esetet a GetState
+  // utáni friss rendelés-olvasás védi; a GetState előtti szándék-olvasást
+  // egyik eset sem bizonyítja külön (az mélységi védelem).
   it.each([
-    ['a szándék a GetState előtt még aktív, utána már lezárt', true],
+    ['elavult pillanatkép: a szándék a GetState előtt aktív, a rögzítés közben lezárul', true],
     ['a visszatérítés a GetState várakozása alatt indul és zárul', false],
   ] as const)(
     'a rögzítés közben érkező saját admin-visszatérítés callbackje nem ad hamis „idegen visszatérítés” RIASZTÁS-t (%s)',
