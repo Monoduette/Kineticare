@@ -6,10 +6,8 @@ import type { BarionPaymentStateResponse } from '../../lib/barion'
 import { createLogger } from '../../lib/logger'
 import {
   applyBarionStateTransition,
-  grantPurchases,
   orderTransitionLockKey,
 } from '../../lib/order-status/apply-barion-state'
-import { revokePurchases } from '../../lib/refund/refund-order'
 import { userPurchasesLockKey } from '../../lib/user-purchases-lock'
 import type { Order, User } from '../../payload-types'
 
@@ -139,13 +137,13 @@ function createState(
 function createMockPayload(
   orderOrOrders: Order | Order[],
   events: string[],
-  options: { delayFirstUserUpdateMs?: number; initialPurchases?: number[] } = {},
+  options: { delayFirstUserUpdateMs?: number } = {},
 ) {
   const orders = Array.isArray(orderOrOrders) ? orderOrOrders : [orderOrOrders]
   const user = {
     id: CUSTOMER_ID,
     email: 'vevo@example.test',
-    purchases: [...(options.initialPurchases ?? [])],
+    purchases: [],
   } as unknown as User
   const { drizzle, queries } = createSerializingDrizzle(events)
   const updates: Array<{ collection: string; id?: unknown; data: Record<string, unknown> }> = []
@@ -351,29 +349,5 @@ describe('K1 — user-szintű purchases-zár két különböző rendelésen', ()
     expect(queries.map((query) => query.params[0])).toEqual(
       expect.arrayContaining(['order:mutate:101', 'order:mutate:202', 'purchases:user:7']),
     )
-  })
-
-  it('párhuzamos grant + revoke: a másik termék grantje nem veszhet el', async () => {
-    vi.spyOn(console, 'log').mockImplementation(() => {})
-    const events: string[] = []
-    const grantOrder = createOrder({ id: 303, items: [{ product: 22, quantity: 1 }] })
-    const revokeOrder = createOrder({
-      id: 404,
-      items: [{ product: 11, quantity: 1 }],
-      status: 'paid',
-    })
-    const { payload, user } = createMockPayload([grantOrder, revokeOrder], events, {
-      delayFirstUserUpdateMs: 40,
-      initialPurchases: [11],
-    })
-
-    await Promise.all([
-      grantPurchases(payload, grantOrder, createLogger()),
-      revokePurchases(payload, revokeOrder, createLogger()),
-    ])
-
-    // Bármelyik sorrend: a 22-es grant megmarad. A 11-es a revoke-tól függ.
-    expect(user.purchases).toContain(22)
-    expect(user.purchases).not.toContain(99)
   })
 })

@@ -2,7 +2,6 @@ import type { Payload } from 'payload'
 
 import type { Order, RefundIntent, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
-import { withUserPurchasesLock } from '../user-purchases-lock'
 import {
   BarionApiError,
   fetchPaymentState,
@@ -210,114 +209,6 @@ export function readRefundEntries(order: Order): OrderRefundEntry[] {
 /** A már visszatérített összeg a refunds-nyomból. */
 export function alreadyRefundedHuf(order: Order): number {
   return readRefundEntries(order).reduce((sum, entry) => sum + entry.amountHuf, 0)
-}
-
-function orderProductIds(order: Order): number[] {
-  const ids: number[] = []
-  for (const item of order.items ?? []) {
-    if (item.product === null || item.product === undefined) {
-      continue
-    }
-    ids.push(typeof item.product === 'object' ? item.product.id : item.product)
-  }
-  return ids
-}
-
-function userPurchaseIds(user: User): number[] {
-  return (user.purchases ?? []).map((entry) => (typeof entry === 'object' ? entry.id : entry))
-}
-
-/**
- * A purchases-jogosultság IDEMPOTENS levétele teljes refundnál.
- *
- * - Csak a ténylegesen eltávolítható termékeknél fut update: ami már nincs a
- *   felhasználó purchases-listájában, az no-op (dupla refund / részleges
- *   korábbi állapot esetén sem keletkezik felesleges írás).
- * - Védelem: ha a vevőnek UGYANAZRA a termékre van MÁS paid rendelése, az a
- *   jogosultság megmarad — a levétel kizárólag a visszatérített rendeléshez
- *   köthető hozzáférést szünteti meg.
- */
-export async function revokePurchases(
-  payload: Payload,
-  order: Order,
-  log: Logger,
-): Promise<{ revoked: number }> {
-  const customerRef = order.customer
-  const customerId =
-    typeof customerRef === 'object' && customerRef !== null ? customerRef.id : customerRef
-  if (customerId === null || customerId === undefined) {
-    log.warn('refund: a rendeléshez nem tartozik vevő — purchases-levétel kihagyva', {
-      orderId: order.id,
-    })
-    return { revoked: 0 }
-  }
-
-  const productIds = orderProductIds(order)
-  if (productIds.length === 0) {
-    return { revoked: 0 }
-  }
-
-  // User-szintű zár a purchases RMW körül (order → user sorrend: a hívó
-  // már tarthatja a `order:mutate:<id>` zárat). A findByID a záron BELÜL
-  // fut — a zár előtt olvasott snapshotot TILOS visszaírni (K1).
-  return withUserPurchasesLock(
-    payload,
-    customerId,
-    async () => {
-      // Más paid rendelés ugyanerre a termékre → a hozzáférés megmarad.
-      const protectedIds = new Set<number>()
-      for (const productId of productIds) {
-        const otherPaid = await payload.find({
-          collection: 'orders',
-          where: {
-            and: [
-              { customer: { equals: customerId } },
-              { status: { equals: 'paid' } },
-              { 'items.product': { equals: productId } },
-              { id: { not_equals: order.id } },
-            ],
-          },
-          limit: 1,
-          depth: 0,
-          overrideAccess: true,
-        } as unknown as Parameters<Payload['find']>[0])
-        if (otherPaid.totalDocs > 0) {
-          protectedIds.add(productId)
-        }
-      }
-
-      const user = (await payload.findByID({
-        collection: 'users',
-        id: customerId,
-        depth: 0,
-        overrideAccess: true,
-      })) as User
-
-      const removable = new Set(productIds.filter((id) => !protectedIds.has(id)).map(String))
-      const current = userPurchaseIds(user)
-      const remaining = current.filter((id) => !removable.has(String(id)))
-
-      if (remaining.length === current.length) {
-        // Nincs eltávolítható jogosultság — idempotens no-op.
-        return { revoked: 0 }
-      }
-
-      await payload.update({
-        collection: 'users',
-        id: customerId,
-        data: { purchases: remaining },
-        overrideAccess: true,
-      })
-      const revoked = current.length - remaining.length
-      log.info('refund: purchases-jogosultság levéve', {
-        userId: customerId,
-        revokedCount: revoked,
-        keptForOtherPaidOrders: [...protectedIds],
-      })
-      return { revoked }
-    },
-    log,
-  )
 }
 
 /** Rendelés-keresés orderNumber alapján (a zár előtt és a záron belül is ez fut). */

@@ -64,8 +64,14 @@ describe('auditActionLabel', () => {
     const { LEGACY_PURCHASE_AUDIT_ACTION } = await import('../lib/customer-import/execute')
     const { ORDER_CONFIRMATION_AUDIT_ACTION } = await import('../lib/order-paid')
     const { AUTOMATIC_REFUND_BLOCKED_ACTION } = await import('../lib/refund/automatic-block')
+    const { REFUND_ATTEMPT_AUDIT_ACTIONS } = await import('../lib/refund/attempt-audit')
+    const { REFUND_NOTICE_AUDIT_ACTION } = await import('../lib/refund/refund-notice')
+    const { REFUND_INVOICE_RETRY_QUEUED_ACTION } = await import('../lib/refund/recovery-receipts')
     const codes = [
       ...Object.values(RECEIPTS),
+      ...Object.values(REFUND_ATTEMPT_AUDIT_ACTIONS),
+      REFUND_NOTICE_AUDIT_ACTION,
+      REFUND_INVOICE_RETRY_QUEUED_ACTION,
       MEDIA_RECOVERY_ACTION,
       LEGACY_PURCHASE_AUDIT_ACTION,
       ORDER_CONFIRMATION_AUDIT_ACTION,

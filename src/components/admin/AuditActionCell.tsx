@@ -25,6 +25,11 @@ import type { JSX } from 'react'
  * - src/lib/media-recovery-provenance.ts: media.recovery.provenance.v1;
  * - src/lib/refund/recovery-receipts.ts és refund-recovery.ts: a refund-*
  *   nyugták, valamint order-refund és order-partial-refund;
+ * - src/lib/refund/attempt-audit.ts: a Barion-válasz sorai
+ *   (refund-provider-rejected/unknown/accepted);
+ * - src/lib/refund/refund-notice.ts: refund-notice-email (a vevői
+ *   visszatérítési értesítő elküldésének bizonyítéka);
+ * - src/lib/refund/recovery-receipts.ts: refund-invoice-retry-queued;
  * - src/lib/order-paid.ts: order-confirmation-email (a vásárlás-visszaigazoló
  *   levél elküldésének bizonyítéka, 45/2014. Korm. rendelet 18. §).
  * Az entitástípus a collection slugja; a feliratok a collectionök magyar
@@ -52,6 +57,11 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'order-partial-refund': 'Részleges visszatérítés',
   'order-confirmation-email': 'Visszaigazoló e-mail elküldése',
   'automatic-refund-blocked': 'Automatikus visszatérítés tartósan leállt',
+  'refund-provider-rejected': 'Visszatérítés: a Barion elutasította',
+  'refund-provider-unknown': 'Visszatérítés: bizonytalan Barion-válasz',
+  'refund-provider-accepted': 'Visszatérítés: a Barion elfogadta',
+  'refund-notice-email': 'Vevői visszatérítési értesítő',
+  'refund-invoice-retry-queued': 'Helyesbítő számla újrapróbálása sorba állítva',
 }
 
 export const AUDIT_ENTITY_LABELS: Readonly<Record<string, string>> = {
