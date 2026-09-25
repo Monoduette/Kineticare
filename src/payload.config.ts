@@ -51,6 +51,7 @@ import {
 } from './lib/appointment/validation'
 import { validateContactSubmissionData } from './lib/contact-submission'
 import { budapestDateTimeString } from './lib/date/budapest'
+import { kapcsolatiEmailPayloadbol } from './lib/contact-email-server'
 import { checkConnectionBudget, PG_POOL_MAX } from './lib/db-connection-budget'
 import {
   appointmentCustomerEmail,
@@ -388,12 +389,15 @@ const notifyStaffOnSubmission = async ({
   operation,
   formKind,
   headers,
+  payload,
 }: {
   doc: unknown
   operation: string
   formKind: unknown
   /** A beküldő kérés fejlécei: a napló request ID-jéhez. */
   headers?: Headers
+  /** A kérés Payloadja: a visszaigazolás válaszcíme a Kapcsolat oldalról jön. */
+  payload?: Payload
 }): Promise<unknown> => {
   const log = requestScopedLogger(headers)
   if (operation !== 'create') {
@@ -480,7 +484,17 @@ const notifyStaffOnSubmission = async ({
         availability: fieldValue(APPOINTMENT_AVAILABILITY_FIELD),
         ...(serverUrl ? { contactUrl: `${serverUrl}/kapcsolat` } : {}),
       })
-      const vissza = await sendMail({ to: beküldőEmail, ...visszaigazolas })
+      // A válaszcím a Kapcsolat oldalon beállított cím, mint a rendelés- és a
+      // visszatérítés-leveleknél (K14; Codex, PR #307). A feloldó hibánál a
+      // kódtartalékot adja.
+      const supportEmail = payload ? await kapcsolatiEmailPayloadbol(payload) : null
+      const vissza = await sendMail({
+        to: beküldőEmail,
+        ...visszaigazolas,
+        ...(supportEmail !== null && isUsableReplyToAddress(supportEmail)
+          ? { replyTo: supportEmail }
+          : {}),
+      })
       if (!vissza.ok) {
         log.warn('időpontkérés-visszaigazoló küldése sikertelen (best-effort)', {
           retryable: vissza.retryable,
@@ -1021,6 +1035,7 @@ export default buildConfig({
                 operation,
                 formKind: req.context[FORM_KIND_CONTEXT_KEY],
                 headers: req.headers,
+                payload: req.payload,
               }),
           ],
         },
