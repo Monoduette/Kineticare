@@ -2,7 +2,15 @@ import Link from 'next/link'
 import type { Payload } from 'payload'
 
 import { hasOwnerRole, type RoleUser } from '../../access/roles'
-import { formatAamLine, payloadAamFind, queryAamStatus, type AamStatus } from '../../lib/alerts/aam'
+import {
+  aamNeedsAttention,
+  formatAamLine,
+  formatAamUnavailableLine,
+  payloadAamFind,
+  readAamForDisplay,
+  type AamReading,
+  type AamStatus,
+} from '../../lib/alerts/aam'
 import { aamEstimateApplies } from '../../lib/alerts/aam-mode'
 import {
   attentionListHref,
@@ -43,6 +51,29 @@ import { logger } from '../../lib/logger'
  *
  * JOGOSULTSÁG: a számolás a bejelentkezett tulajdonos jogaival fut
  * (`overrideAccess: false`), a blokk más szerepkörnek meg sem jelenik.
+ *
+ * HA A KERET NEM SZÁMOLHATÓ (PR #305, devin5): egyetlen ismeretlen összegű
+ * tárgyévi számla vagy a lapozási korlát (`AamIncompleteError`) eddig az egész
+ * blokkot a betöltési hibára cserélte, így a teendők sem látszottak. Most a
+ * hiba csak az AAM-sor helyén áll, szám nélkül: a hiányzó érték sem 0, sem
+ * „rendben”, és a sor megmondja, hol a teendő (az erről szóló riasztás-levél,
+ * a riasztáskóddal). A doboz ilyenkor figyelem-változatot kap, mert az
+ * ismeretlen szint 70% fölött is lehet (`aamNeedsAttention`). Minden más hiba
+ * (adatbázis, jogosultság) továbbra is a teljes betöltési hibát adja.
+ * Források (megnyitva 2026-09-25):
+ * - NN/g, Error-Message Guidelines: „Display the error message close to the
+ *   error's source.”, és „Merely stating the problem is also not enough;
+ *   offer some potential remedies.”
+ *   https://www.nngroup.com/articles/error-message-guidelines/
+ * - Cloudscape Design System (AWS), Errors, Contextualize errors: „Show an
+ *   error alert where a component failed to render.”, és „provide error
+ *   messages to users in the context of where the error occurred when
+ *   possible, accounting for the scale and criticality of these errors.”
+ *   https://cloudscape.design/patterns/general/errors/
+ * - Agriculture Design System (az ausztrál mezőgazdasági minisztériumé),
+ *   Error state: „Include the error code in the message if possible.” Ezért
+ *   áll a mondatban a riasztáskód: a riasztási runbook táblázata ezzel
+ *   kulcsol. https://design-system.agriculture.gov.au/patterns/loading-error-empty-states
  */
 
 export const FIGYELMET_IGENYEL_CIM = 'Figyelmet igényel'
@@ -69,7 +100,7 @@ interface Adatok {
   counts: AttentionCounts
   /** A számokkal egy hívásban épült definíciók: a linkek feltételei ezekből jönnek. */
   definitions: readonly AttentionDefinition[]
-  aam: AamStatus | null
+  aam: AamReading | null
 }
 
 async function adatokBetoltese(props: FigyelmetIgenyelProps): Promise<Adatok> {
@@ -78,8 +109,9 @@ async function adatokBetoltese(props: FigyelmetIgenyelProps): Promise<Adatok> {
   const vatMode = props.vatMode ?? process.env.SZAMLAZZ_AFAKULCS
   const [{ counts, definitions }, aam] = await Promise.all([
     resolveAttention(payloadAttentionSources(payload, { overrideAccess: false, user }), nowMs),
+    // A nem számolható keret nem buktatja a blokkot (readAamForDisplay).
     aamEstimateApplies(vatMode)
-      ? queryAamStatus(payloadAamFind(payload, { overrideAccess: false, user }), nowMs)
+      ? readAamForDisplay(payloadAamFind(payload, { overrideAccess: false, user }), nowMs)
       : Promise.resolve(null),
   ])
   return { counts, definitions, aam }
@@ -94,6 +126,27 @@ function AamSor({ aam }: { aam: AamStatus }) {
       {rendben ? null : 'Egyeztess a könyvelővel az áfakörbe lépésről. '}
       {AAM_MEGJEGYZES}
     </p>
+  )
+}
+
+/**
+ * A keret most nem számolható: szám és szint helyett egy mondat, amely a
+ * riasztásra mutat. Az `AAM_MEGJEGYZES` itt nem áll, mert „ez a szám”-ra
+ * utal, szám pedig nincs.
+ */
+function AamNemSzamolhatoSor({ year }: { year: number }) {
+  return (
+    <p className="kc-admin-notice__szoveg" data-aam-szint="nem-szamolhato">
+      <strong>{formatAamUnavailableLine(year)}</strong>
+    </p>
+  )
+}
+
+function AamResz({ aam }: { aam: AamReading }) {
+  return aam.kind === 'szamolt' ? (
+    <AamSor aam={aam.status} />
+  ) : (
+    <AamNemSzamolhatoSor year={aam.year} />
   )
 }
 
@@ -125,7 +178,7 @@ export async function FigyelmetIgenyel(props: FigyelmetIgenyelProps) {
   const { counts, definitions, aam } = adatok
   const osszes = attentionTotal(counts)
   const adminRoute = props.payload.config.routes.admin
-  const figyelem = osszes > 0 || (aam !== null && aam.level !== 'rendben')
+  const figyelem = osszes > 0 || aamNeedsAttention(aam)
   const tetelek = definitions.filter(
     (definicio) => definicio.reszhalmaz !== true && counts[definicio.key] > 0,
   )
@@ -176,7 +229,7 @@ export async function FigyelmetIgenyel(props: FigyelmetIgenyelProps) {
           </ul>
         </>
       )}
-      {aam === null ? null : <AamSor aam={aam} />}
+      {aam === null ? null : <AamResz aam={aam} />}
     </section>
   )
 }

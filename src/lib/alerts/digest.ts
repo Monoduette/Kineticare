@@ -7,7 +7,12 @@
  * payload-jobs enum miatt migrációt igényelne).
  *
  * A levél csak akkor megy ki, ha van teendő (lásd `src/lib/alerts/attention.ts`)
- * vagy az alanyi adómentes keret elérte a 70%-ot. Resend-idempotenciakulcs:
+ * vagy az alanyi adómentes keret elérte a 70%-ot, illetve most nem számolható
+ * (`aamNeedsAttention`). A nem számolható keret (`AamIncompleteError`) nem
+ * buktatja az összesítőt: a levél a teendők számaival kimegy, a keret-sor
+ * helyén egy „nem számolható” mondat áll, amely az erről szóló riasztás-levélre
+ * mutat (PR #305, devin5). Minden más lekérdezési hiba továbbra is a hívóé.
+ * Resend-idempotenciakulcs:
  * `digest-ÉÉÉÉ-HH-NN`. A kulcs 24 óráig él, ugyanazzal a kulccsal a második
  * kérés nem küld második levelet, eltérő tartalomnál 409-et ad
  * (https://resend.com/docs/dashboard/emails/idempotency-keys).
@@ -50,7 +55,15 @@ import { budapestDateString, budapestDateTimeString } from '../date/budapest'
 import type { SendMailInput } from '../email'
 import type { SendResult } from '../email/types'
 import type { Logger } from '../logger'
-import { formatAamLine, payloadAamFind, queryAamStatus, type AamStatus } from './aam'
+import {
+  aamNeedsAttention,
+  formatAamLine,
+  formatAamUnavailableLine,
+  payloadAamFind,
+  readAamForDisplay,
+  type AamReading,
+  type AamStatus,
+} from './aam'
 import { aamEstimateApplies } from './aam-mode'
 import {
   attentionListHref,
@@ -223,10 +236,6 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function aamNeedsAttention(aam: AamStatus | null): boolean {
-  return aam !== null && aam.level !== 'rendben'
-}
-
 function aamWarning(aam: AamStatus): string {
   switch (aam.level) {
     case 'tullepve':
@@ -249,7 +258,7 @@ function aamWarning(aam: AamStatus): string {
 export function buildDigestMail(input: {
   readonly counts: AttentionCounts
   readonly definitions: readonly AttentionDefinition[]
-  readonly aam: AamStatus | null
+  readonly aam: AamReading | null
   readonly nowMs: number
   readonly serverUrl: string
 }): DigestMail {
@@ -302,16 +311,22 @@ export function buildDigestMail(input: {
     htmlParts.push('<p>Fizetési, számlázási és visszatérítési teendő nincs.</p>')
   }
 
-  if (aam !== null) {
-    const line = `Alanyi adómentes keret, ${formatAamLine(aam)}.`
+  if (aam?.kind === 'nem-szamolhato') {
+    // Szám helyett egy mondat: a hiányzó érték sem 0, sem „rendben” (devin5).
+    const line = formatAamUnavailableLine(aam.year)
+    textLines.push(line, '')
+    htmlParts.push(`<p><strong>${escapeHtml(line)}</strong></p>`)
+  } else if (aam?.kind === 'szamolt') {
+    const status = aam.status
+    const line = `Alanyi adómentes keret, ${formatAamLine(status)}.`
     const note =
       'A keretbe a vállalkozás minden belföldi bevétele beleszámít, ez a szám csak a webshop számláit látja.'
     textLines.push(line)
     htmlParts.push(`<p>${escapeHtml(line)}`)
     if (aamNeedsAttention(aam)) {
-      textLines.push(`${aamWarning(aam)} Útmutató: ${AAM_RUNBOOK_PATH}`)
+      textLines.push(`${aamWarning(status)} Útmutató: ${AAM_RUNBOOK_PATH}`)
       htmlParts.push(
-        `<br><strong>${escapeHtml(aamWarning(aam))}</strong> Útmutató: ${escapeHtml(AAM_RUNBOOK_PATH)}`,
+        `<br><strong>${escapeHtml(aamWarning(status))}</strong> Útmutató: ${escapeHtml(AAM_RUNBOOK_PATH)}`,
       )
     }
     textLines.push(note, '')
@@ -366,7 +381,8 @@ async function retryPendingClaim(deps: DigestDeps, state: DigestState): Promise<
 }
 
 /**
- * Az összesítő, ha esedékes. A lekérdezési, a nyom-olvasási és a zár-hibát
+ * Az összesítő, ha esedékes. A lekérdezési (a nem számolható AAM-keret
+ * kivételével, lásd `readAamForDisplay`), a nyom-olvasási és a zár-hibát
  * a hívóra dobja (az order-poll riaszt, lásd poll-watch.ts), és a következő
  * próbát növekvő várakozás után engedi; a levélküldés hibája `hiba` vagy
  * `feladva` kimenet, nem dobás. Ha a napi zárat épp egy másik példány tartja,
@@ -397,7 +413,7 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
 
   let claims: DigestClaimPayload
   let snapshot: Awaited<ReturnType<typeof resolveAttention>>
-  let aam: AamStatus | null
+  let aam: AamReading | null
   try {
     claims = claimPayload(deps)
     if (await digestSentOn(claims, today)) {
@@ -410,8 +426,10 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
       payloadAttentionSources(deps.payload, { overrideAccess: true }),
       deps.nowMs,
     )
+    // A nem számolható keret nem hiba itt (readAamForDisplay): a levél a
+    // teendőkkel kimegy, a riasztást az aam.ts egyszer, fojtva írja meg.
     aam = aamEstimateApplies(deps.vatMode)
-      ? await queryAamStatus(payloadAamFind(deps.payload, { overrideAccess: true }), deps.nowMs)
+      ? await readAamForDisplay(payloadAamFind(deps.payload, { overrideAccess: true }), deps.nowMs)
       : null
   } catch (error) {
     recordAssemblyFailure(state, deps.nowMs)
@@ -425,7 +443,10 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   log.info('napi összesítő: számok', {
     ...counts,
     teendo: total,
-    ...(aam ? { aamNetHuf: aam.netHuf, aamLevel: aam.level } : {}),
+    ...(aam?.kind === 'szamolt'
+      ? { aamNetHuf: aam.status.netHuf, aamLevel: aam.status.level }
+      : {}),
+    ...(aam?.kind === 'nem-szamolhato' ? { aamLevel: aam.kind } : {}),
   })
 
   if (total === 0 && !aamNeedsAttention(aam)) {

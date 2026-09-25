@@ -33,9 +33,13 @@
  * Összeomlás egyik esetben sincs. Ha van címzett, de nincs e-mail-szolgáltató
  * (se `RESEND_API_KEY`, se `SMTP_HOST`), a levélmodul noop-szolgáltatója
  * `{ ok: true, provider: 'noop' }`-t ad, holott semmi nem ment ki (PR #305,
- * Codex): ezt NEM vesszük kézbesítésnek. A kód nem némul el egy órára, az
+ * Codex): ezt NEM vesszük kézbesítésnek. Nincs „levél elküldve” sor, az
  * elnyelt ismétlések száma megmarad, a próba után a levélplafon helye
- * felszabadul, és a hiányt naponta egyszer jelezzük (warn).
+ * felszabadul, és a hiányt naponta egyszer jelezzük (warn). A kód óránkénti
+ * fojtása viszont megmarad (PR #305, devin5): a szolgáltató a folyamat egész
+ * életére rögzül (`src/lib/email/provider.ts`), a beállításához redeploy
+ * kell, az pedig friss fojtással indul. A fojtás feloldása tehát semmit nem
+ * hozna, csak minden előforduláskor újra hívná a noop-szolgáltatót.
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -67,7 +71,7 @@ export const MAX_ALERT_MAILS_PER_HOUR = 20
 const HOUR_MS = 60 * 60 * 1000
 
 /** A hiányzó e-mail-szolgáltatóról legfeljebb ennyi időnként szólunk. */
-export const MAIL_PROVIDER_MISSING_WARN_MS = 24 * HOUR_MS
+const MAIL_PROVIDER_MISSING_WARN_MS = 24 * HOUR_MS
 
 /** A csatorna saját naplósorainak modulneve; ezeket soha nem küldjük tovább. */
 export const ALERT_SINK_MODULE = 'alerts'
@@ -198,10 +202,10 @@ export function createAlertSink(deps: AlertSinkDeps): AlertSinkHandle {
       result = { ok: false, provider: 'noop', retryable: true, error: errorText(error) }
     }
     if (result.ok && result.provider === 'noop') {
-      // Nincs e-mail-szolgáltató: semmi nem ment ki. A kód nem némul el, az
+      // Nincs e-mail-szolgáltató: semmi nem ment ki. A kód fojtása megmarad
+      // (a szolgáltató csak redeploy-jal változhat, lásd a fájl elejét), az
       // elnyelt ismétlések száma megmarad, és a foglalt helyet a levélplafon
       // visszakapja (a plafon a valódi leveleké).
-      releaseThrottledAlert(throttleKey)
       suppressedByCode.set(summary.alertCode, suppressed)
       const slot = mailTimestamps.lastIndexOf(nowMs)
       if (slot >= 0) {

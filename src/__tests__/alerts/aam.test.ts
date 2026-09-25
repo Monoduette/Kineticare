@@ -5,12 +5,12 @@ import {
   AAM_INCOMPLETE_ALERT_CODE,
   AamIncompleteError,
   aamContribution,
-  computeAamStatus,
   payloadAamFind,
   queryAamStatus,
   type AamFindFn,
   type AamIntentFindFn,
   type AamOrderInput,
+  type AamSources,
 } from '../../lib/alerts/aam'
 import { logger } from '../../lib/logger'
 import { createMemoryPayload } from './where-eval'
@@ -405,7 +405,7 @@ describe('queryAamStatus: a snapshot nélküli régi számla összege nem vész 
     expect(status.netHuf).toBe(expected)
   })
 
-  it('ha egyik forrásból sem ismert az összeg: hiba és fojtott RIASZTÁS a darabszámmal, keret-szint nélkül', async () => {
+  it('ha egyik forrásból sem ismert az összeg: hiba az érintett rendelésekkel és fojtott RIASZTÁS a darabszámmal, keret-szint nélkül', async () => {
     const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined)
     const orders = [
       { id: 1, ...LEGACY, items: [{ priceHufSnapshot: null, quantity: 1 }] },
@@ -414,23 +414,105 @@ describe('queryAamStatus: a snapshot nélküli régi számla összege nem vész 
     ]
     const sources = sourcesOf(orders)
 
+    // devin5: a hibát a tiszta számoló (egyetlen őr) dobja a rendelések
+    // azonosítóival; a lekérdezés csak riaszt és továbbdobja.
     const failure = await queryAamStatus(sources, NOW).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(AamIncompleteError)
-    expect(failure).toMatchObject({ ordersWithoutAmount: 2 })
+    expect(failure).toMatchObject({
+      year: 2026,
+      ordersWithoutAmount: 2,
+      orderIds: [1, 2],
+      message: expect.stringContaining('2 rendelésnél nem ismert a kiállított számla összege'),
+    })
     expect(errorLog).toHaveBeenCalledTimes(1)
     expect(errorLog).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^RIASZTÁS: az alanyi adómentes keret .* 2 rendelésnél hiányzik a kiállított számla összege\./,
+        /^RIASZTÁS: az alanyi adómentes keret .* 2 rendelésnél nem ismert a kiállított számla összege\./,
       ),
-      expect.objectContaining({ alertCode: AAM_INCOMPLETE_ALERT_CODE, year: 2026 }),
+      expect.objectContaining({
+        alertCode: AAM_INCOMPLETE_ALERT_CODE,
+        year: 2026,
+        ordersWithoutAmount: 2,
+        orderIds: [1, 2],
+      }),
     )
 
     // A következő megnyitás is hibát kap, a riasztás viszont fojtott.
     await expect(queryAamStatus(sources, NOW + 60_000)).rejects.toBeInstanceOf(AamIncompleteError)
     expect(errorLog).toHaveBeenCalledTimes(1)
-    // A tiszta számoló sem ad szintet a hiányos összegből.
-    expect(() => computeAamStatus(orders, 2026)).toThrow(AamIncompleteError)
   })
+})
+
+/**
+ * PR #305, devin5: az `aam-keret-nem-teljes` RIASZTÁS mindkét okra az egyetlen
+ * riasztás. A Figyelmet igényel blokk minden megnyitáskor, a napi összesítő
+ * minden próbálkozáskor újraszámol, ezért okonként és tárgyévenként naponta
+ * legfeljebb egyszer szólhat. A lapozási korlát riasztása eddig egyáltalán nem
+ * volt fojtva (minden megnyitás új riasztás), az ismeretlen összegé 6 óránként
+ * szólt újra. Az időtartamok szó szerint állnak, nem a konstansból: a konstans
+ * elrontását a teszt így észreveszi.
+ */
+describe('queryAamStatus: a nem teljes keret riasztása okonként naponta legfeljebb egyszer szól', () => {
+  const NOW = Date.parse('2026-09-24T08:00:00Z')
+  const HOUR_MS = 60 * 60 * 1000
+
+  const fullPageSources = (): AamSources => ({
+    orders: async () => ({
+      docs: Array.from({ length: 500 }, () => ({
+        invoiceStatus: 'issued',
+        invoiceCompletionDate: '2026-03-01',
+        totalHufSnapshot: 1,
+      })),
+      hasNextPage: true,
+    }),
+    committedIntents: async () => {
+      throw new Error('a lapozási korlátnál nem kell visszatérítési szándék')
+    },
+  })
+  const missingAmountSources = (): AamSources =>
+    payloadAamFind(
+      selectHonoringPayload({
+        orders: [
+          {
+            id: 5,
+            invoiceStatus: 'issued',
+            invoiceCompletionDate: '2026-02-01',
+            totalHufSnapshot: null,
+          },
+        ],
+        'refund-intents': [],
+      }).payload as never,
+      { overrideAccess: true },
+    )
+
+  afterEach(() => {
+    resetAlertThrottle()
+    vi.restoreAllMocks()
+  })
+
+  it.each<[string, () => AamSources]>([
+    ['lapozási korlát', fullPageSources],
+    ['ismeretlen összegű számla', missingAmountSources],
+  ])(
+    '%s: minden hívó hibát kap, a riasztás 23 óra múlva még fojtott, 24 óra múlva újra szól',
+    async (_ok, sources) => {
+      const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined)
+      const alerts = () =>
+        errorLog.mock.calls.filter(
+          ([, context]) => context?.alertCode === AAM_INCOMPLETE_ALERT_CODE,
+        )
+
+      for (const at of [NOW, NOW + 5 * 60_000, NOW + 7 * HOUR_MS, NOW + 23 * HOUR_MS]) {
+        await expect(queryAamStatus(sources(), at)).rejects.toBeInstanceOf(AamIncompleteError)
+      }
+      expect(alerts()).toHaveLength(1)
+
+      await expect(queryAamStatus(sources(), NOW + 24 * HOUR_MS)).rejects.toBeInstanceOf(
+        AamIncompleteError,
+      )
+      expect(alerts()).toHaveLength(2)
+    },
+  )
 })
 
 describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lapozási korlát)', () => {
