@@ -317,6 +317,25 @@ describe('BARION_SEND_3DS — nem ismert érték: egyszeri figyelmeztetés a nap
     },
   )
 
+  /**
+   * A kapcsolóba tévedésből titok is kerülhet (például a POSKey rossz mezőbe
+   * másolva). A figyelmeztetés a kulcs nevét mondja, az értékét soha: a logger
+   * csak kulcsnév alapján redaktál (REDACTED_KEYS, REDACT_KEY_MARKERS), egy
+   * ártatlan nevű mezőben az érték a naplóba jutna.
+   */
+  it('a figyelmeztetés a nyers értéket (a tévedésből ide másolt titkot) nem írja a naplóba', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const build = await freshBuild()
+    process.env.BARION_SEND_3DS = DUMMY_POS_KEY
+
+    build({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+
+    expect(send3dsWarnings(logSpy.mock.calls)).toHaveLength(1)
+    const output = logSpy.mock.calls.map((call) => String(call[0])).join('\n')
+    // Kisbetűsítve is: a kód a normalizált (kisbetűs) alakkal hasonlít.
+    expect(output.toLowerCase()).not.toContain(DUMMY_POS_KEY.toLowerCase())
+  })
+
   it.each<[string | undefined, 'NoPreference' | undefined]>([
     [undefined, 'NoPreference'],
     ['', 'NoPreference'],
@@ -471,6 +490,11 @@ function ownerAlertMail(entry: { message: string; context: Record<string, unknow
 
 const RUNBOOK = readFileSync(new URL(`../../${ALERT_RUNBOOK_PATH}`, import.meta.url), 'utf8')
 
+/** A runbook riasztáskód-táblázatának sora a kódhoz; a táblázaton kívüli említés nem teendő. */
+function runbookRow(alertCode: string | null): string | undefined {
+  return RUNBOOK.split('\n').find((line) => line.startsWith(`| \`${String(alertCode)}\` `))
+}
+
 function startBody(): Record<string, unknown> {
   const call = fetchMock.mock.calls[0] as [string, RequestInit]
   return JSON.parse(String(call[1].body ?? '{}')) as Record<string, unknown>
@@ -521,7 +545,7 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
     })
   })
 
-  it('a Barion ModelValidationError-ja (400) → a vevő az elutasítás szövegét kapja, RIASZTÁS a hibakóddal (a levélben is, runbook-sorral), a rendelés payment_failed', async () => {
+  it('a Barion ModelValidationError-ja (400) → a vevő az elutasítás szövegét kapja, RIASZTÁS a hibakóddal (a levélben is, a runbook-sor a vészkapcsolóhoz vezet), a rendelés payment_failed', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -559,36 +583,44 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
     expect(String(alert?.context.operatorHint)).toContain('nem felel meg a Barion szabályainak')
 
     // W1A-1: a tulajdonosi levél is megnevezi a Barion hibakódját (a
-    // providerErrorCodes és az operatorHint nem jut át a levél szűrőjén), és a
-    // riasztáskódhoz van teendő a runbookban.
+    // providerErrorCodes és az operatorHint nem jut át a levél szűrőjén). A
+    // riasztáskódnak saját sora van a runbook táblázatában, és az a levélben
+    // látható kódhoz a vészkapcsolót és a Railway Deploy-lépését adja.
     const mail = ownerAlertMail(alert ?? { message: '', context: {} })
     expect(mail.text).toContain('barionErrorKind: ModelValidationError')
     expect(mail.alertCode).toBe('a-barion-elutasitotta-a-fizetesinditast')
-    expect(RUNBOOK).toContain(`\`${String(mail.alertCode)}\``)
+    const runbookLine = runbookRow(mail.alertCode)
+    expect(runbookLine, 'a runbook táblázatában nincs sor ehhez a riasztáskódhoz').toBeDefined()
+    expect(runbookLine).toContain('ModelValidationError')
+    expect(runbookLine).toContain('`BARION_SEND_3DS`')
+    expect(runbookLine).toMatch(/Deploy/)
   })
 
-  it('ha a Barion első hibakódja üres, a levél a következő, nem üres kódot nevezi meg', async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          Errors: [
-            { ErrorCode: '', Title: 'x', Description: 'x' },
-            { ErrorCode: 'ModelValidationError', Title: 'x', Description: 'x' },
-          ],
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } },
-      ),
-    )
-    const { payload } = checkoutPayload()
-    const { log, errors } = captureLogger()
+  it.each<[string[], string]>([
+    [['', 'ModelValidationError'], 'ModelValidationError'],
+    [['', '  '], 'http-400'],
+  ])(
+    'üres Barion-hibakód (%j): a levél a következő nem üres kódot, ennek híján a HTTP-státuszt nevezi meg (%s)',
+    async (codes, expectedKind) => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            Errors: codes.map((code) => ({ ErrorCode: code, Title: 'x', Description: 'x' })),
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      const { payload } = checkoutPayload()
+      const { log, errors } = captureLogger()
 
-    await expect(
-      startCheckout({ payload, user: loggedInUser, input: checkoutInput, logger: log }),
-    ).rejects.toBeInstanceOf(CheckoutError)
+      await expect(
+        startCheckout({ payload, user: loggedInUser, input: checkoutInput, logger: log }),
+      ).rejects.toBeInstanceOf(CheckoutError)
 
-    const alert = errors.find((entry) => entry.message.startsWith('RIASZTÁS:'))
-    expect(alert?.context).toMatchObject({ providerErrorCodes: ['', 'ModelValidationError'] })
-    const mail = ownerAlertMail(alert ?? { message: '', context: {} })
-    expect(mail.text).toContain('barionErrorKind: ModelValidationError')
-  })
+      const alert = errors.find((entry) => entry.message.startsWith('RIASZTÁS:'))
+      expect(alert?.context).toMatchObject({ providerErrorCodes: codes })
+      const mail = ownerAlertMail(alert ?? { message: '', context: {} })
+      expect(mail.text).toContain(`barionErrorKind: ${expectedKind}`)
+    },
+  )
 })

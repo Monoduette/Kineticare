@@ -55,11 +55,14 @@ describe('classifyStartFailure — elutasított (fizetés nem jött létre)', ()
     )
   })
 
-  it('ModelValidationError: a teendő megnevezi a 3DS-vészkapcsolót (W1A-1)', () => {
+  it('ModelValidationError: a teendő megnevezi a 3DS-vészkapcsolót és a Railway Deploy-lépését (W1A-1)', () => {
     const failure = classifyStartFailure(barionError('http', 400, ['ModelValidationError']))
-    expect(failure.kind === 'rejected' ? failure.operatorHint : null).toContain(
-      'BARION_SEND_3DS=false',
-    )
+    const hint = failure.kind === 'rejected' ? failure.operatorHint : null
+    expect(hint).toContain('BARION_SEND_3DS=false')
+    // A Railway a változó mentését csak függőben tartja, a Deploy alkalmazza
+    // („staged changes that you must review and deploy”, docs.railway.com/guides/variables);
+    // e nélkül a vészkapcsoló nem él, és minden fizetésindítás tovább bukik.
+    expect(hint).toContain('Deploy gombbal')
   })
 
   it('az ismert kód kis-nagybetűtől függetlenül egyezik, az ismeretlenhez nincs teendő', () => {

@@ -276,6 +276,11 @@ function ownerAlertMail(entry: CapturedLogEntry): { alertCode: string | null; te
 
 const RUNBOOK = readFileSync(new URL(`../../${ALERT_RUNBOOK_PATH}`, import.meta.url), 'utf8')
 
+/** A runbook riasztáskód-táblázatának sora a kódhoz; a táblázaton kívüli említés nem teendő. */
+function runbookRow(alertCode: string | null): string | undefined {
+  return RUNBOOK.split('\n').find((line) => line.startsWith(`| \`${String(alertCode)}\` `))
+}
+
 const savedEnv: Record<string, string | undefined> = {}
 
 beforeAll(() => {
@@ -639,7 +644,7 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
    * tárolja; ilyen áron a rendelés nem jöhet létre, és a tulajdonos RIASZTÁS-t
    * kap (termékenként fojtva).
    */
-  it('10 Ft alatti ár → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva, a levél megnevezi a terméket)', async () => {
+  it('10 Ft alatti ár → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva; a levél megnevezi a terméket, a runbook-sor a valódi admin-menübe és a kurzus címére visz)', async () => {
     const product = { ...publishedProduct, priceInHUF: 5 } as unknown as Product
     const { payload, calls } = createMockPayload({ product })
     const { log, errors } = captureLogger()
@@ -662,11 +667,26 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
     expect(alerts[0]?.context).toMatchObject({ productId: 42, serverPriceHuf: 5, minimumHuf: 10 })
 
     // W1A-2: a levél csak a SAFE_ALERT_FIELDS mezőit mutatja; a productId nincs
-    // köztük, a `source` igen. A riasztáskódhoz teendő tartozik a runbookban.
+    // köztük, a `source` igen.
     const mail = ownerAlertMail(alerts[0] ?? { message: '', context: {} })
     expect(mail.text).toContain('source: product-42')
     expect(mail.alertCode).toBe('a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem')
-    expect(RUNBOOK).toContain(`\`${String(mail.alertCode)}\``)
+
+    // A riasztáskódnak saját sora van a runbook táblázatában, és a sor azzal a
+    // menüvel nevezi a helyet, amit a tulajdonos az admin oldalsávjában lát
+    // (csoport → gyűjtemény; WCAG 2.2 SC 3.2.4). A lista az azonosítóra nem
+    // keres (listSearchableFields), ezért a `product-<szám>` a kurzus admin-címén
+    // át vezet a kurzushoz.
+    const runbookLine = runbookRow(mail.alertCode)
+    expect(runbookLine, 'a runbook táblázatában nincs sor ehhez a riasztáskódhoz').toBeDefined()
+    const config = await configPromise
+    const products = config.collections.find((collection) => collection.slug === 'products')
+    expect(runbookLine?.replaceAll('**', '')).toContain(
+      `${String(products?.admin.group)} → ${String(products?.labels.plural)}`,
+    )
+    expect(runbookLine).toContain(
+      `${config.routes.admin}/collections/${String(products?.slug)}/<szám>`,
+    )
   })
 
   it('pontosan 10 Ft-os ár még vásárolható (a Barion minimuma „10 HUF or more")', async () => {
@@ -714,6 +734,21 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
   })
 
   /**
+   * Az ár nélküli 409 tartalmi szabályai (W1A-3, a jóváhagyott szöveg): mi
+   * történt, mi lett a pénzzel, mit tegyen a vevő. Összeget nem nevez, és nem
+   * ígéri, hogy az újraindítás működik: a frissített oldal mutatja, megvehető-e
+   * még a kurzus.
+   */
+  function expectPriceFreeConflictText(message: string): void {
+    expect(message).toContain('ára közben megváltozott')
+    expect(message).toContain('Pénzt nem vontunk le')
+    expect(message).toContain('Frissítsd az oldalt')
+    expect(message).not.toContain('a mostani ár')
+    expect(message).not.toMatch(/\d\s*Ft/)
+    expect(message).not.toMatch(/indítsd újra|próbáld újra|újraind/i)
+  }
+
+  /**
    * W1A-3: a hook a törölt vagy kikapcsolt árat 0 Ft-ként snapshotolja
    * (order-integrity.ts, `coursePriceHuf(product) ?? 0`). Ilyen árat nem
    * nevezhetünk „mostani árnak", és az újraindítás sem működne. Az 5 Ft új
@@ -721,7 +756,7 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
    * rögzíti: csak a Barion-minimumot elérő ár nevezhető meg.
    */
   it.each([[0], [5]])(
-    'a rendelés végösszege közben %i Ft lett → 409 ár nélküli szöveggel, a rendelés cancelled, Barion NEM hívódik',
+    'a rendelés végösszege közben %i Ft lett → 409 ár és újraindítási ígéret nélküli szöveggel, a rendelés cancelled, Barion NEM hívódik',
     async (snapshotHuf) => {
       const row: OrderRow = { id: 101, status: 'payment_pending', orderNumber: ORDER_NUMBER }
       const { payload } = createMockPayload({
@@ -745,9 +780,9 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
       )
 
       expect(error.status).toBe(409)
-      expect(error.message).not.toContain('a mostani ár')
       expect(error.message).not.toContain(formatPriceHuf(snapshotHuf))
       expect(error.message).toBe(CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE)
+      expectPriceFreeConflictText(error.message)
       expect(row.status).toBe('cancelled')
       expect(fetchMock).not.toHaveBeenCalled()
     },
@@ -789,8 +824,8 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
     )
 
     expect(error.status).toBe(409)
-    expect(error.message).not.toContain('a mostani ár')
     expect(error.message).toBe(CHECKOUT_PRICE_CHANGED_UNAVAILABLE_MESSAGE)
+    expectPriceFreeConflictText(error.message)
     expect(errors.map((entry) => entry.message)).toContain(
       'checkout-start: az árváltozás miatti lezárás sikertelen',
     )

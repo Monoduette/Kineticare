@@ -60,13 +60,16 @@ import {
  * Region, ReOrderIndicator, telefonszám). A BARION_SEND_3DS='false'
  * vészkapcsoló a négy 3DS-blokkot hagyja ki (az OrderNumbert nem), lásd
  * `barionSend3dsEnabled`. Az élesítés a tulajdonossal egyeztetett idősávban
- * történik, élő próbával (sandbox-kártyánál a 3DS nem fut): egy legalább
+ * történik, élő próbával (sandbox-kártyánál a 3DS nem fut): két, legalább
  * 10 Ft-os (`BARION_MIN_TRANSACTION_HUF`) termékre indított, a Barion-oldalon
- * fizetés nélkül otthagyott Payment/Start. Ez 0 Ft-ba kerül, és a 3DS-body-t
- * teljesen ellenőrzi, mert a ModelValidationError magából a Startból jön
- * vissza. A kihívás-ág (challenge) ellenőrzéséhez ezt követheti egy valódi,
- * legalább 10 Ft-os kártyás vásárlás és annak visszatérítése a Kineticare
- * adminjából.
+ * fizetés nélkül otthagyott Payment/Start, egy vendégként és egy
+ * bejelentkezett vevőként, mert a PayerAccountInformation a kettőben más
+ * (NoAccount, illetve AccountId + AccountCreated + a fiók korának sávja). Ez
+ * 0 Ft-ba kerül, és mindkét vevőtípus body-ját élőben ellenőrzi, mert a
+ * ModelValidationError magából a Startból jön vissza; a fiók korának többi
+ * sávját (amelybe a próbafiók nem esik) csak a fenti két forrás igazolja. A
+ * kihívás-ág (challenge) ellenőrzéséhez ezt követheti egy valódi, legalább
+ * 10 Ft-os kártyás vásárlás és annak visszatérítése a Kineticare adminjából.
  *
  * Recurring-előkészítés (jövőbeli tokenfizetés): az InitiateRecurrence és a
  * RecurrenceId csak akkor kerül a kérésbe, ha a BARION_RECURRING_ENABLED
@@ -227,8 +230,8 @@ function warnUnrecognisedSend3dsOnce(): void {
  * egyezést vár): a '0', 'off', 'no', 'ki', 'nem' NEM kapcsol ki. Hogy egy
  * ilyen, félreértett érték ne maradjon néma, a nem üres, se 'true', se
  * 'false' értékre a folyamat egyszer figyelmeztet a naplóban (a 3DS ilyenkor
- * bekapcsolva marad). Az útmutató: .env.example és
- * docs/uzemeltetes/11-riasztas-es-ugyelet.md.
+ * bekapcsolva marad). Az üzemeltetői útmutató:
+ * docs/uzemeltetes/11-riasztas-es-ugyelet.md („A 3DS-vészkapcsoló”).
  */
 export function barionSend3dsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.BARION_SEND_3DS

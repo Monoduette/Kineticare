@@ -97,8 +97,8 @@ nélkül, kötőjellel). A leggyakoribbak:
 | `hianyos-vevo-szamlazasi-adatok`                            | [05](05-szamla-storno-helyesbito-kezi.md), a vevőtől kérd el az adatot                                                                                                                                                                                                                                                                                                   |
 | `a-vevo-termek-parhoz-mar-letezik-mas-paid-rendeles`        | Dupla fizetés: [06](06-visszaterites.md) 5. pont                                                                                                                                                                                                                                                                                                                         |
 | `a-pending-repoll-ujraprobalasai-kimerultek`                | [02](02-fizetett-de-nincs-hozzaferes.md) 4. pont                                                                                                                                                                                                                                                                                                                         |
-| `a-barion-elutasitotta-a-fizetesinditast`                   | Fizetés nem megy: azonnal fejlesztő. Ha a levélben ModelValidationError áll, és közvetlenül egy deploy után jött: a Railway-en állítsd a `BARION_SEND_3DS` változót `false`-ra, majd a projekt tetején megjelenő sávban a „Deploy” gombbal alkalmazd a módosítást (enélkül nem lép életbe), utána szólj a fejlesztőnek. Részletek lent, „A 3DS-vészkapcsoló” szakaszban. |
-| `a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem` | Admin → Termékek → a levélben megnevezett termék (`product-<szám>`) ára: legalább 10 Ft legyen.                                                                                                                                                                                                                                                                          |
+| `a-barion-elutasitotta-a-fizetesinditast`                   | Fizetés nem megy: azonnal fejlesztő. Ha a levélben a ModelValidationError kód áll, és közvetlenül egy deploy után jött: a Railway-en add meg a `BARION_SEND_3DS` változót `false` értékkel, majd a projekt tetején megjelenő sávban a „Deploy” gombbal alkalmazd (enélkül nem lép életbe), utána szólj a fejlesztőnek. Részletek alább, „A 3DS-vészkapcsoló” szakaszban. |
+| `a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem` | Webshop → **Kurzusok**: a levélben a `source: product-<szám>` mutatja, melyik kurzusról van szó. A szám a kurzus azonosítója: a kurzus közvetlenül a `.../admin/collections/products/<szám>` címen nyílik meg, a listában pedig az „Ár (Ft)” oszlopban látszik a 10 Ft alatti ár. Az árat állítsd legalább 10 Ft-ra (csak a tulajdonos állíthatja).                      |
 
 Minden más kódnál: nézd meg a Railway naplóját a `@alertCode:<kód>` szűrővel,
 és ha a teendő nem egyértelmű, küldd el a fejlesztőnek a kódot és a
@@ -138,14 +138,17 @@ csökkentik annak esélyét, hogy a vevőnek a bankja külön megerősítést k�
 Ha a Barion valamelyik adatot nem fogadja el, minden fizetésindítást
 elutasít, és addig egyetlen vásárlás sem megy át.
 
-A kapcsoló a Railway-en, a Kineticare szolgáltatás változói között állítható:
+A kapcsoló a Railway-en, a Kineticare szolgáltatás változói (Variables)
+között állítható. Ha a változó még nincs a listán, a „New Variable” gombbal
+vedd fel.
 
 - **Üres vagy nincs beállítva:** a 3DS-adatok mennek (ez az alapállapot).
-- **`false`:** a négy adatblokk kimarad, a fizetésindítás a korábbi, 3DS
-  nélküli formában megy. A vásárlás így is működik, a vevő legfeljebb
-  gyakrabban kap megerősítést a bankjától.
-- **Minden más érték (`0`, `off`, `no`, `ki`, `nem` is):** semmit nem kapcsol
-  ki. A napló ilyenkor egyszer figyelmeztet.
+- **`true`:** ugyanaz, mint az üres: a 3DS-adatok mennek.
+- **`false` (kis- és nagybetű mindegy):** a négy adatblokk kimarad, a
+  fizetésindítás a korábbi, 3DS nélküli formában megy. A vásárlás így is
+  működik, a vevő legfeljebb gyakrabban kap megerősítést a bankjától.
+- **Minden más, nem üres érték (`0`, `off`, `no`, `ki`, `nem` is):** semmit
+  nem kapcsol ki, a 3DS-adatok mennek. A napló ilyenkor egyszer figyelmeztet.
 
 A változó mentése önmagában még semmit nem kapcsol: a Railway a módosítást
 függőben tartja, és a projektoldal tetején egy sávban jelzi. Kattints ott a
@@ -165,12 +168,18 @@ időpontban):
    várd meg, hogy az új deploy aktív (Active) legyen, és a `GET /admin`
    egészségellenőrzés átmenjen. Addig a szolgáltatás még 3DS nélkül fut, és
    a próba nem ellenőrizne semmit.
-1. Indíts egy fizetést egy legalább 10 Ft-os kurzusra, és a Barion fizetési
-   oldalán ne fizess, csak zárd be. Ez nem kerül pénzbe, és a 3DS-adatokat
-   teljesen ellenőrzi, mert egy elutasítás már a fizetésindításkor
-   visszajön.
-2. Ha a Barion fizetési oldala megnyílt, és nem jött
+1. Indíts két fizetést egy legalább 10 Ft-os kurzusra: egyet vendégként
+   (kijelentkezve, olyan e-mail-címmel, amelyhez nincs fiók), egyet pedig
+   bejelentkezve, olyan vevői fiókkal, amelyik még nem vette meg a kurzust. A
+   Barion fizetési oldalán egyiknél se fizess, csak zárd be. Ez nem kerül
+   pénzbe, és a próbához elég, mert egy elutasítás már a fizetésindításkor
+   visszajön. Két próba kell, mert a rendszer a vendégről és a bejelentkezett
+   vevőről más fiókadatot küld a Barionnak.
+2. Ha a Barion fizetési oldala mindkét esetben megnyílt, és nem jött
    `a-barion-elutasitotta-a-fizetesinditast` riasztás, a próba sikeres.
 3. Ha a bank megerősítési lépését is látni szeretnétek: egy valódi, legalább
    10 Ft-os kártyás vásárlás, majd annak visszatérítése a Kineticare
-   adminjából (a Barion felületén soha).
+   adminjából (a Barion felületén soha). A vásárlásról valódi számla, a
+   teljes visszatérítésről stornó készül, és a visszatérítéshez a
+   Barion-tárcában fedezet kell: előtte nézd át a [06](06-visszaterites.md)
+   útmutató 1. pontját.

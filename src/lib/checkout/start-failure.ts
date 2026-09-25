@@ -42,7 +42,9 @@ export const BARION_START_OPERATOR_HINTS: Readonly<Record<string, string>> = {
     '(BARION_ENVIRONMENT, BARION_API_URL, BARION_POSKEY_PROD / BARION_POSKEY_TEST)',
   ModelValidationError:
     'a Start-kérés valamelyik mezője nem felel meg a Barion szabályainak (a hibaüzenet címe megnevezi); ' +
-    'ha a 3DS-mezők egyikét nevezi meg, vagy közvetlenül deploy után jelentkezik: BARION_SEND_3DS=false a Railway-en, és szólj a fejlesztőnek',
+    'ha a 3DS-mezők egyikét nevezi meg, vagy közvetlenül deploy után jelentkezik: BARION_SEND_3DS=false a Railway-en, ' +
+    'majd a függő módosítást a Deploy gombbal alkalmazd (mentés után még nem él; docs/uzemeltetes/11-riasztas-es-ugyelet.md), ' +
+    'és szólj a fejlesztőnek',
   InvalidUser:
     'a fizetés valamelyik résztvevője nem teljesen regisztrált Barion-felhasználó (BARION_PAYEE_EMAIL)',
   UserCantReceiveEMoney:
