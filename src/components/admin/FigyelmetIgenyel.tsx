@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 
 import { hasOwnerRole, type RoleUser } from '../../access/roles'
 import { formatAamLine, payloadAamFind, queryAamStatus, type AamStatus } from '../../lib/alerts/aam'
+import { aamEstimateApplies } from '../../lib/alerts/aam-mode'
 import {
   attentionListHref,
   attentionTotal,
@@ -60,7 +61,7 @@ export interface FigyelmetIgenyelProps {
   user?: RoleUser | null
   /** Injektálható óra (teszthez). */
   nowMs?: number
-  /** A SZAMLAZZ_AFAKULCS értéke; '27' mellett az AAM-sor kimarad. */
+  /** A SZAMLAZZ_AFAKULCS értéke; az AAM-sor csak `AAM` mellett készül (`aamEstimateApplies`). */
   vatMode?: string
 }
 
@@ -77,9 +78,9 @@ async function adatokBetoltese(props: FigyelmetIgenyelProps): Promise<Adatok> {
   const vatMode = props.vatMode ?? process.env.SZAMLAZZ_AFAKULCS
   const [{ counts, definitions }, aam] = await Promise.all([
     resolveAttention(payloadAttentionSources(payload, { overrideAccess: false, user }), nowMs),
-    vatMode?.trim() === '27'
-      ? Promise.resolve(null)
-      : queryAamStatus(payloadAamFind(payload, { overrideAccess: false, user }), nowMs),
+    aamEstimateApplies(vatMode)
+      ? queryAamStatus(payloadAamFind(payload, { overrideAccess: false, user }), nowMs)
+      : Promise.resolve(null),
   ])
   return { counts, definitions, aam }
 }

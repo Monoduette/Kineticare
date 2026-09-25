@@ -148,25 +148,78 @@ WHERE status = 'refunded'
   AND invoice_attempts > 0;
 ```
 
-**C) Részleges visszatérítés helyesbítő nélkül:**
+**C) Visszatérítés helyesbítő nélkül (visszatérítésenként):**
+
+Minden sor egy visszatérítés, amelynek helyesbítő kellene, de nincs rá
+bizonyíték. Helyesbítőt a részleges visszatérítés kap, és a rendelést lezáró
+teljes visszatérítés, ha nem az első volt; az első, teljes visszatérítés
+stornót kap, azt a B) lekérdezés nézi. A lekérdezés ugyanazt a szabályt
+követi, mint az Irányítópult „Figyelmet igényel” blokkja
+(`src/lib/alerts/attention.ts`), de nincs 14 napos ablaka, és azt a
+visszatérítést is listázza, amelynek a helyesbítője el sem indult. Bizonyíték
+kétféle lehet:
+
+- a rendelésen tárolt helyesbítő-szám és sorszám. Ez csak egy visszatérítést
+  igazol, azt, amelyiknek a sorszáma szerepel benne. A rendelés csak a
+  legutóbbi helyesbítőt tárolja, ezért egy korábbi visszatérítés helyesbítője
+  akkor is hiányozhat, ha a rendelésen egy későbbié látszik;
+- az ugyanilyen sorszámú, lezárt (`committed`) visszatérítési szándék.
+
+A két óránál frissebb visszatérítés nem jelenik meg, mert a helyesbítő még
+készülhet, kivéve ha a legutóbbi kísérlet már sikertelen. A régi,
+visszatérítési szándék nélküli visszatérítéseknek csak a legutóbbi helyesbítője
+igazolt, a korábbiakat a Számlázz.hu-ban kell megkeresni a
+`KH-…-HELYESBITO-<sorszám>` külső azonosító alapján. Ha ott megvan, nincs
+teendő; ha nincs, állítsd ki kézzel
+([05](05-szamla-storno-helyesbito-kezi.md)).
 
 ```sql
-SELECT order_number, jsonb_array_length(refunds) AS visszateritesek,
-       corrective_invoice_seq, corrective_invoice_status
-FROM orders
-WHERE jsonb_typeof(refunds) = 'array'
-  AND jsonb_array_length(refunds)
-      - CASE WHEN refunds -> 0 ->> 'type' = 'full' THEN 1 ELSE 0 END
-      > coalesce(corrective_invoice_seq, 0);
+SELECT o.order_number, r.sorszam, r.bejegyzes ->> 'type' AS tipus,
+       r.bejegyzes ->> 'amountHuf' AS osszeg_huf, r.bejegyzes ->> 'refundedAt' AS visszateritve,
+       o.corrective_invoice_seq, o.corrective_invoice_number, o.corrective_invoice_status
+FROM orders o
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE WHEN jsonb_typeof(o.refunds) = 'array' THEN o.refunds ELSE '[]'::jsonb END
+) WITH ORDINALITY AS r(bejegyzes, sorszam)
+WHERE o.invoice_status = 'issued'
+  AND jsonb_typeof(r.bejegyzes) = 'object'
+  AND (r.bejegyzes ->> 'type' = 'partial'
+       OR (r.bejegyzes ->> 'type' = 'full' AND r.sorszam > 1))
+  AND NOT (o.corrective_invoice_number ~ '\S' AND o.corrective_invoice_seq = r.sorszam)
+  AND NOT EXISTS (
+    SELECT 1 FROM refund_intents ri
+    WHERE ri.order_id = o.id AND ri.state = 'committed' AND ri.refund_sequence = r.sorszam
+  )
+  AND CASE
+        WHEN o.corrective_invoice_status = 'failed' THEN true
+        WHEN jsonb_typeof(r.bejegyzes -> 'refundedAt') IS DISTINCT FROM 'string'
+          OR NOT pg_input_is_valid(r.bejegyzes ->> 'refundedAt', 'timestamptz') THEN true
+        ELSE (r.bejegyzes ->> 'refundedAt')::timestamptz < now() - interval '2 hours'
+      END
+ORDER BY o.order_number, r.sorszam;
 ```
+
+A `pg_input_is_valid` PostgreSQL 16-tól létezik; az éles adatbázis ennél
+újabb.
 
 **D) Elakadt visszatérítési szándék:**
 
+Lezárt a `committed` szándék, és az a `provider_failed`, amelyről igazolt, hogy
+a Barionnál nem történt visszautalás (ki van töltve a
+`reconciliation_checked_at` és a `reconciliation_reference`). Ez ugyanaz,
+amit az Irányítópult az elakadt visszatérítéseknél kihagy. Ilyen igazolás
+nélküli `provider_failed` sor rendesen nem létezhet; ha mégis megjelenik,
+adathiba, szólj a fejlesztőnek.
+
 ```sql
-SELECT ri.id, o.order_number, ri.state, ri.requested_amount_huf, ri.created_at
+SELECT ri.id, o.order_number, ri.state, ri.refund_sequence, ri.requested_amount_huf,
+       ri.created_at
 FROM refund_intents ri
 JOIN orders o ON o.id = ri.order_id
 WHERE ri.state <> 'committed'
+  AND NOT (ri.state = 'provider_failed'
+           AND ri.reconciliation_checked_at IS NOT NULL
+           AND ri.reconciliation_reference <> '')
   AND ri.created_at < now() - interval '15 minutes'
 ORDER BY ri.created_at;
 ```

@@ -7,7 +7,11 @@ import {
   FigyelmetIgenyel,
   NINCS_TEENDO_SZOVEG,
 } from '../../components/admin/FigyelmetIgenyel'
-import { GyakoriTeendok } from '../../components/admin/GyakoriTeendok'
+import {
+  GYAKORI_TEENDOK,
+  GyakoriTeendok,
+  type GyakoriTeendo,
+} from '../../components/admin/GyakoriTeendok'
 import { createMemoryPayload, orderIdsOpenedByHref } from './where-eval'
 
 /**
@@ -38,6 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 describe('FigyelmetIgenyel', () => {
@@ -144,6 +149,38 @@ describe('FigyelmetIgenyel', () => {
     expect(html).not.toContain('Alanyi adómentes')
   })
 
+  it('hiányzó áfakulcsnál (kikapcsolt számlázás) nincs AAM-sor és AAM-lekérdezés sem', async () => {
+    // Codex P2 (PR #305): a becslés csak a normalizált `AAM` mellett fut
+    // (aamEstimateApplies); a prop hiányában a blokk a környezetből olvas.
+    vi.stubEnv('SZAMLAZZ_AFAKULCS', undefined)
+    const { payload, findCalls } = payloadWith({
+      orders: [
+        {
+          id: 31,
+          status: 'paid',
+          invoiceStatus: 'issued',
+          invoiceCompletionDate: '2026-04-01',
+          totalHufSnapshot: 14_500_000,
+          createdAt: '2026-04-01T10:00:00.000Z',
+          updatedAt: '2026-04-01T10:00:00.000Z',
+        },
+      ],
+      'refund-intents': [],
+      'webhook-events': [],
+    })
+    const html = await htmlje(
+      FigyelmetIgenyel({ payload: payload as never, user: OWNER, nowMs: NOW }),
+    )
+    expect(html).toContain(NINCS_TEENDO_SZOVEG)
+    expect(html).not.toContain('Alanyi adómentes')
+    expect(
+      findCalls.some(
+        (call) =>
+          (call.select as Record<string, unknown> | undefined)?.invoiceCompletionDate === true,
+      ),
+    ).toBe(false)
+  })
+
   it('a lekérdezés hibájánál magyar magyarázat áll, az oldal nem dől el', async () => {
     const payload = {
       count: async () => {
@@ -174,5 +211,37 @@ describe('FigyelmetIgenyel', () => {
     const gyakori = html.indexOf('id="kc-gyakori-teendok-cim"')
     expect(figyelmet).toBeGreaterThan(-1)
     expect(figyelmet).toBeLessThan(gyakori)
+  })
+
+  it('a tulajdonos kártyák nélkül is látja a Figyelmet igényel blokkot', async () => {
+    // Devin (PR #305, GyakoriTeendok.tsx): a panel a kártyák hiányában a
+    // tulajdonosi blokk előtt tért vissza null-lal. Ma a Statisztika kártya
+    // gyűjtemény-jog nélkül is látszik, ezért a kártyalistát a teszt idejére
+    // kiürítjük: ez az az állapot, amikor egyetlen kártya sem látható.
+    const kartyak = GYAKORI_TEENDOK as GyakoriTeendo[]
+    const mentes = kartyak.splice(0, kartyak.length)
+    try {
+      const { payload } = payloadWith({
+        orders: [
+          {
+            id: 1,
+            status: 'paid',
+            invoiceStatus: 'none',
+            createdAt: minutesAgo(300),
+            updatedAt: minutesAgo(300),
+          },
+        ],
+        'refund-intents': [],
+        'webhook-events': [],
+      })
+      const html = await htmlje(
+        GyakoriTeendok({ payload: payload as never, permissions: {}, user: OWNER }),
+      )
+      expect(html).toContain('id="kc-figyelmet-cim"')
+      expect(html).toContain('>1 fizetett rendelés számla nélkül</a>')
+      expect(html).not.toContain('id="kc-gyakori-teendok-cim"')
+    } finally {
+      kartyak.push(...mentes)
+    }
   })
 })

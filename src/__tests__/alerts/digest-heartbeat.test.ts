@@ -226,7 +226,7 @@ describe('napi összesítő — küldés', () => {
     ).toBe(true)
   })
 
-  it('a 70%-os AAM-keret önmagában is levelet küld; 27%-os áfakulcsnál az AAM-sor kimarad', async () => {
+  it('a 70%-os AAM-keret AAM áfakulcsnál önmagában is levelet küld; hiányzó vagy 27%-os kulcsnál az AAM-sor kimarad', async () => {
     const invoiced = [
       {
         id: 10,
@@ -238,14 +238,20 @@ describe('napi összesítő — küldés', () => {
         updatedAt: '2026-04-01T10:00:00.000Z',
       },
     ]
-    const aam = digestHarness({ orders: invoiced })
+    const aam = digestHarness({ orders: invoiced, vatMode: 'AAM' })
     expect(await runDailyDigestIfDue(aam.deps(MORNING))).toBe('elkuldve')
     expect(aam.mails[0]?.text).toContain('Alanyi adómentes keret, 2026:')
     expect(aam.mails[0]?.text).toContain('A keret 70%-a elfogyott.')
 
-    const afas = digestHarness({ orders: invoiced, vatMode: '27' })
-    expect(await runDailyDigestIfDue(afas.deps(MORNING))).toBe('nincs-teendo')
-    expect(afas.sendMail).not.toHaveBeenCalled()
+    // Codex P2 (PR #305): a hiányzó kulcs (kikapcsolt számlázás) nem AAM.
+    for (const vatMode of [undefined, '27']) {
+      const nemAam = digestHarness({ orders: invoiced, vatMode })
+      expect(await runDailyDigestIfDue(nemAam.deps(MORNING))).toBe('nincs-teendo')
+      expect(nemAam.sendMail).not.toHaveBeenCalled()
+      const szamok = nemAam.entries.find((entry) => entry.msg === 'napi összesítő: számok')
+      expect(szamok?.context).toBeDefined()
+      expect(szamok?.context).not.toHaveProperty('aamNetHuf')
+    }
   })
 })
 

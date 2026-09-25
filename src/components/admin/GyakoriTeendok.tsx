@@ -463,13 +463,15 @@ function vanCount(
 
 export async function GyakoriTeendok({ payload, permissions, user }: GyakoriTeendokProps) {
   const teendok = lathatoTeendok(user, permissions)
+  // A tulajdonosi „Figyelmet igényel" blokk a kártyák ELÉ kerül: a beragadt
+  // pénz fontosabb a szerkesztői feladatoknál (FigyelmetIgenyel.tsx). A
+  // kártyáktól függetlenül jelenik meg: ha a tulajdonos egyetlen kártyát sem
+  // lát, a teendőit akkor is látnia kell.
+  const figyelmet = vanCount(payload) ? await FigyelmetIgenyel({ payload, user }) : null
   if (teendok.length === 0) {
-    return null
+    return figyelmet
   }
   const adminRoute = payload.config.routes.admin
-  // A tulajdonosi „Figyelmet igényel" blokk a kártyák ELÉ kerül: a beragadt
-  // pénz fontosabb a szerkesztői feladatoknál (FigyelmetIgenyel.tsx).
-  const figyelmet = vanCount(payload) ? await FigyelmetIgenyel({ payload, user }) : null
   const foOldalak = await FoOldalakGyorslinkjei({
     payload,
     permissions,

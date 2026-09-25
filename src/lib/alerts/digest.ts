@@ -25,6 +25,7 @@ import type { SendMailInput } from '../email'
 import type { SendResult } from '../email/types'
 import type { Logger } from '../logger'
 import { formatAamLine, payloadAamFind, queryAamStatus, type AamStatus } from './aam'
+import { aamEstimateApplies } from './aam-mode'
 import {
   attentionListHref,
   attentionTotal,
@@ -70,7 +71,7 @@ export interface DigestDeps {
   readonly nowMs: number
   /** A nyilvános gyökér-URL (linkekhez), pl. https://kineticare.hu. */
   readonly serverUrl: string
-  /** A SZAMLAZZ_AFAKULCS értéke: '27' mellett az AAM-sor kimarad. */
+  /** A SZAMLAZZ_AFAKULCS értéke: az AAM-sor csak `AAM` mellett készül (`aamEstimateApplies`). */
   readonly vatMode?: string
   readonly state?: DigestState
 }
@@ -238,10 +239,9 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
     payloadAttentionSources(deps.payload, { overrideAccess: true }),
     deps.nowMs,
   )
-  const aam =
-    deps.vatMode?.trim() === '27'
-      ? null
-      : await queryAamStatus(payloadAamFind(deps.payload, { overrideAccess: true }), deps.nowMs)
+  const aam = aamEstimateApplies(deps.vatMode)
+    ? await queryAamStatus(payloadAamFind(deps.payload, { overrideAccess: true }), deps.nowMs)
+    : null
   const total = attentionTotal(counts)
   log.info('napi összesítő: számok', {
     ...counts,
