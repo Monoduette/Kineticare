@@ -38,7 +38,6 @@ import {
   MAX_CORRECTIVE_ATTEMPTS,
 } from '../../lib/szamlazz/corrective'
 import { computeLineAmounts, VAT_RATE_PERCENT } from '../../lib/szamlazz/invoice'
-import { LOCKED_SECTION_HTTP_BUDGET_MS } from '../../lib/szamlazz/lock-budget'
 import type { InvoiceLookupResult } from '../../lib/szamlazz/pdf'
 import { SzamlazzApiError } from '../../lib/szamlazz/types'
 import type { Order } from '../../payload-types'
@@ -1125,7 +1124,7 @@ describe('issueCorrectiveInvoiceForOrder — az eredeti számla áfakulcsa (a-sz
     expect(warnings).toHaveLength(1)
     // rev2: automatikus újrapróbálás nincs (a corrective jobot semmi nem
     // állítja sorba); a valódi út a visszatérítési panel gombja.
-    expect(warnings[0]?.message).toContain('»Feldolgozás folytatása« gombjával újrapróbálható')
+    expect(warnings[0]?.message).toContain('„Feldolgozás folytatása” gombjával újrapróbálható')
     expect(warnings[0]?.message).not.toContain('automatikusan')
     expect(warnings[0]?.message).toContain('kézzel NE állítsd ki')
   })
@@ -1482,12 +1481,12 @@ describe('issueCorrectiveInvoiceForOrder — a zár alatti hívások közös id�
       }),
     ).rejects.toMatchObject({ retryable: true, kind: 'timeout' })
 
-    // Invariáns (lock-budget.ts): beküldés csak teljes timeouttal, a keretben.
-    for (const offset of postOffsets) {
-      expect(offset + ENABLED_CONFIG.timeoutMs).toBeLessThanOrEqual(LOCKED_SECTION_HTTP_BUDGET_MS)
-    }
     expect(postOffsets).toHaveLength(0)
     expect(order.correctiveInvoiceAttempts).toBe(1)
+    // Igénylés (visszatérítési intent) nélküli ág: a státusz 'failed', az ok
+    // pedig kimondja, hogy a kérés nem ment ki.
+    expect(order.correctiveInvoiceStatus).toBe('failed')
+    expect(order.correctiveInvoiceLastError).toContain('nem ment ki')
   })
 
   it('1 s-nál kevesebb hátralévő keretnél lekérdezés sem indul (a régi kulcsú keresés elmarad)', async () => {

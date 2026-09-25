@@ -47,10 +47,13 @@ import {
   VAT_RATE_PERCENT,
   type InvoiceLineAmounts,
 } from '../lib/szamlazz/invoice'
-import { LOCKED_SECTION_HTTP_BUDGET_MS } from '../lib/szamlazz/lock-budget'
 import type { OrderPaidMoment } from '../lib/szamlazz/paid-date'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from '../lib/szamlazz/pdf'
-import { SzamlazzApiError, type IssueInvoiceResult } from '../lib/szamlazz/types'
+import {
+  SzamlazzApiError,
+  type IssueInvoiceResult,
+  type IssueStornoResult,
+} from '../lib/szamlazz/types'
 import { budapestDateString, isIsoDateString } from '../lib/szamlazz/xml'
 import type { Order } from '../payload-types'
 
@@ -3148,14 +3151,297 @@ describe('issueInvoiceForOrder — a zár alatti hívások közös időkerete', 
       }),
     ).rejects.toMatchObject({ retryable: true, kind: 'timeout' })
 
-    // Invariáns (lock-budget.ts): beküldés csak teljes timeouttal, a keretben.
-    for (const offset of postOffsets) {
-      expect(offset + ENABLED_CONFIG.timeoutMs).toBeLessThanOrEqual(LOCKED_SECTION_HTTP_BUDGET_MS)
-    }
     expect(postOffsets).toHaveLength(0)
     // A pending-írás megtörtént (a kísérlet rögzült); a státusz pending marad,
     // így a resweep a beküldés előtti lekérdezéssel folytatja.
     expect(order.invoiceAttempts).toBe(1)
     expect(order.invoiceStatus).toBe('pending')
+  })
+})
+
+/**
+ * rev3 (breaker): a számla utáni inline stornó a számla-zár ALATT futott, a
+ * zár közös időkeretén kívül. A lekérdezések és a számla-beküldés után a
+ * stornó teljes timeoutú POST-ja akár 57 s-ig tartott volna a zár
+ * megszerzésétől, a zár-tranzakciót pedig a 60 s-os tétlenségi korlát a
+ * beküldés közben leöli (CLAUDE.md 7.). A stornó ezért a zár elengedése
+ * UTÁN fut; saját `storno:<id>` zárja és friss újraolvasása van.
+ *
+ * A mock a valódi withAdvisoryLock-ot hajtja (a `db.drizzle.transaction`-ön
+ * át): kulcsonként sorosít, mint a pg_advisory_xact_lock, és nyilvántartja,
+ * melyik zár van éppen fogva.
+ */
+describe('issueInvoiceForOrder — az inline stornó a számla-zár elengedése után fut', () => {
+  /** A zár kulcsa a `select pg_advisory_xact_lock(...)` lekérdezés paraméteréből. */
+  function lockKeyOf(query: unknown): string {
+    const chunks = (query as { queryChunks?: unknown[] }).queryChunks ?? []
+    const key = chunks.find((chunk): chunk is string => typeof chunk === 'string')
+    if (!key) {
+      throw new Error('TESZT-HIBA: a zár-lekérdezésből nem olvasható ki a kulcs')
+    }
+    return key
+  }
+
+  function createLockingPayload(
+    order: Order,
+    options: { failFindAt?: number; commitError?: Error } = {},
+  ) {
+    const held = new Set<string>()
+    const acquired: string[] = []
+    const tails = new Map<string, Promise<void>>()
+    const acquire = async (key: string): Promise<() => void> => {
+      const previous = tails.get(key) ?? Promise.resolve()
+      let release = (): void => undefined
+      const mine = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      tails.set(
+        key,
+        previous.then(() => mine),
+      )
+      await previous
+      held.add(key)
+      acquired.push(key)
+      return () => {
+        held.delete(key)
+        release()
+      }
+    }
+    let finds = 0
+    const payload = {
+      db: {
+        drizzle: {
+          transaction: async <T>(
+            run: (tx: { execute: (query: unknown) => Promise<unknown> }) => Promise<T>,
+          ): Promise<T> => {
+            let release = null as (() => void) | null
+            try {
+              const result = await run({
+                execute: async (query) => {
+                  release = await acquire(lockKeyOf(query))
+                  return undefined
+                },
+              })
+              // A lezárás (COMMIT) hibája: pl. a Postgres közben leölte a
+              // tétlen zár-tranzakciót.
+              if (options.commitError) {
+                throw options.commitError
+              }
+              return result
+            } finally {
+              release?.()
+            }
+          },
+        },
+      },
+      findByID: async () => {
+        finds += 1
+        if (finds === options.failFindAt) {
+          throw new Error('SZINTETIKUS adatbázis-hiba az újraolvasáskor')
+        }
+        return order
+      },
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        Object.assign(order, data)
+        return order
+      },
+    }
+    return { payload: payload as never, held, acquired }
+  }
+
+  /** A beküldés közben a rendelést visszatérítik (W7): a stornó a beküldés utáni ágon indul. */
+  const refundDuringPost = (order: Order) => async () => {
+    order.status = 'refunded'
+    return { szamlaszam: 'KIN-2026-W7' }
+  }
+
+  it.each([
+    {
+      path: 'átvétel: visszatérített rendelés, a korábbi beküldés számlája megvan',
+      order: () =>
+        createOrder({ status: 'refunded', invoiceStatus: 'pending', invoiceAttempts: 1 }),
+      invoiceNumber: 'KIN-2026-ELVESZETT',
+      postXml: () => forbiddenPost,
+    },
+    {
+      path: 'beküldés: a rendelést a beküldés közben visszatérítik',
+      order: () => createOrder(),
+      invoiceNumber: 'KIN-2026-W7',
+      postXml: refundDuringPost,
+    },
+  ])('$path — a stornó a számla-zár elengedése után indul', async (row) => {
+    const order = row.order()
+    const { payload, held, acquired } = createLockingPayload(order)
+    const heldAtStorno: string[][] = []
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-09-24',
+      queryByKulsoAzon: async (kulsoAzon) =>
+        row.invoiceNumber === 'KIN-2026-ELVESZETT' && kulsoAzon === INVOICE_KULSO_AZON
+          ? ownInvoice('KIN-2026-ELVESZETT')
+          : null,
+      postXml: row.postXml(order),
+      issueStorno: async (stornoOrder) => {
+        heldAtStorno.push([...held])
+        expect(stornoOrder.invoiceNumber).toBe(row.invoiceNumber)
+        return { outcome: 'storned', stornoNumber: 'ST-1' }
+      },
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: row.invoiceNumber })
+    // A számla-zár valóban megvolt (a mock nem a zár nélküli ágon futott) ...
+    expect(acquired).toEqual(['invoice:101'])
+    // ... de a stornó indulásakor már nem volt fogva.
+    expect(heldAtStorno).toEqual([[]])
+    expect(order.invoiceStatus).toBe('issued')
+    expect(order.invoiceNumber).toBe(row.invoiceNumber)
+  })
+
+  it.each([
+    {
+      failure: 'a stornó failed kimenettel zár',
+      failFindAt: undefined,
+      storno: async (): Promise<IssueStornoResult> => ({
+        outcome: 'failed',
+        reason: 'szintetikus végleges hiba',
+      }),
+      alert:
+        /^RIASZTÁS: a számla kiállt, de a rendelés közben refunded lett, és a stornó nem készült el/,
+    },
+    {
+      failure: 'a stornó dob',
+      failFindAt: undefined,
+      storno: async (): Promise<IssueStornoResult> => {
+        throw new SzamlazzApiError({
+          message: 'SZINTETIKUS időtúllépés a stornó beküldése után',
+          kind: 'timeout',
+          retryable: true,
+        })
+      },
+      alert:
+        /^RIASZTÁS: a számla kiállt, de a rendelés közben refunded lett, és a stornó hibával állt le/,
+    },
+    {
+      // Kezdeti olvasás, beküldés előtti újraolvasás, majd a 3. az egyeztetésé.
+      failure: 'a zár utáni újraolvasás dob',
+      failFindAt: 3,
+      storno: async (): Promise<IssueStornoResult> => {
+        throw new Error('TESZT-HIBA: olvasás nélkül nem indulhat stornó')
+      },
+      alert: /^RIASZTÁS: a számla kiállt, de a rendelés újraolvasása nem sikerült/,
+    },
+  ])(
+    'a zár utáni lépés hibája ($failure): a kimenet issued marad, és RIASZTÁS jelzi',
+    async (row) => {
+      const order = createOrder()
+      const { payload } = createLockingPayload(order, {
+        ...(row.failFindAt ? { failFindAt: row.failFindAt } : {}),
+      })
+      const { logger, logged } = captureLogs()
+      const result = await issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        issueDate: '2026-09-24',
+        queryByKulsoAzon: silentLookup,
+        postXml: refundDuringPost(order),
+        issueStorno: row.storno,
+      })
+
+      expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-W7' })
+      expect(order.invoiceStatus).toBe('issued')
+      expect(order.invoiceNumber).toBe('KIN-2026-W7')
+      expect(order.invoiceLastError).toBeNull()
+      const alerts = logged.filter((entry) => entry.level === 'error')
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.message).toMatch(row.alert)
+      expect(alerts[0]?.context).toMatchObject({
+        orderNumber: ORDER_NUMBER,
+        invoiceNumber: 'KIN-2026-W7',
+      })
+    },
+  )
+
+  it('párhuzamos második kiállító a stornó közben: a felszabadult záron átjut, no-opot ad, és nem sztornóz még egyszer', async () => {
+    const order = createOrder()
+    const { payload, held } = createLockingPayload(order)
+    let openStorno = (): void => undefined
+    const stornoGate = new Promise<void>((resolve) => {
+      openStorno = resolve
+    })
+    let stornoStarted = (): void => undefined
+    const stornoStartedSignal = new Promise<void>((resolve) => {
+      stornoStarted = resolve
+    })
+    const stornoCalls: string[][] = []
+    const issueStorno = async (): Promise<IssueStornoResult> => {
+      stornoCalls.push([...held])
+      stornoStarted()
+      await stornoGate
+      return { outcome: 'storned', stornoNumber: 'ST-1' }
+    }
+
+    const first = issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-09-24',
+      queryByKulsoAzon: silentLookup,
+      postXml: refundDuringPost(order),
+      issueStorno,
+    })
+    let second: IssueInvoiceResult | undefined
+    try {
+      await stornoStartedSignal
+      // Az első futás stornója még folyamatban van, amikor a második indul.
+      void issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-09-24',
+        queryByKulsoAzon: noLookup,
+        postXml: forbiddenPost,
+        issueStorno,
+      }).then((value) => {
+        second = value
+      })
+      await vi.waitFor(() => {
+        expect(second).toBeDefined()
+      })
+    } finally {
+      openStorno()
+    }
+
+    expect(second).toEqual({ outcome: 'already-issued', invoiceNumber: 'KIN-2026-W7' })
+    expect(await first).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-W7' })
+    expect(stornoCalls).toEqual([[]])
+  })
+
+  it('a zár lezárása (COMMIT) hibát ad a rögzített számla után: a stornó így is lefut, a hiba a hívóig jut', async () => {
+    const order = createOrder()
+    const commitError = new Error('SZINTETIKUS: a zár-tranzakciót a szerver lezárta')
+    const { payload, held } = createLockingPayload(order, { commitError })
+    const heldAtStorno: string[][] = []
+
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-09-24',
+        queryByKulsoAzon: silentLookup,
+        postXml: refundDuringPost(order),
+        issueStorno: async () => {
+          heldAtStorno.push([...held])
+          return { outcome: 'storned', stornoNumber: 'ST-1' }
+        },
+      }),
+    ).rejects.toBe(commitError)
+
+    expect(order.invoiceNumber).toBe('KIN-2026-W7')
+    expect(heldAtStorno).toEqual([[]])
   })
 })

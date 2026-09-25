@@ -592,7 +592,7 @@ async function performCorrectiveInvoiceForOrder(
    * Újrapróbálható (átmeneti) olvasási hibánál NINCS megtagadás: sem 'failed'
    * írás, sem „kézi rendezés kell" RIASZTÁS, csak figyelmeztetés, és a hiba
    * továbbmegy. Igénylés és beküldés nem történt. Automatikus újrapróbálás
-   * nincs: a visszatérítési panel „Feldolgozás folytatása" gombja (vagy egy
+   * nincs: a visszatérítési panel „Feldolgozás folytatása” gombja (vagy egy
    * kézzel sorba állított corrective-invoice-issue job) próbálja újra. Egy
    * kézi kiállításra felszólító riasztás mellett ez az újrapróbálás dupla
    * helyesbítőt adna.
@@ -627,7 +627,7 @@ async function performCorrectiveInvoiceForOrder(
       const message = error instanceof Error ? error.message : String(error)
       if (error instanceof SzamlazzApiError && error.retryable) {
         log.warn(
-          'az eredeti számla adatai átmeneti hiba miatt nem olvashatók ki — a helyesbítő most nem ment ki; a visszatérítési panel »Feldolgozás folytatása« gombjával újrapróbálható (kézzel NE állítsd ki)',
+          'az eredeti számla adatai átmeneti hiba miatt nem olvashatók ki — a helyesbítő most nem ment ki; a visszatérítési panel „Feldolgozás folytatása” gombjával újrapróbálható (kézzel NE állítsd ki)',
           {
             orderNumber,
             refundSeq: deps.refundSeq,

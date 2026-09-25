@@ -31,6 +31,11 @@ import { SzamlazzApiError, type SzamlazzClientConfig } from './types'
  * beküldés utáni állapotírásra. A beküldés utáni hívásoknak (71/152-feloldás)
  * a zár már nem véd beküldést: ha nekik nem marad keret, a hiba újrapróbálható,
  * és a következő futás a beküldés előtti lekérdezéssel dönt.
+ *
+ * A számla utáni inline stornó (invoice.ts, reconcileRefundsAfterIssue)
+ * szándékosan NEM a számla-zár alatt fut, hanem az elengedése után: a saját
+ * teljes timeoutú POST-ja a lekérdezések és a számla-beküldés után a keretbe
+ * már nem férne, a stornónak pedig saját `storno:<id>` zára van.
  */
 export const LOCKED_SECTION_HTTP_BUDGET_MS = 45_000
 

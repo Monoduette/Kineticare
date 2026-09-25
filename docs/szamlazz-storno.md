@@ -134,7 +134,7 @@ kiállítás az előző napra csúszott volna).
    - helyesbítőnél nem igazolható áfakulcs (lásd fent) → `failed` +
      `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál csak
      figyelmeztetés és újrapróbálható dobás, a státusz marad. Automatikus
-     újrapróbálás nincs: a visszatérítési panel „Feldolgozás folytatása"
+     újrapróbálás nincs: a visszatérítési panel „Feldolgozás folytatása”
      gombjával próbálható újra (kézi kiállítás ilyenkor TILOS);
    - helyesbítőnél a beküldés előtti egyéb átmeneti hiba (lekérdezés,
      elfogyott időkeret) → újrapróbálható dobás; a státusz marad, csak a

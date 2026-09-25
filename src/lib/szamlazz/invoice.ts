@@ -761,7 +761,8 @@ export interface IssueInvoiceForOrderDeps {
    * Injektálható stornó-kiállítás (teszteléshez); alapból a valódi
    * issueStornoForOrder. A refund-verseny (W7) utáni inline stornóhoz kell:
    * ha a számla kiállt, de közben a rendelés refunded lett, a stornót ITT
-   * állítjuk ki. queueStornoIssueJob TILOS (W5 — a sorbaállítás csapda).
+   * állítjuk ki, az `invoice:<id>` zár elengedése UTÁN (a stornó saját
+   * zárat használ). queueStornoIssueJob TILOS (W5 — a sorbaállítás csapda).
    * invoice.ts NEM importál a refund-orderből (ciklus: a refund a
    * szamlazz-modulból húz).
    */
@@ -808,9 +809,11 @@ export interface IssueInvoiceForOrderDeps {
  * a paid-átmenet jobja és a poll resweep ne POST-oljon egyszerre. A
  * Számlázz.hu HTTP a záron belül van (a refund mintája), a hívások közös
  * időkerettel (lock-budget.ts): a beküldés csak akkor indul, ha a teljes
- * timeoutja a zár-tranzakció tétlenségi korlátja előtt lezárul. Barion-hívás
- * NINCS ebben a zárban. Mockolt Payload (nincs drizzle) nem-productionben a zár
- * nélkül futtatja a `fn`-t.
+ * timeoutja a zár-tranzakció tétlenségi korlátja előtt lezárul. A kiállítás
+ * vagy átvétel utáni inline stornó NEM a zár alatt fut, hanem az elengedése
+ * után (saját `storno:<id>` zárral), mert a POST-ja a keretbe már nem férne.
+ * Barion-hívás NINCS ebben a zárban. Mockolt Payload (nincs drizzle)
+ * nem-productionben a zár nélkül futtatja a `fn`-t.
  */
 export async function issueInvoiceForOrder(
   deps: IssueInvoiceForOrderDeps,
@@ -826,7 +829,18 @@ export async function issueInvoiceForOrder(
     return { outcome: 'disabled' }
   }
 
-  return withAdvisoryLock(
+  /**
+   * A zár ELENGEDÉSE UTÁN futó lépés: a kiállítás vagy átvétel utáni
+   * visszatérítés-egyeztetés (az inline stornó). A stornó saját POST-ja nem
+   * fér a zár közös időkeretébe (lock-budget.ts): a lekérdezések után akár
+   * 44 s-nál indulna, és a zár-tranzakciót a 60 s-os tétlenségi korlát a
+   * beküldés közben ölné le. A zárra a stornónak nincs is szüksége: saját
+   * `storno:<id>` zár alatt, frissen újraolvasott rendelésen dönt, és egy
+   * korábbi beküldés után nem küld újra (F3). A lépés soha nem dob (a hibáit
+   * RIASZTÁS jelzi), így a kiállítás eredményét nem írja felül.
+   */
+  let afterLock = null as (() => Promise<void>) | null
+  const locked = withAdvisoryLock<IssueInvoiceResult>(
     deps.payload,
     `invoice:${deps.orderId}`,
     async () => {
@@ -1101,9 +1115,30 @@ export async function issueInvoiceForOrder(
        * - a-szamlazz-12: ha a számla előtt RÉSZLEGES visszatérítés történt, a
        *   teljes összegű számla mellé helyesbítő kell; ezt a refund-
        *   helyreállítás állítja ki, a számla oldaláról RIASZTÁS jelzi.
+       *
+       * A zár ELENGEDÉSE UTÁN fut (afterLock, lásd fent), és nem dob: az
+       * újraolvasás hibája is RIASZTÁS, a kiállítás eredménye marad. (Dobás
+       * esetén a job újrapróbálása a már rögzített számlán no-op volna, a
+       * stornó tehát némán elmaradna.)
        */
       const reconcileRefundsAfterIssue = async (invoiceNumber: string): Promise<void> => {
-        const latest = await rereadOrder()
+        let latest: Order | null
+        let issueStorno: NonNullable<IssueInvoiceForOrderDeps['issueStorno']>
+        try {
+          latest = await rereadOrder()
+          issueStorno = deps.issueStorno ?? (await import('./storno')).issueStornoForOrder
+        } catch (reconcileError) {
+          orderLog.error(
+            'RIASZTÁS: a számla kiállt, de a rendelés újraolvasása nem sikerült, így nem dönthető el, kell-e stornó vagy helyesbítő — ellenőrizd a rendelés visszatérítéseit',
+            {
+              orderNumber,
+              invoiceNumber,
+              error:
+                reconcileError instanceof Error ? reconcileError.message : String(reconcileError),
+            },
+          )
+          return
+        }
         if (!latest) {
           return
         }
@@ -1123,7 +1158,6 @@ export async function issueInvoiceForOrder(
         if (latest.status !== 'refunded' || !recordedInvoice || hasStorno) {
           return
         }
-        const issueStorno = deps.issueStorno ?? (await import('./storno')).issueStornoForOrder
         const orderForStorno: Order = { ...latest, invoiceNumber: recordedInvoice }
         try {
           const stornoResult = await issueStorno(orderForStorno, {
@@ -1166,7 +1200,7 @@ export async function issueInvoiceForOrder(
           via,
           attempts,
         })
-        await reconcileRefundsAfterIssue(szamlaszam)
+        afterLock = () => reconcileRefundsAfterIssue(szamlaszam)
         return { outcome: 'issued', invoiceNumber: szamlaszam }
       }
 
@@ -1451,7 +1485,7 @@ export async function issueInvoiceForOrder(
             { invoiceNumber: result.szamlaszam, agentErrorCode: result.notificationError.code },
           )
         }
-        await reconcileRefundsAfterIssue(result.szamlaszam)
+        afterLock = () => reconcileRefundsAfterIssue(result.szamlaszam)
         return { outcome: 'issued', invoiceNumber: result.szamlaszam }
       } catch (error) {
         // 71/152 — „Már létező rendelésszám": nem hiba, hanem idempotencia-találat.
@@ -1560,4 +1594,14 @@ export async function issueInvoiceForOrder(
     },
     log,
   )
+  try {
+    return await locked
+  } finally {
+    // A zár véget ért (sikeres lezárásnál és akkor is, ha a lezárás hibát
+    // adott: a számla állapota külön kapcsolaton már rögzült, a stornó tehát
+    // ilyenkor is kell).
+    if (afterLock) {
+      await afterLock()
+    }
+  }
 }

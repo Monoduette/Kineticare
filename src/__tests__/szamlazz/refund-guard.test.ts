@@ -7,6 +7,7 @@ import { issueStornoForOrder } from '../../lib/szamlazz/storno'
 import type { InvoiceLookupResult } from '../../lib/szamlazz/pdf'
 import { RECEIPTS, writeReceipt } from '../../lib/refund/recovery-receipts'
 import { claimManagedRefundDocument } from '../../lib/szamlazz/refund-guard'
+import { SzamlazzApiError } from '../../lib/szamlazz/types'
 import type { RefundIntent } from '../../payload-types'
 
 // Az eredeti számla adat-lekérdezése (áfakulcs-ellenőrzés, a-szamlazz-13):
@@ -212,6 +213,37 @@ describe('intent-managed refunds through real invoice helpers', () => {
     )
     expect(await f.recover()).toMatchObject({ recoveryStatus: 'manual_review' })
     expect(f.post).not.toHaveBeenCalled()
+  })
+
+  // rev3 (breaker): a „nem ment kérés” ágat egyedül a postStarted jelző őrzi.
+  // Ha a jelző a POST indulása után hamis maradna, egy elküldött, bizonytalan
+  // kimenetű beküldést is „nem indult el”-nek jelentenénk, és a tulajdonos
+  // kézzel kiállítaná a már létező helyesbítőt (dupla NAV-bizonylat).
+  it('an uncertain POST after the claim is never reported as "no request reached Számlázz.hu"', async () => {
+    const f = realDocuments()
+    documents.corrective.mockRejectedValue(new Error('SYNTHETIC pause before invoicing'))
+    await expect(f.start({ amountHuf: 5000 })).rejects.toThrow()
+    f.post.mockImplementation(async () => {
+      throw new SzamlazzApiError({
+        message: 'SYNTHETIC timeout after send',
+        kind: 'timeout',
+        retryable: true,
+      })
+    })
+    const errors: string[] = []
+    const logger = {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: () => undefined,
+      error: (message: string) => errors.push(message),
+      child: () => logger,
+    }
+    await expect(issueCorrectiveInvoiceForOrder(f.order, { ...f.deps, logger })).rejects.toThrow(
+      'SYNTHETIC timeout after send',
+    )
+    expect(f.post).toHaveBeenCalledTimes(1)
+    expect(errors.some((message) => message.includes('nem indult el'))).toBe(false)
+    expect(f.order.correctiveInvoiceLastError ?? '').not.toContain('nem ment kérés')
   })
 
   it('a standalone claim made before recovery prevents the recovery path from submitting', async () => {
