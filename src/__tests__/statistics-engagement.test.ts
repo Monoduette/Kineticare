@@ -490,8 +490,9 @@ describe('CourseEngagementSection', () => {
           courses: [
             sor({
               notStarted: 30,
-              notStartedNames: Array.from({ length: NOT_STARTED_NAME_LIMIT }, (_, i) =>
-                `Teszt Elek ${String(i + 1)}`,
+              notStartedNames: Array.from(
+                { length: NOT_STARTED_NAME_LIMIT },
+                (_, i) => `Teszt Elek ${String(i + 1)}`,
               ),
             }),
           ],
@@ -506,7 +507,9 @@ describe('CourseEngagementSection', () => {
       createElement(CourseEngagementSection, {
         engagement: {
           ...mintaReport,
-          courses: [sor({ notStarted: 4, notStartedNames: ['Kis Péter'], notStartedWithoutName: 3 })],
+          courses: [
+            sor({ notStarted: 4, notStartedNames: ['Kis Péter'], notStartedWithoutName: 3 }),
+          ],
         },
       }),
     )
@@ -650,7 +653,9 @@ describe('ŐR: a csonkolás miatt kihagyott hallgatókat a felület kimondja', (
         },
       }),
     )
-    expect(html).toContain('A kurzusnak a megjeleníthetőnél több adata van, ezért ez a névsor hiányos.')
+    expect(html).toContain(
+      'A kurzusnak a megjeleníthetőnél több adata van, ezért ez a névsor hiányos.',
+    )
   })
 
   it('kihagyás nélkül NEM állítja, hogy hiányos a lista', () => {
@@ -706,9 +711,7 @@ describe('ŐR: a csonkolás miatt kihagyott hallgatókat a felület kimondja', (
     const html = renderToStaticMarkup(
       createElement(CourseEngagementSection, {
         engagement: {
-          courses: [
-            sor({ notStarted: 2, notStartedNames: ['Kis Péter', 'Kis Péter'] }),
-          ],
+          courses: [sor({ notStarted: 2, notStartedNames: ['Kis Péter', 'Kis Péter'] })],
           truncated: false,
           skipped: 0,
           omitted: 0,
@@ -784,7 +787,13 @@ describe('ŐR: a tananyag nélküli kurzus külön megjelenési állapot', () =>
       {
         modules: null,
         videos: [
-          { id: 'v1', title: '1. lecke', streamAssetId: 'g1', status: 'processing', durationSec: 60 },
+          {
+            id: 'v1',
+            title: '1. lecke',
+            streamAssetId: 'g1',
+            status: 'processing',
+            durationSec: 60,
+          },
         ],
       } as Pick<Product, 'modules' | 'videos'>,
       true,
@@ -828,7 +837,9 @@ describe('ŐR: a statisztika-oldal nem ír ki e-mailt', () => {
 
   it('a névsorban a NÉV szerepel, az e-mail sehol', async () => {
     const { deps, calls } = createPayloadMock({
-      products: [{ id: 3, displayTitle: 'Otthoni kéztorna', sku: 'otthoni', audience: 'laikus', videos }],
+      products: [
+        { id: 3, displayTitle: 'Otthoni kéztorna', sku: 'otthoni', audience: 'laikus', videos },
+      ],
       usersByProduct: {
         3: [
           { id: 10, name: 'Kis Anna', email: 'kis.anna@pelda.hu' },
@@ -868,7 +879,7 @@ describe('StatisticsReport + kurzus-hatás integráció', () => {
       createElement(StatisticsReport, { report: revenueReport, engagement: null }),
     )
     expect(html).toContain('Statisztika')
-    expect(html).toContain('Havi bevétel')
+    expect(html).toContain('Havi befizetések (tájékoztató)')
     expect(html).toContain('Ki hol tart a kurzusokban')
     expect(html).toContain('nem tölthetők be')
   })
@@ -908,12 +919,12 @@ describe('StatisticsReport + kurzus-hatás integráció', () => {
       'Bevétel az elmúlt 12 hónapban',
       'Rendelések állapota',
       'Ki hol tart a kurzusokban',
-      'Havi bevétel',
+      'Havi befizetések (tájékoztató)',
       'Bevétel kurzusonként',
     ])
     // Az összesítő kártyák FÖLÖTT is van címsor (WCAG 2.2 SC 2.4.6).
     expect(html.indexOf('Bevétel az elmúlt 12 hónapban')).toBeLessThan(
-      html.indexOf('Összes bevétel (12 hónap)'),
+      html.indexOf('Bruttó befizetések (tájékoztató)'),
     )
   })
 })

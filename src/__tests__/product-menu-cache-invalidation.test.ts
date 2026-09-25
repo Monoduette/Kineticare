@@ -22,7 +22,7 @@ vi.mock('../lib/logger', async (importOriginal) => ({
 
 import { MENUS_CACHE_TAG } from '../lib/cache-tags'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
-import { ecommerce } from '../plugins/ecommerce'
+import { ecommerce, productUpdateLocksRow } from '../plugins/ecommerce'
 
 beforeAll(async () => {
   // Csak a plugin regisztrációját vizsgáljuk, adatbázis és Payload-indítás nélkül.
@@ -56,11 +56,13 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     const secondDelete = vi.fn()
     const beforeDelete = vi.fn()
     const beforeChange = vi.fn()
+    const beforeOperation = vi.fn()
     const hooks = {
       afterChange: [firstChange, secondChange],
       afterDelete: [firstDelete, secondDelete],
       beforeDelete: [beforeDelete],
       beforeChange: [beforeChange],
+      beforeOperation: [beforeOperation],
     }
     const products = await registeredProducts(hooks)
     expect(products.hooks?.afterChange).toHaveLength(3)
@@ -71,7 +73,19 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     expect(products.hooks?.beforeDelete?.[0]).toBe(preventCourseDeletionWithFiles)
     expect(products.hooks?.beforeDelete?.[1]).toBe(beforeDelete)
     expect(hooks.beforeDelete).toEqual([beforeDelete])
-    expect(products.hooks?.beforeChange).toBe(hooks.beforeChange)
+    // r2-termekor (rev1, rev2): a validálás nélküli írást és a munkatárs
+    // verzió-visszaállítását piszkozattá tevő hookok a gyáriak ELÉ kerülnek
+    // (beforeChange), illetve mögéjük (beforeOperation). PR #305 rev2-b: a
+    // fő sor zárolása a kollekció listájában áll, tehát az audit plugin
+    // később hozzáfűzött „before” olvasása előtt fut (a zár hatását a
+    // product-guards-db X1 és B1 tesztje méri).
+    expect(products.hooks?.beforeChange).toHaveLength(4)
+    expect(products.hooks?.beforeChange?.slice(2, 3)).toEqual(hooks.beforeChange)
+    expect(products.hooks?.beforeChange).toContain(productUpdateLocksRow)
+    expect(products.hooks?.beforeOperation).toHaveLength(2)
+    expect(products.hooks?.beforeOperation?.slice(0, 1)).toEqual(hooks.beforeOperation)
+    expect(hooks.beforeChange).toEqual([beforeChange])
+    expect(hooks.beforeOperation).toEqual([beforeOperation])
     expect(hooks.afterChange).toHaveLength(2)
     expect(hooks.afterDelete).toHaveLength(2)
   })

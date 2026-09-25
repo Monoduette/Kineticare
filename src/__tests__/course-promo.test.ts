@@ -3,6 +3,7 @@ import type { Config, Field } from 'payload'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { isOwnerFieldAccess } from '../access'
+import { MIN_PRICE_HUF, OWNER_ONLY_CHANGE_MESSAGE } from '../components/admin/huf-price'
 import {
   effectiveCoursePriceHuf,
   isCoursePromoActive,
@@ -212,7 +213,9 @@ describe('resolveCoursePromo', () => {
     expect(effectiveCoursePriceHuf({ priceInHUF: 19_900, priceInHUFEnabled: true }, now)).toBe(
       19_900,
     )
-    expect(effectiveCoursePriceHuf({ priceInHUF: 19_900, priceInHUFEnabled: false }, now)).toBeNull()
+    expect(
+      effectiveCoursePriceHuf({ priceInHUF: 19_900, priceInHUFEnabled: false }, now),
+    ).toBeNull()
     expect(
       effectiveCoursePriceHuf(
         { ...base, promoEnabled: true, promoStart: null, promoEnd: null, promoPriceHuf: 9_900 },
@@ -359,7 +362,9 @@ describe('validatePromoPriceHuf: kisebb a rendes árnál, zárás elleni védele
     const findByID = vi.fn(async () => {
       if (published === undefined)
         throw new Error('Ebben az esetben nem kellene a közzétett értéket olvasni.')
-      return { id: 2, promoPriceHuf: published }
+      // A fő táblás sor csak `_status: 'published'` mellett közzétett
+      // (r2-termekor: a másolat és a lomtár piszkozat-sort ír oda).
+      return { id: 2, _status: 'published', promoPriceHuf: published }
     })
     return { req: { user: { id: 1, role }, payload: { findByID } }, findByID }
   }
@@ -407,13 +412,18 @@ describe('validatePromoPriceHuf: kisebb a rendes árnál, zárás elleni védele
     expect(regularPriceHufFrom(null)).toBeNull()
   })
 
-  it('írásjog nélküli felhasználó (munkatárs): más mező mentése nem bukik el, a DB-t sem olvassa', async () => {
-    const { req, findByID } = reqFor('staff')
+  it('írásjog nélküli felhasználó (munkatárs): a változatlan, közzétett régi érték nem zárja ki', async () => {
+    const { req } = reqFor('staff', 99_000)
     expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(true)
-    // A Payload a munkatárs beküldött értékét eldobja és a tároltat teszi a helyére;
-    // a validátor akkor sem zár ki, ha a tárolt érték eltér az előzőtől.
-    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 12_345 }))).toBe(true)
-    expect(findByID).not.toHaveBeenCalled()
+  })
+
+  it('H2: a munkatárs közzététele nem viheti élesbe a tulajdonos hibás, csak piszkozatban álló akciós árát', async () => {
+    // A Payload a munkatárs értékét a legutóbbi verzióval (a tulajdonos
+    // piszkozatával) cseréli; a közzétett sorban más akciós ár áll.
+    const { req } = reqFor('staff', 59_900)
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(
+      OWNER_ONLY_CHANGE_MESSAGE,
+    )
   })
 
   it('tulajdonos, változatlan és közzétett régi érték: átmegy (más mező mentése nem bukik el)', async () => {
@@ -546,7 +556,8 @@ describe('products collection: az „Akciós megjelenés” csoport', () => {
     expect(promoPrice?.type === 'number' ? promoPrice.validate : undefined).toBe(
       validatePromoPriceHuf,
     )
-    expect(promoPrice?.type === 'number' ? promoPrice.min : undefined).toBe(1)
+    // r2-termekor: a validátor 10 Ft-os alsó határa a mező `min`-jében is áll.
+    expect(promoPrice?.type === 'number' ? promoPrice.min : undefined).toBe(MIN_PRICE_HUF)
     // Az örökölt mező a sémában marad, de rejtve: senki nem olvassa.
     const legacy = byName.get('promoOriginalPriceHuf')
     expect(legacy?.type).toBe('number')

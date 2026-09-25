@@ -168,3 +168,34 @@
 .kc-fo-oldalak .kc-fo-oldalak__oldalcim {
   overflow-wrap: anywhere;
 }
+
+/* „Figyelmet igényel" blokk (FigyelmetIgenyel.tsx), csak a tulajdonosnak.
+   A keretet, a hátteret és a szövegszínt a mért .kc-admin-notice és
+   .kc-admin-notice--figyelem szerződés adja (custom.scss, AA mindkét témán,
+   őr: admin-tema-kontraszt.test.ts); ide csak az elrendezés tartozik. A
+   linkek a notice-szerződés linkjei: aláhúzott (SC 1.4.1), legalább 24 px
+   magas doboz (SC 2.5.8), fókuszban a Payload --accessibility-outline-ja
+   (SC 2.4.7). A lista függőleges, mert minden sorhoz egymondatos teendő
+   tartozik; a doboz 38em széles, 320 px-en egy oszlop (SC 1.4.10). */
+.kc-figyelmet {
+  margin-bottom: calc(var(--base) * 1.5);
+}
+
+.kc-figyelmet .kc-figyelmet__lista {
+  flex-direction: column;
+  gap: calc(var(--base) * 0.4);
+  margin: calc(var(--base) * 0.4) 0;
+}
+
+.kc-figyelmet .kc-figyelmet__elem {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.kc-figyelmet .kc-figyelmet__elem a {
+  font-weight: 600;
+}
+
+.kc-figyelmet .kc-figyelmet__leiras {
+  display: block;
+}

@@ -115,15 +115,23 @@ ettől még fut. A Videótár panel env nélkül „nem tölthető be”.
 
 ## E2E-05 — Refund (visszatérítés)
 
-1. E2E-01-gyel készíts egy `paid` rendelést.
-2. Admin → Orders → a rendelés → Refund (teljes összeg).
-3. Barion sandbox felületen is ellenőrizd: a tranzakció visszatérítve.
+1. E2E-01-gyel készíts egy `paid` rendelést, és várj legalább 10 percet, amíg a
+   rendelésen a „Számla sorszáma” kitöltődik (a stornó az eredeti számlára hivatkozik).
+2. Nézd meg a Barion-tárca egyenlegét: legalább a visszatérítendő összeg legyen
+   rajta. A Barion a díjat a fizetéskor levonja, és visszatérítést csak fedezetből
+   teljesít; kevés egyenlegnél `TooLowBalanceToMakeRefund` hibát ad.
+3. Admin → Rendelések → a rendelés → Visszatérítés panel (teljes összeg).
+4. Barion sandbox felületen is ellenőrizd: a tranzakció visszatérítve.
+5. Kiegészítő próba: ugyanez **üres tárcával** (a panel hibát jelez, a rendelés
+   `paid` marad, új pénzmozgás nem indul), és **számla előtti** visszatérítés
+   (a stornó csak akkor készül, ha volt kiállított számla).
 
 **Várható állapot:**
 
-- Orders: `refunded`
+- Orders: `refunded`, a Stornószámla állapota „Stornózva”, a stornó sorszáma kitöltve
 - Az ügyfél `purchases` listájából a termék kikerül → `/kurzusaim` már nem mutatja,
   a paywall ismét zár (403)
+- Részletes tulajdonosi teendők hibánál: `docs/uzemeltetes/06-visszaterites.md`
 
 ## E2E-10 — Idempotencia (dupla callback)
 
@@ -141,21 +149,41 @@ ettől még fut. A Videótár panel env nélkül „nem tölthető be”.
 1. Fizess tesztkártyával, de a thank-you oldalon figyeld a pollingot: ha a
    callback késik, 2 perc után **„A fizetésed feldolgozása folyamatban…”**
    állapot + „e-mailben értesítünk” szöveg.
-2. Amikor a callback megérkezik (retry-ladder: 2/6/18/54/102 mp), az admin-ban
-   `paid` lesz; az oldal frissítésével a siker-állapot is megjelenik.
+2. A késő vagy elveszett callbacket két háttérfeladat pótolja: a `webhook-retry`
+   percenként újrafuttatja a már fogadott, de feldolgozásban elakadt eseményt,
+   az `order-poll` pedig ötpercenként a Barionnál rákérdez minden függő
+   fizetésre (v4 GetPaymentState). Az admin-ban legkésőbb a következő
+   order-poll futás után `paid` lesz; az oldal frissítésével a siker-állapot is
+   megjelenik.
+3. A Barion saját újraküldési sora (2/6/18/54/102 mp) CSAK akkor indul, ha a
+   callbackre nem 200 ment vissza (hibás vagy hiányzó PaymentId: 400, a
+   deduplikáló DB-lépés hibája: 500). Egy fogadott (200), de feldolgozásban
+   elakadt callbacket a Barion nem küld újra, azt a fenti két feladat pótolja.
 
 **Várható:** sosem `payment_failed` tévesen; a rendszer a v4 GetPaymentState
-alapján dönt, nem a callback payload alapján.
+alapján dönt, nem a callback payload alapján. A naplóban a pótlást
+„order-poll: elveszett callback pótolva” vagy „webhook-retry task lefutott”
+sor jelzi.
 
 ---
 
 ## Sikertelenség-kezelő kártyatesztek (kiegészítő)
 
-| Kártya                | Várható UI                    | Orders státusz   |
-| --------------------- | ----------------------------- | ---------------- |
-| `4444 8888 8888 4446` | fizetési hiba, újrapróbálható | `payment_failed` |
-| `4444 8888 8888 9999` | fedezethiány                  | `payment_failed` |
-| `4444 8888 8888 1111` | elutasítva                    | `payment_failed` |
+Az elutasított kártya NEM zárja le a Barion-fizetést: a fizetés `Prepared`
+vagy `Started` marad, a vevő a Barion oldalán újrapróbálhat. A rendelés addig
+`payment_pending`, amíg a vevő meg nem szakítja a fizetést, vagy le nem jár a
+30 perces fizetési ablak; akkor `cancelled` lesz (a Barion `Canceled`,
+`Expired` és `Failed` állapotát a rendszer egyaránt `cancelled`-re képezi le,
+`payment_failed` állapotot a Barion-út nem ír).
+
+| Kártya                | Várható UI                    | Orders státusz                                               |
+| --------------------- | ----------------------------- | ------------------------------------------------------------ |
+| `4444 8888 8888 4446` | fizetési hiba, újrapróbálható | `payment_pending`, megszakítás vagy lejárat után `cancelled` |
+| `4444 8888 8888 9999` | fedezethiány                  | `payment_pending`, megszakítás vagy lejárat után `cancelled` |
+| `4444 8888 8888 1111` | elutasítva                    | `payment_pending`, megszakítás vagy lejárat után `cancelled` |
+
+A lejárat utáni `cancelled` a callbackből vagy legkésőbb a következő
+ötperces order-poll futásból jön (a fizetés indítása után kb. 30–40 perc).
 
 ## Lezárás
 

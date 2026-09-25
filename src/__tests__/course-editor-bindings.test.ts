@@ -209,7 +209,7 @@ describe('course editor labels and texts (K34)', () => {
   it('a plugin ár-mezői köznyelvi feliratot kapnak, az access változatlan', async () => {
     const fields = paths((await build()).fields)
     expect(fields.get('priceInHUF')).toMatchObject({ label: 'Ár (Ft)' })
-    expect(fields.get('priceInHUFEnabled')).toMatchObject({ label: 'Megvásárolható' })
+    expect(fields.get('priceInHUFEnabled')).toMatchObject({ label: 'Fizetős kurzus' })
     for (const name of ['priceInHUF', 'priceInHUFEnabled']) {
       const field = fields.get(name)!
       expect('access' in field && field.access?.create).toBe(isOwnerFieldAccess)

@@ -1,13 +1,24 @@
+import type { SQL } from '@payloadcms/db-postgres/drizzle'
+import { PgDialect } from '@payloadcms/db-postgres/drizzle/pg-core'
 import type { PayloadRequest, Where } from 'payload'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   createStaleAwareBeforeSchedule,
+  MAX_RELEASED_JOBS_PER_TICK,
   scheduleLockKey,
+  STALE_JOB_RELEASE_AFTER_MS,
+  STALE_JOB_RELEASE_MESSAGE,
   STALE_SCHEDULED_JOB_MS,
+  STUCK_JOB_ALERT_COOLDOWN_MS,
 } from '../../jobs/schedule-guard'
 import { ORDER_MAINTENANCE_QUEUE } from '../../jobs/queues'
+import { resetAlertThrottle } from '../../lib/alert-throttle'
 import type { LogContext, Logger } from '../../lib/logger'
+
+afterEach(() => {
+  resetAlertThrottle()
+})
 
 /**
  * A beragadás-tűrő ÉS versenyhelyzet-biztos ütemezés-őr EGYSÉGTESZTJE.
@@ -22,6 +33,10 @@ import type { LogContext, Logger } from '../../lib/logger'
  * A tesztek a VALÓDI withAdvisoryLockot futtatják: a drizzle-mock FIFO-lánca
  * sorosítja a tranzakciókat, mint a Postgres advisory-zár — így a kétszálas
  * (rolling-deploy) verseny is hitelesen szimulálható.
+ *
+ * A beragadt sor lezárása feltételes SQL-írás; hogy élő vagy közben
+ * befejeződött sorba nem ír, azt a schedule-guard-db.test.ts méri valódi
+ * Postgresen. Itt a fixtúra csak azt adja meg, hány sort zárt le az adatbázis.
  */
 
 interface LogEntry {
@@ -88,10 +103,25 @@ interface QueueCall {
 interface Scenario {
   /** „Fut vagy futtatható" jobok száma a sorba állításokon FELÜL. */
   runnableOrActive: number
-  /** Ebből beragadt (processing: true + régen frissült). */
+  /** Ebből a 15 perces ütemezési küszöbnél régebbi (processing: true). */
   stale: number
+  /** Ebből ennyit zár le az adatbázis feltételes UPDATE-je (alapból mindet). */
+  released?: number
+  /** Ebből a lezárási korlátnál (STALE_JOB_RELEASE_AFTER_MS) régebbi (alapból 0). */
+  overdue?: number
   staleAfterMs?: number
   countThrows?: boolean
+  releaseThrows?: boolean
+  /** A lezárási korlát szerinti számolás hibája (a lezárás hibája után fut). */
+  overdueCountThrows?: boolean
+  /** Az új futás sorba állítása elbukik (például betelt vagy csak olvasható lemez). */
+  queueThrows?: boolean
+}
+
+/** A lezáró UPDATE lefordított alakja (szöveg + kötött paraméterek). */
+interface ReleaseStatement {
+  sql: string
+  params: unknown[]
 }
 
 const NOW = Date.parse('2026-08-10T12:00:00Z')
@@ -102,15 +132,36 @@ function isStaleCountQuery(where: Where): boolean {
   return conditions.some((condition) => 'processing' in condition)
 }
 
-function createHarness(scenario: Scenario) {
+/** A számolás `updatedAt < …` vágási időpontja, ha van. */
+function updatedAtCutoff(where: Where): unknown {
+  const conditions = Array.isArray(where.and) ? where.and : []
+  const cutoff = conditions.find((condition) => 'updatedAt' in condition) as
+    { updatedAt?: { less_than?: unknown } } | undefined
+  return cutoff?.updatedAt?.less_than
+}
+
+function createHarness(scenario: Scenario, clock: { now: number } = { now: NOW }) {
   const entries: LogEntry[] = []
   const seenWheres: Where[] = []
   const queueCalls: QueueCall[] = []
+  const releaseStatements: ReleaseStatement[] = []
   const { drizzle, lockParams } = createSerializingDrizzle()
+  const dialect = new PgDialect()
 
   const payload = {
     db: {
-      drizzle,
+      drizzle: {
+        ...drizzle,
+        // A beragadt sorok lezárása (egyetlen feltételes UPDATE).
+        execute: async (query: SQL) => {
+          releaseStatements.push(dialect.sqlToQuery(query))
+          if (scenario.releaseThrows) {
+            throw new Error('írás elutasítva')
+          }
+          const count = scenario.released ?? scenario.stale
+          return { rows: Array.from({ length: count }, (_, index) => ({ id: index + 1 })) }
+        },
+      },
       count: async ({ where }: { where: Where }) => {
         if (scenario.countThrows) {
           throw new Error('kapcsolat megszakadt')
@@ -119,15 +170,25 @@ function createHarness(scenario: Scenario) {
         // A beragadt-számlálás a fixtúrából jön; a „fut vagy futtatható"
         // számlálás a MÁR SORBA ÁLLÍTOTT jobokat is látja (mint a valódi DB) —
         // ez kell a K4 kétszálas próbához.
-        return {
-          totalDocs: isStaleCountQuery(where)
-            ? scenario.stale
-            : scenario.runnableOrActive + queueCalls.length,
+        if (!isStaleCountQuery(where)) {
+          return { totalDocs: scenario.runnableOrActive + queueCalls.length }
         }
+        if (
+          updatedAtCutoff(where) === new Date(clock.now - STALE_JOB_RELEASE_AFTER_MS).toISOString()
+        ) {
+          if (scenario.overdueCountThrows) {
+            throw new Error('kapcsolat megszakadt')
+          }
+          return { totalDocs: scenario.overdue ?? 0 }
+        }
+        return { totalDocs: scenario.stale }
       },
     },
     jobs: {
       queue: async (args: QueueCall) => {
+        if (scenario.queueThrows) {
+          throw new Error('nincs hely az eszközön')
+        }
         queueCalls.push(args)
         return { id: queueCalls.length }
       },
@@ -138,7 +199,7 @@ function createHarness(scenario: Scenario) {
   const beforeSchedule = createStaleAwareBeforeSchedule({
     taskSlug: TASK_SLUG,
     logger: createRecordingLogger(entries),
-    now: () => NOW,
+    now: () => clock.now,
     ...(scenario.staleAfterMs === undefined ? {} : { staleAfterMs: scenario.staleAfterMs }),
   })
 
@@ -153,7 +214,7 @@ function createHarness(scenario: Scenario) {
       req,
     })
 
-  return { entries, seenWheres, queueCalls, lockParams, waitUntil, run }
+  return { entries, seenWheres, queueCalls, releaseStatements, lockParams, waitUntil, run }
 }
 
 describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt történik)', () => {
@@ -195,31 +256,248 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     expect(entries).toHaveLength(0)
   })
 
-  it('csak BERAGADT job → sorba állítás + RIASZTÁS', async () => {
-    const { run, queueCalls, entries } = createHarness({ runnableOrActive: 1, stale: 1 })
+  it('csak BERAGADT job → a sort lezárja, sorba állít, EGY riasztás kóddal', async () => {
+    const { run, queueCalls, entries, releaseStatements } = createHarness({
+      runnableOrActive: 1,
+      stale: 1,
+    })
 
     const result = await run()
 
     expect(result.shouldSchedule).toBe(false)
     expect(queueCalls).toHaveLength(1)
-    expect(entries.some((entry) => entry.level === 'error' && entry.msg.includes('RIASZTÁS'))).toBe(
-      true,
+    // A lezárás: egyetlen UPDATE erre a queue-ra és taskra, a LEZÁRÁSI korlát
+    // (a futás kezdete + a legrosszabb futásidő) szerinti vágással, nem a 15
+    // perces ütemezési küszöbbel; tickenként korlátozva, a lezárás okával.
+    expect(releaseStatements).toHaveLength(1)
+    const params = releaseStatements[0]?.params ?? []
+    expect(params).toEqual(
+      expect.arrayContaining([
+        ORDER_MAINTENANCE_QUEUE,
+        TASK_SLUG,
+        new Date(NOW - STALE_JOB_RELEASE_AFTER_MS).toISOString(),
+        MAX_RELEASED_JOBS_PER_TICK,
+      ]),
     )
-    const alert = entries.find((entry) => entry.level === 'error')
-    expect(alert?.msg).toContain('beragadt job')
-    expect(alert?.context).toMatchObject({ queue: ORDER_MAINTENANCE_QUEUE, stuckJobs: 1 })
+    expect(params).not.toContain(new Date(NOW - STALE_SCHEDULED_JOB_MS).toISOString())
+    const errorJson = params.find(
+      (param) => typeof param === 'string' && param.includes('releasedBy'),
+    )
+    expect(JSON.parse(String(errorJson))).toMatchObject({
+      message: STALE_JOB_RELEASE_MESSAGE,
+      releasedBy: 'schedule-guard',
+    })
+    const alerts = entries.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.msg).toContain('RIASZTÁS')
+    expect(alerts[0]?.msg).toContain('beragadt')
+    // Elérhető helyet nevez meg (a payload-jobs lista az adminban rejtett).
+    expect(alerts[0]?.msg).not.toContain('payload-jobs')
+    expect(alerts[0]?.msg).toContain('@alertCode:beragadt-job')
+    expect(alerts[0]?.context).toMatchObject({
+      alert: true,
+      alertCode: 'beragadt-job',
+      queue: ORDER_MAINTENANCE_QUEUE,
+      stuckJobs: 1,
+      releasedJobs: 1,
+    })
   })
 
-  it('beragadt ÉS élő job → nincs sorba állítás, de figyelmeztet a beragadtra', async () => {
-    const { run, queueCalls, entries } = createHarness({ runnableOrActive: 2, stale: 1 })
+  /**
+   * H1: ha a lezárás elbukik, semmi nem zárult le. A lezárási korlátnál
+   * fiatalabb sor mögött élő futás lehet, róla a tulajdonos nem kaphat
+   * riasztást; a korlát szerint elhaltnak tekintett, de le nem zárható sorról
+   * viszont hangosan kell szólni (a lezáró SQL elromlását csak így venni észre), úgy, hogy a
+   * szöveg ne állítsa, hogy a rendszer lezárta.
+   */
+  it('ha a lezárás elbukik egy még élhető soron: nincs riasztás, csak figyelmeztetés, és sorba állít', async () => {
+    const { run, queueCalls, entries } = createHarness({
+      runnableOrActive: 1,
+      stale: 1,
+      releaseThrows: true,
+    })
+
+    await run()
+
+    expect(queueCalls).toHaveLength(1)
+    expect(entries.filter((entry) => entry.level === 'error')).toEqual([])
+    expect(entries.some((entry) => entry.level === 'warn' && entry.msg.includes('lezárása'))).toBe(
+      true,
+    )
+  })
+
+  it('ha a lezárás elbukik egy a korlát szerint elhalt soron: sorba állít, és a hibáról riaszt, nem lezárásról', async () => {
+    const { run, queueCalls, entries } = createHarness({
+      runnableOrActive: 1,
+      stale: 1,
+      overdue: 1,
+      releaseThrows: true,
+    })
+
+    await run()
+
+    expect(queueCalls).toHaveLength(1)
+    const alerts = entries.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.msg).toContain('lezárása nem sikerült')
+    expect(alerts[0]?.msg).not.toContain('zárt le')
+    expect(alerts[0]?.msg).toContain('@alertCode:beragadt-job-lezaras-sikertelen')
+    expect(alerts[0]?.context).toMatchObject({
+      alert: true,
+      alertCode: 'beragadt-job-lezaras-sikertelen',
+      overdueJobs: 1,
+      error: 'írás elutasítva',
+    })
+  })
+
+  it('ha a lezárás után a korlát szerinti számolás is elbukik, az ütemezés akkor sem áll meg', async () => {
+    const { run, queueCalls, entries } = createHarness({
+      runnableOrActive: 1,
+      stale: 1,
+      releaseThrows: true,
+      overdueCountThrows: true,
+    })
+
+    await run()
+
+    expect(queueCalls).toHaveLength(1)
+    expect(entries.filter((entry) => entry.level === 'error')).toEqual([])
+  })
+
+  /**
+   * A lezárásról és a lezárás hibájáról szóló riasztás azt is mondja, hogy az
+   * ütemezés működik. Ha az új futás sorba állítása is elbukik (például betelt
+   * vagy csak olvasható lemez mellett), ugyanabban a tickben nem mehet ki
+   * mellette az ütemezés hibájáról szóló, ellentmondó riasztás: csak ez az
+   * utóbbi szól, a lezárás sorsa pedig a naplóban marad.
+   */
+  it.each([
+    {
+      eset: 'a lezárás sikerült',
+      scenario: { runnableOrActive: 1, stale: 1 },
+      warn: 'beragadt job lezárva, de az új futás sorba állítása nem sikerült',
+    },
+    {
+      eset: 'a lezárás is elbukott egy a korlát szerint elhalt soron',
+      scenario: { runnableOrActive: 1, stale: 1, overdue: 1, releaseThrows: true },
+      warn: 'a beragadt job-sor lezárása nem sikerült',
+    },
+  ])(
+    'ha a sorba állítás is elbukik ($eset): csak az ütemezés hibájáról riaszt',
+    async ({ scenario, warn }) => {
+      const { run, queueCalls, entries } = createHarness({ ...scenario, queueThrows: true })
+
+      await run()
+
+      expect(queueCalls).toHaveLength(0)
+      expect(
+        entries.filter((entry) => entry.level === 'error').map((entry) => entry.context?.alertCode),
+      ).toEqual(['utemezes-ellenorzes-hiba'])
+      expect(entries).toContainEqual(
+        expect.objectContaining({ level: 'warn', msg: expect.stringContaining(warn) }),
+      )
+    },
+  )
+
+  it('beragadt ÉS élő job → a beragadtat lezárja, nincs sorba állítás', async () => {
+    const { run, queueCalls, entries, releaseStatements } = createHarness({
+      runnableOrActive: 2,
+      stale: 1,
+    })
 
     const result = await run()
 
     expect(result.shouldSchedule).toBe(false)
     expect(queueCalls).toHaveLength(0)
+    expect(releaseStatements).toHaveLength(1)
     expect(entries).toHaveLength(1)
-    expect(entries[0].level).toBe('warn')
-    expect(entries[0].context).toMatchObject({ stuckJobs: 1, runnableOrActiveJobs: 2 })
+    expect(entries[0]?.level).toBe('error')
+    expect(entries[0]?.context).toMatchObject({ stuckJobs: 1, runnableOrActiveJobs: 2 })
+  })
+
+  it('a beragadt-riasztás FOJTOTT: a cooldownon belüli újabb lezárás csak warn, utána újra riaszt', async () => {
+    const clock = { now: NOW }
+    const harness = createHarness({ runnableOrActive: 1, stale: 1 }, clock)
+
+    await harness.run()
+    clock.now = NOW + 60_000
+    await harness.run()
+    clock.now = NOW + STUCK_JOB_ALERT_COOLDOWN_MS
+    await harness.run()
+
+    expect(harness.entries.filter((entry) => entry.level === 'error')).toHaveLength(2)
+    expect(harness.entries.filter((entry) => entry.level === 'warn')).toHaveLength(1)
+    expect(harness.releaseStatements).toHaveLength(3)
+  })
+
+  /**
+   * A lezárás tartós hibája minden tickben előjön (az order-maintenance
+   * queue-n 5 percenként, a webhook-maintenance-en percenként). A riasztása a
+   * „zárt le" riasztással közös, 6 órás fojtáson osztozik: egy queue+task
+   * párról 6 óránként egy levél megy, akármelyik eset történt.
+   */
+  it('a lezárás tartós hibája 6 órán belül egyszer riaszt, a „zárt le" riasztással közös fojtáson', async () => {
+    const clock = { now: NOW }
+    const failing = createHarness(
+      { runnableOrActive: 1, stale: 1, overdue: 1, releaseThrows: true },
+      clock,
+    )
+
+    await failing.run()
+    clock.now = NOW + 5 * 60_000
+    await failing.run()
+    expect(failing.entries.filter((entry) => entry.level === 'error')).toHaveLength(1)
+
+    // Egy közbeni sikeres lezárás a fojtási időn belül csak figyelmeztetés.
+    const recovered = createHarness({ runnableOrActive: 1, stale: 1 }, clock)
+    clock.now = NOW + 10 * 60_000
+    await recovered.run()
+    expect(recovered.entries.filter((entry) => entry.level === 'error')).toEqual([])
+    expect(recovered.entries).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        context: expect.objectContaining({ releasedJobs: 1 }),
+      }),
+    )
+
+    clock.now = NOW + STUCK_JOB_ALERT_COOLDOWN_MS
+    await failing.run()
+    expect(
+      failing.entries
+        .filter((entry) => entry.level === 'error')
+        .map((entry) => entry.context?.alertCode),
+    ).toEqual(['beragadt-job-lezaras-sikertelen', 'beragadt-job-lezaras-sikertelen'])
+  })
+
+  /**
+   * H1: a 15 percnél régebbi, de a lezárási korlátnál fiatalabb sor mögött még
+   * élő futás lehet (például egy lassú Barion mellett 70 GetState). Az ilyen
+   * sort az adatbázis nem zárja le, és a tulajdonos sem kaphat róla
+   * „beragadt feladatot zárt le" riasztást; az ütemezés viszont nem áll meg.
+   */
+  it('lezáratlan régi sor → nincs riasztás, csak óránként egy figyelmeztetés, és sorba állít', async () => {
+    const clock = { now: NOW }
+    const harness = createHarness({ runnableOrActive: 1, stale: 1, released: 0 }, clock)
+
+    await harness.run()
+    clock.now = NOW + 5 * 60_000
+    await harness.run()
+    // Egy óra múlva a még mindig le nem zárható sorról újra szól.
+    clock.now = NOW + 60 * 60_000 + 1
+    await harness.run()
+
+    // Az első tick sorba állít; a későbbiekben az új job már élőként blokkol.
+    expect(harness.queueCalls).toHaveLength(1)
+    expect(harness.entries.filter((entry) => entry.level === 'error')).toEqual([])
+    const warnings = harness.entries.filter((entry) => entry.level === 'warn')
+    expect(warnings).toHaveLength(2)
+    for (const warning of warnings) {
+      expect(warning.context).toMatchObject({
+        queue: ORDER_MAINTENANCE_QUEUE,
+        stuckJobs: 1,
+        releaseAfterMs: STALE_JOB_RELEASE_AFTER_MS,
+      })
+    }
   })
 
   /**
@@ -241,6 +519,16 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     expect(entries).toHaveLength(1)
     expect(entries[0].level).toBe('error')
     expect(entries[0].msg).toContain('RIASZTÁS')
+    expect(entries[0].context).toMatchObject({ alert: true, alertCode: 'utemezes-ellenorzes-hiba' })
+  })
+
+  it('a számolás ismételt hibája a fojtási időn belül csak warn (nem percenkénti riasztás)', async () => {
+    const harness = createHarness({ runnableOrActive: 0, stale: 0, countThrows: true })
+
+    await harness.run()
+    await harness.run()
+
+    expect(harness.entries.map((entry) => entry.level)).toEqual(['error', 'warn'])
   })
 })
 

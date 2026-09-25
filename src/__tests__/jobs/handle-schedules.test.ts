@@ -1,3 +1,5 @@
+import type { SQL } from '@payloadcms/db-postgres/drizzle'
+import { PgDialect } from '@payloadcms/db-postgres/drizzle/pg-core'
 import { BasePayload, type PayloadRequest, type SanitizedConfig, type Where } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -36,6 +38,8 @@ interface Harness {
   queueCalls: QueueCall[]
   countedWheres: Where[]
   globalWrites: string[]
+  /** A beragadt sorok lezáró UPDATE-jei (feltételes SQL a drizzle-példányon). */
+  releaseStatements: string[]
 }
 
 /**
@@ -52,12 +56,27 @@ function createHarness(config: SanitizedConfig, options: FakeDbOptions = {}): Ha
   const queueCalls: QueueCall[] = []
   const countedWheres: Where[] = []
   const globalWrites: string[] = []
+  const releaseStatements: string[] = []
+  const dialect = new PgDialect()
 
   const db = {
+    drizzle: {
+      // Az advisory-zár tranzakciója (a zár itt nem sorosít, csak lefut).
+      transaction: async <T>(
+        run: (tx: { execute: () => Promise<unknown> }) => Promise<T>,
+      ): Promise<T> => run({ execute: async () => ({ rows: [] }) }),
+      // A beragadt sorok lezárása: az adatbázis minden beragadt sort lezár.
+      execute: async (query: SQL) => {
+        releaseStatements.push(dialect.sqlToQuery(query).sql)
+        return { rows: Array.from({ length: options.stale ?? 0 }, (_, index) => ({ id: index })) }
+      },
+    },
     count: async ({ where }: { where: Where }) => {
       countedWheres.push(where)
       return {
-        totalDocs: isStaleCountQuery(where) ? (options.stale ?? 0) : (options.runnableOrActive ?? 0),
+        totalDocs: isStaleCountQuery(where)
+          ? (options.stale ?? 0)
+          : (options.runnableOrActive ?? 0),
       }
     },
     createGlobal: async ({ slug }: { slug: string }) => {
@@ -88,6 +107,7 @@ function createHarness(config: SanitizedConfig, options: FakeDbOptions = {}): Ha
     queueCalls,
     countedWheres,
     globalWrites,
+    releaseStatements,
   }
 }
 
@@ -117,8 +137,7 @@ beforeEach(async () => {
   vi.stubGlobal('fetch', () => {
     throw new Error('TESZT: valódi hálózati hívás nem futhat')
   })
-  // Az ál-adatbázisnak nincs drizzle-példánya, tehát az advisory-zár
-  // passthrough-figyelmeztetése itt zajként jelentkezne — elnyomva.
+  // A job-naplósorok itt zajként jelentkeznének — elnyomva.
   vi.spyOn(console, 'log').mockImplementation(() => {})
 })
 
@@ -214,6 +233,10 @@ describe('handleSchedules — beragadt job (a néma leállás elleni védelem)',
     expect(result.skipped).toHaveLength(1)
     // Az őr tényleg megnézte a beragadást (második, `processing`-re szűrt számolás).
     expect(harness.countedWheres.filter(isStaleCountQuery)).toHaveLength(1)
+    // …és a beragadt sor lezárását is elküldte (a-callback-2); a feltételes
+    // UPDATE szűrését a schedule-guard-db.test.ts méri valódi Postgresen.
+    expect(harness.releaseStatements).toHaveLength(1)
+    expect(harness.releaseStatements[0]).toContain('UPDATE "payload_jobs"')
   })
 
   /**

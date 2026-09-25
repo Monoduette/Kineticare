@@ -1,5 +1,6 @@
 import type { AdminViewServerProps } from 'payload'
 
+import { hasOwnerRole } from '../../access/roles'
 import { logger } from '../../lib/logger'
 import { queryCourseEngagement } from '../../lib/statistics/engagement-query'
 import type { CourseEngagementReport } from '../../lib/statistics/engagement'
@@ -26,8 +27,13 @@ export async function StatisticsView(props: AdminViewServerProps) {
     )
   }
 
+  // A részleges visszatérítés levonása CSAK a tulajdonosnak: a `refunds` mező
+  // tulajdonosi olvasású (CLAUDE.md 4.), a lekérdezés viszont overrideAccess-szel
+  // fut, ezért itt dől el, hogy a mező egyáltalán bekerül-e a selectbe. A
+  // munkatárs a bruttó összeget látja, és a lap ezt ki is mondja (TotalsCards).
+  const includePartialRefunds = hasOwnerRole(req.user)
   const [revenueSettled, engagementSettled] = await Promise.allSettled([
-    (async () => queryRevenueReport({ payload: req.payload }))(),
+    (async () => queryRevenueReport({ payload: req.payload, includePartialRefunds }))(),
     (async () => queryCourseEngagement({ payload: req.payload }))(),
   ])
 

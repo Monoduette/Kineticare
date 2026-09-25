@@ -1,7 +1,11 @@
 /**
  * Statisztika-lekérdezés — Payload local API → tiszta aggregátor bemenet.
  *
- * Csak szerepkör-kapu után (`overrideAccess: true`). `refunds` nem kérdezhető le.
+ * Csak szerepkör-kapu után (`overrideAccess: true`). A `refunds` mező
+ * tulajdonosi olvasású (CLAUDE.md 4.), ezért alapból NEM kérjük le; csak ha a
+ * hívó a tulajdonos nevében kifejezetten kéri (`includePartialRefunds`), és
+ * akkor is csak a részleges visszatérítések összege és időpontja jut tovább
+ * (tranzakció-azonosító, indok nem).
  * Lapozás felső korláttal; tölcsér `count`-ból; rendezés `['-createdAt','id']` (stabil lapozás).
  */
 
@@ -14,6 +18,7 @@ import {
   type OrderFunnelCounts,
   type RevenueOrderInput,
   type RevenueOrderItemInput,
+  type RevenuePartialRefundInput,
   type RevenueReport,
 } from './revenue'
 
@@ -35,7 +40,8 @@ interface PagedResult<T> {
 
 /**
  * A rendelés-dokumentum azon szelete, amit a lekérdezés KIKÉR. Nincs benne
- * `refunds`, `customerSnapshot`, `ipAddress`, `customerEmail`.
+ * `customerSnapshot`, `ipAddress`, `customerEmail`; a `refunds` csak a
+ * tulajdonosi lekérdezésben.
  */
 export interface StatisticsOrderDoc {
   status?: string | null
@@ -43,6 +49,7 @@ export interface StatisticsOrderDoc {
   invoiceCompletionDate?: string | null
   totalHufSnapshot?: number | null
   items?: readonly StatisticsOrderItemDoc[] | null
+  refunds?: unknown
 }
 
 export interface StatisticsOrderItemDoc {
@@ -59,6 +66,9 @@ const ORDER_SELECT = {
   totalHufSnapshot: true,
   items: true,
 } as const
+
+/** A tulajdonosi lekérdezés: a részleges visszatérítések levonásához a `refunds` is. */
+const ORDER_SELECT_WITH_REFUNDS = { ...ORDER_SELECT, refunds: true } as const
 
 /**
  * Lapozott rendelés-lekérdezés: ['-createdAt', 'id'] — stabil lapozás, friss sorok maradnak csonkolásnál.
@@ -163,8 +173,47 @@ function quantityOf(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 1
 }
 
-/** A Payload-dokumentum leképezése az aggregátor bemenetére — tiszta, tesztelhető. */
-export function mapOrderDocToRevenueInput(doc: StatisticsOrderDoc): RevenueOrderInput {
+/**
+ * A `refunds` json-mezőből CSAK a részleges tételek összege és időpontja. A
+ * teljes visszatérítés a rendelést `refunded` státuszba viszi, az eleve
+ * kimarad; az azonosító és az indok nem kell a kimutatáshoz.
+ */
+export function partialRefundsOf(refunds: unknown): RevenuePartialRefundInput[] {
+  if (!Array.isArray(refunds)) {
+    return []
+  }
+  const result: RevenuePartialRefundInput[] = []
+  for (const entry of refunds) {
+    if (typeof entry !== 'object' || entry === null) {
+      continue
+    }
+    const { type, amountHuf, refundedAt } = entry as {
+      type?: unknown
+      amountHuf?: unknown
+      refundedAt?: unknown
+    }
+    if (
+      type === 'partial' &&
+      typeof amountHuf === 'number' &&
+      Number.isFinite(amountHuf) &&
+      amountHuf > 0 &&
+      typeof refundedAt === 'string'
+    ) {
+      result.push({ amountHuf, refundedAt })
+    }
+  }
+  return result
+}
+
+/**
+ * A Payload-dokumentum leképezése az aggregátor bemenetére — tiszta, tesztelhető.
+ * A részleges visszatérítés CSAK kifejezett kérésre kerül át (akkor sem, ha a
+ * dokumentum véletlenül hordozná a `refunds` mezőt).
+ */
+export function mapOrderDocToRevenueInput(
+  doc: StatisticsOrderDoc,
+  options: { includePartialRefunds?: boolean } = {},
+): RevenueOrderInput {
   const items: RevenueOrderItemInput[] = []
   if (Array.isArray(doc.items)) {
     for (const item of doc.items) {
@@ -184,6 +233,9 @@ export function mapOrderDocToRevenueInput(doc: StatisticsOrderDoc): RevenueOrder
       typeof doc.invoiceCompletionDate === 'string' ? doc.invoiceCompletionDate : null,
     totalHuf: typeof doc.totalHufSnapshot === 'number' ? doc.totalHufSnapshot : null,
     items,
+    ...(options.includePartialRefunds === true
+      ? { partialRefunds: partialRefundsOf(doc.refunds) }
+      : {}),
   }
 }
 
@@ -290,6 +342,12 @@ export interface QueryRevenueReportDeps {
   payload: Pick<Payload, 'count' | 'find'>
   now?: Date
   months?: number
+  /**
+   * Tulajdonosi nézet: a részleges visszatérítések levonása a visszatérítés
+   * hónapjában. Csak `role === 'owner'` mellett adható át (a `refunds` mező
+   * tulajdonosi olvasású); munkatársnál a bruttó összeg marad.
+   */
+  includePartialRefunds?: boolean
 }
 
 /**
@@ -333,7 +391,7 @@ export async function queryRevenueReport(deps: QueryRevenueReportDeps): Promise<
         page,
         limit,
         sort: PAGED_ORDER_SORT,
-        select: ORDER_SELECT,
+        select: deps.includePartialRefunds === true ? ORDER_SELECT_WITH_REFUNDS : ORDER_SELECT,
         overrideAccess: true,
       }) as Promise<FindResultLike<StatisticsOrderDoc>>,
     STATISTICS_ORDER_PAGE_SIZE,
@@ -343,12 +401,14 @@ export async function queryRevenueReport(deps: QueryRevenueReportDeps): Promise<
   const funnel = await countOrderFunnel(deps.payload)
 
   const hydrated = await hydrateProductFields(deps.payload, paidPage.docs)
-  const orders = hydrated.map(mapOrderDocToRevenueInput)
+  const includePartialRefunds = deps.includePartialRefunds === true
+  const orders = hydrated.map((doc) => mapOrderDocToRevenueInput(doc, { includePartialRefunds }))
   return buildRevenueReport(orders, funnel, {
     now: deps.now,
     months: deps.months,
     // Csak a fizetett rendelések lapozása csonkolhat: a tölcsér `count`-ból
     // jön, azon nincs plafon.
     truncated: paidPage.truncated,
+    refundsDeducted: includePartialRefunds,
   })
 }

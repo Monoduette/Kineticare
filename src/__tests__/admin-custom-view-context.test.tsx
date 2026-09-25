@@ -97,7 +97,12 @@ describe.each(views)('$label: a Payload szerver-kontextus szerződése', (view) 
     expect(html).toContain('data-admin-template="true"')
     expect(html).not.toContain('csak munkatárs vagy tulajdonos')
     if (view.queries) {
-      expect(revenue).toHaveBeenCalledWith({ payload: props.initPageResult.req.payload })
+      // A részleges visszatérítés (tulajdonosi olvasású `refunds`) csak az
+      // ownernek kerül a lekérdezésbe (PR #305).
+      expect(revenue).toHaveBeenCalledWith({
+        payload: props.initPageResult.req.payload,
+        includePartialRefunds: role === 'owner',
+      })
       expect(engagement).toHaveBeenCalledWith({ payload: props.initPageResult.req.payload })
     } else {
       expect(bunnyPanel).toHaveBeenCalledOnce()

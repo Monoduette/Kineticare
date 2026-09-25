@@ -1,8 +1,12 @@
+import { sql, type SQL } from '@payloadcms/db-postgres/drizzle'
 import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
 import { BlocksFeature, lexicalEditor } from '@payloadcms/richtext-lexical'
 import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/types'
 import type { JSONSchema4 } from 'json-schema'
 import type {
+  CheckboxFieldValidation,
+  CollectionBeforeChangeHook,
+  CollectionBeforeOperationHook,
   Config,
   DateFieldValidation,
   Field,
@@ -24,6 +28,21 @@ import {
 import { revalidateMenusCache } from '../collections/Menus'
 import { coursePackage } from '../blocks/CoursePackage'
 import { KEP_CSERE_SUGO } from '../blocks/kep-csere'
+import {
+  FREE_COURSE_GUARD_MESSAGE,
+  MIN_PRICE_HUF,
+  OWNER_ONLY_CHANGE_MESSAGE,
+  PRICE_MESSAGE,
+  PRODUCT_CONFIRMATIONS_KEY,
+  PROMO_END_REQUIRED_MESSAGE,
+  isPriceDrop,
+  positivePriceOrNull,
+  priceDropMessage,
+  readProductConfirmations,
+  type PriceFieldKind,
+  type PriceReferenceSource,
+  type ProductChangeConfirmations,
+} from '../components/admin/huf-price'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
@@ -31,6 +50,7 @@ import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/clean
 import { courseSlugField } from '../fields/course-slug'
 import { budapestDateString } from '../lib/date/budapest'
 import { formatPriceHuf } from '../lib/format-price'
+import { logger } from '../lib/logger'
 import { orderIntegrityBeforeChange } from '../lib/order-integrity'
 import { withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
 import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
@@ -162,23 +182,486 @@ const toValidDate = (value: unknown): Date | null => {
 export const PROMO_END_BEFORE_START_MESSAGE =
   'Az akció vége nem lehet a kezdete előtt. Adj meg a kezdettel azonos vagy későbbi napot.'
 
+/** A validátorok közös bemenete (a Payload validate-opcióinak az itt olvasott része). */
+interface GuardOptions {
+  data?: unknown
+  siblingData?: unknown
+  id?: number | string
+  operation?: string
+  overrideAccess?: boolean
+  previousValue?: unknown
+  req?: PayloadRequest
+}
+
+/**
+ * Ki adhat megerősítést: a tulajdonos, aki a kurzus ár-, ingyenesség- és
+ * akció-mezőit írhatja (T-011). Rendszerfolyamat (overrideAccess) és req
+ * nélküli hívás tulajdonosként számít.
+ *
+ * r2-termekor (H2): ez NEM zárja ki a munkatársat az őrökből. A Payload a
+ * munkatárs által nem írható mező beküldött értékét eldobja, és a tárolt
+ * értéket teszi a helyére (payload/dist/fields/hooks/beforeValidate/
+ * promise.js, access → getFallbackValue). A tárolt érték viszont a LEGUTÓBBI
+ * VERZIÓ, autosave mellett tehát a tulajdonos piszkozata is lehet
+ * (payload/dist/collections/operations/utilities/update.js: originalDoc =
+ * getLatestCollectionVersion). Amikor az őrök a munkatársnál feltétel nélkül
+ * átengedtek, a munkatárs Közzététel gombja a tulajdonos meg nem erősített,
+ * piszkozatban hagyott ingyenes-, ár- vagy akció-módosítását vitte élesbe
+ * (mérve valódi Payload + Postgres mellett). Ezért az őrök mindenkinél
+ * ugyanúgy futnak; a zárás elleni védelmet a változatlan, már közzétett érték
+ * kivételei adják (a munkatársnál a tárolt érték mindig a változatlan).
+ * Megerősítést viszont csak a tulajdonos adhat: a beküldött adatban bárki
+ * küldhetne `kcMegerositesek`-et.
+ */
+async function ownerMayWrite(options: GuardOptions): Promise<boolean> {
+  const { overrideAccess, req, data, siblingData, id } = options
+  if (overrideAccess === true || req === undefined) return true
+  return Boolean(
+    await isOwnerFieldAccess({
+      req,
+      data: data as Record<string, unknown> | undefined,
+      siblingData: siblingData as Record<string, unknown> | undefined,
+      id,
+    }),
+  )
+}
+
+/**
+ * Az őr elutasító üzenete. A tulajdonos a teendőt kapja (javítsa vagy
+ * erősítse meg); a munkatárs azt, hogy ezt csak a tulajdonos teheti közzé,
+ * mert ő a mezőt nem írhatja át, és megerősítést sem adhat.
+ */
+async function refusalFor(options: GuardOptions, ownerMessage: string): Promise<string> {
+  return (await ownerMayWrite(options)) ? ownerMessage : OWNER_ONLY_CHANGE_MESSAGE
+}
+
+type PublishedProduct = Record<string, unknown>
+
+/**
+ * A fő táblában álló kurzus-sor ár- és akció-mezői, bármilyen `_status`
+ * mellett. A products autosave-es piszkozatot használ, ezért a Payload
+ * `previousValue`-ja a legutóbbi PISZKOZAT értéke (payload/dist/collections/
+ * operations/utilities/update.js: originalDoc = getLatestCollectionVersion).
+ * Ha a tulajdonos beír egy hibás árat, az autosave validálás nélkül elmenti a
+ * piszkozatba, és közzétételkor a `previousValue` már ezt a hibás árat mutatná
+ * „változatlannak”. A közzétett érték dönti el, mi a régi ár.
+ *
+ * Visszatérés: `undefined`, ha nem olvasható (fail-closed: a hívó ilyenkor
+ * nem tekinti az értéket réginek). A `trash: true` a lomtárból visszaállított
+ * kurzust is megtalálja.
+ */
+async function readProductRow(
+  req: PayloadRequest | undefined,
+  id: number | string | undefined,
+): Promise<PublishedProduct | undefined> {
+  if (id === undefined || typeof req?.payload?.findByID !== 'function') return undefined
+  try {
+    const row = await req.payload.findByID({
+      collection: 'products',
+      id,
+      depth: 0,
+      draft: false,
+      overrideAccess: true,
+      req,
+      trash: true,
+      select: {
+        _status: true,
+        deletedAt: true,
+        priceInHUF: true,
+        priceInHUFEnabled: true,
+        promoEnabled: true,
+        promoEnd: true,
+        promoPriceHuf: true,
+        updatedAt: true,
+      },
+    })
+    return row as unknown as PublishedProduct
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * A fő tábla sora csak `_status === 'published'` mellett közzétett érték. A
+ * fő táblába validálás nélkül is kerül adat, `_status: 'draft'`-tal: a
+ * duplikálás (a Payload duplicate végpontja alapból draft=true, a
+ * createOperation a másolatot a fő táblába írja, create.js), a lomtárba
+ * helyezés (a PATCH a legutóbbi autosave-es piszkozatot írja a fő sorba,
+ * update.js skipValidation) és a közzététel visszavonása. Az ilyen sor értékét
+ * egyik őr sem tekintheti a vásárló által látott, már elfogadott állapotnak.
+ * Hogy a validálás nélküli írás `_status: 'published'`-et se hagyhasson a fő
+ * sorban, azt a unpublishAndRestoreWritesStayDraft és a trashWritesStayDraft
+ * hook biztosítja (lásd ott).
+ */
+function isPublishedRow(
+  published: PublishedProduct | null | undefined,
+): published is PublishedProduct {
+  return published?._status === 'published'
+}
+
+/** A sor a lomtárban van (a Payload trash `deletedAt` mezője ki van töltve). */
+function isTrashedRow(published: PublishedProduct): boolean {
+  return published.deletedAt !== null && published.deletedAt !== undefined
+}
+
+/**
+ * Élő, a vásárló által látott (vagy a visszavonás előtt látott) állapot:
+ * közzétett és nem lomtárban lévő sor. A lomtárba tett sor soha nem
+ * viszonyítási alap, akkor sem, ha `_status`-a 'published': a lomtár írását
+ * a Payload nem validálja, így abban a sorban (és a naplóbejegyzés „after”
+ * oldalán) meg nem erősített piszkozat-érték is állhat (mérve: a kézzel
+ * összerakott `{ deletedAt, _status: 'published' }` után a visszaállítás a
+ * piszkozat 5 Ft-os árát „változatlan, közzétett” értéknek vette).
+ */
+function isLivePublishedRow(
+  published: PublishedProduct | null | undefined,
+): published is PublishedProduct {
+  return isPublishedRow(published) && !isTrashedRow(published)
+}
+
+/** A pillanatkép-keresés lapmérete (a napló kurzus-bejegyzéseit lapozza, a legújabbal kezdve). */
+const LAST_PUBLISHED_PAGE_SIZE = 20
+
+const asRecord = (value: unknown): PublishedProduct | null =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as PublishedProduct)
+    : null
+
+/** Két időpont ugyanaz a pillanat-e; olvashatatlan érték sosem egyezik. */
+function sameInstant(left: unknown, right: unknown): boolean {
+  const a = toValidDate(left)
+  const b = toValidDate(right)
+  return a !== null && b !== null && a.getTime() === b.getTime()
+}
+
+/**
+ * A napló szerinti legutóbb közzétett állapot keresésének eredménye:
+ * - `snapshot`: megvan, és a fő sort azóta csak naplózott írás érte;
+ * - `none`: a naplóban nincs élő, közzétett oldal;
+ * - `unverified`: van pillanatkép, de nem bizonyos, hogy ez a legutóbb
+ *   közzétett állapot: utána a fő sort legalább egyszer naplózatlanul írták
+ *   (elveszett bejegyzés), vagy a pillanatkép egy párhuzamos írás előtti,
+ *   elavult olvasás.
+ */
+type SnapshotLookup =
+  { kind: 'snapshot'; snapshot: PublishedProduct } | { kind: 'none' } | { kind: 'unverified' }
+
+/**
+ * A kurzus LEGUTÓBB KÖZZÉTETT állapota, ha a fő sor most nem közzétett
+ * (r2-termekor, H3). A közzététel visszavonása (az admin UnpublishButton-ja:
+ * PATCH `?unpublishAllLocales=true`, `_status: 'draft'`) a fő sort validálás
+ * nélkül piszkozatra írja, a lomtárba helyezés pedig a piszkozatot írja oda.
+ * A verziótábla nem megbízható forrás: a visszavonás a legutóbbi verziót
+ * helyben felülírja (payload/dist/versions/saveVersion.js → updateLatestVersion),
+ * és ha ez a közzétett volt, a `_products_v`-ben nem marad közzétett változat
+ * (mérve: az egyetlen közzétett verzió `_status`-a draftra váltott).
+ *
+ * A műveletnapló igen: a létrehozást, a közzétételt, a visszavonást, a
+ * lomtárat és a visszaállítást a fő sor előtte/utána állapotával naplózzuk
+ * (src/plugins/audit.ts, a-cms-12), a bejegyzést csak a rendszer írhatja
+ * (src/collections/AuditLogs.ts). A legfrissebb bejegyzés, amelynek egyik
+ * oldala élő (közzétett, nem lomtárban lévő) sor, a legutóbb közzétett
+ * állapot: az utolsó közzététel utáni sor („after”, a bejegyzésen belül ez az
+ * újabb), vagy a visszavonás, lomtárba helyezés előtti („before”). Olvasási
+ * hiba: kivétel (a hívó ilyenkor ismeretlen mércét ad, lásd productReference).
+ *
+ * PR #305 rev2 (breaker, BRK305-1/2): a pillanatkép csak akkor mérce, ha a fő
+ * sort utána egyetlen naplózatlan írás sem érte. Közzétettként létrehozott
+ * kurzusnál (restore-legacy-content, seed, szkriptek) a létrehozás
+ * bejegyzésének „after” oldala is élő sor; ha a későbbi közzététel és
+ * visszavonás bejegyzése elvész, ez az elavult ár (vagy „ingyenes”) lett
+ * volna a mérce. A Payload a fő sor minden írásánál az `updatedAt`-et a
+ * pillanatnyi időre állítja (update.js, restoreVersion.js), a bejegyzés két
+ * oldala pedig a fő sor írás előtti és utáni állapota. A lánc tehát
+ * hiánytalan, ha a legújabb bejegyzés „after” `updatedAt`-je a fő soré, és
+ * minden bejegyzés „after” `updatedAt`-je a nála újabb bejegyzés „before”
+ * `updatedAt`-je, egészen a pillanatképet adó bejegyzésig. Bármely hézag
+ * (elveszett bejegyzés, olvashatatlan idő, a régi, verzió-alakú bejegyzés):
+ * `unverified`. Egy naplózatlan írás (például egy szkript nem piszkozat-mentése
+ * a visszavont kurzuson) így egyszer tulajdonosi megerősítést kér: ez a
+ * biztonságos irány.
+ *
+ * Hiánytalan lánc mellett a pillanatkép mindig egy bejegyzés „before” oldala:
+ * a nem élő fő sorhoz láncolt legújabb bejegyzés „after” oldala maga is a
+ * nem élő sor, és minden régebbi „after” ugyanaz a sor-írás, mint az újabb
+ * bejegyzés (nem élő) „before” oldala. Az „after” oldal tehát csak hézagos
+ * láncban lehet élő (ekkor `unverified`); hogy egy bejegyzésen belül az
+ * „after” az újabb állapot, az hiánytalan láncnál nem figyelhető meg.
+ *
+ * PR #305 rev1-b (breaker, B1): a „before” oldalt a napló a mentés előtt
+ * olvassa (src/plugins/audit.ts auditProductBeforeChange); sorzár nélkül ez
+ * párhuzamos mentésnél elavult lehet. Ha a tulajdonos közzétett áremelése és a
+ * munkatárs visszavonása egyszerre fut, a visszavonás a sorzárra vár, a
+ * „before” oldala viszont még az emelés előtti ár; az emelés bejegyzése a
+ * nála régebbi. Ezért a „before” pillanatkép csak akkor mérce, ha a következő
+ * (régebbi) bejegyzés „after” oldala nem későbbi írás nála; ha későbbi, a
+ * pillanatkép elavult: `unverified`. Olvashatatlan idő (bármelyik oldalon)
+ * a lánc szabálya szerint szintén `unverified`. Azonos időt nem várunk el:
+ * egy élő kurzus naplózatlan mentése (például csak a cím változik) a két
+ * bejegyzés között szabályos, és a visszavonás „before” oldala ekkor is a
+ * friss sor.
+ *
+ * PR #305 rev2-b (breaker X1): ez az utólagos felismerés csak a NAPLÓZOTT
+ * párhuzamos írást látja. A naplózatlan írás (a tulajdonos élő kurzuson futó
+ * verzió-visszaállítása) után a régebbi bejegyzés „after” oldala nem későbbi,
+ * így az elavult „before” mérce lett volna. Ezért a „before” olvasása ma
+ * sorzár mögött fut (productUpdateLocksRow), és nem lehet elavult; ez az
+ * ellenőrzés a zár nélküli (kérés-tranzakció nélküli) mentésekre marad.
+ *
+ * A lekérdezés a kurzus minden bejegyzését lapozza (a lánchoz a közzétett oldal
+ * nélküli lomtár- és visszaállítás-bejegyzések is kellenek), amíg élő oldalt
+ * nem talál. Rögzített ablak nem jó: minden lomtár + „visszaállítás
+ * piszkozatként” kör két bejegyzést ír, és néhány ilyen kör kitolná az
+ * ablakból a közzétett állapotot.
+ */
+async function findLastPublishedSnapshot(
+  req: PayloadRequest | undefined,
+  id: number | string,
+  row: PublishedProduct,
+): Promise<SnapshotLookup> {
+  if (typeof req?.payload?.find !== 'function') {
+    throw new Error('a műveletnapló nem olvasható')
+  }
+  // A lánc következő elvárt pontja: a fő sor, majd mindig az előző (újabb)
+  // bejegyzés „before” oldalának írási ideje.
+  let expectedWrittenAt: unknown = row.updatedAt
+  let intact = true
+  // A hiánytalan láncon talált „before” pillanatkép; a következő (régebbi)
+  // bejegyzés dönti el, hogy nem elavult-e.
+  let found: PublishedProduct | null = null
+  for (let page = 1; ; page += 1) {
+    const result = await req.payload.find({
+      collection: 'audit-logs',
+      where: {
+        and: [{ entityType: { equals: 'products' } }, { entityId: { equals: String(id) } }],
+      },
+      sort: ['-createdAt', '-id'],
+      limit: LAST_PUBLISHED_PAGE_SIZE,
+      page,
+      depth: 0,
+      overrideAccess: true,
+      req,
+      select: { before: true, after: true },
+    })
+    for (const entry of result.docs) {
+      const after = asRecord(entry.after)
+      const before = asRecord(entry.before)
+      if (found !== null) {
+        const olderWrittenAt = toValidDate(after?.updatedAt)
+        const foundWrittenAt = toValidDate(found.updatedAt)
+        return olderWrittenAt === null ||
+          foundWrittenAt === null ||
+          olderWrittenAt.getTime() > foundWrittenAt.getTime()
+          ? { kind: 'unverified' }
+          : { kind: 'snapshot', snapshot: found }
+      }
+      intact = intact && sameInstant(after?.updatedAt, expectedWrittenAt)
+      if (isLivePublishedRow(after)) {
+        return intact ? { kind: 'snapshot', snapshot: after } : { kind: 'unverified' }
+      }
+      expectedWrittenAt = before?.updatedAt
+      if (isLivePublishedRow(before)) {
+        if (!intact) return { kind: 'unverified' }
+        found = before
+      }
+    }
+    if (result.hasNextPage !== true) {
+      return found === null ? { kind: 'none' } : { kind: 'snapshot', snapshot: found }
+    }
+  }
+}
+
+/**
+ * Bizonyítottan soha nem közzétett-e a kurzus (PR #305, Codex P1). Közzétett
+ * pillanatkép hiányában a fő sor NEM tekinthető múltnak: a közzététel
+ * visszavonása vagy a lomtár után abban már a piszkozat, akár az épp elütött
+ * ár áll, amely önmagához mérve „nem csökkent”. A pillanatkép két okból
+ * hiányozhat:
+ * - a kurzus valóban soha nem volt közzétéve (új kurzus, admin-másolat);
+ * - a napló hiányos: a kurzus a napló kurzus-bejegyzései előtt készült, vagy
+ *   azelőtt vonták vissza, vagy a best-effort naplóírás (src/lib/audit.ts
+ *   writeAuditLog) elbukott.
+ *
+ * A „soha” bizonyítéka a létrehozás naplóbejegyzése ÉS az, hogy a fő sort
+ * azóta nem írták. A fő sort csak a nem piszkozat-mentés írja (a
+ * közzététel, a visszavonás, a lomtár, a visszaállítás és a rendszer
+ * mentései), és a Payload minden ilyen írásnál az `updatedAt`-et a
+ * pillanatnyi időre állítja (payload/dist/collections/operations/utilities/
+ * update.js: „Ensure updatedAt date is always updated”); a piszkozat- és az
+ * autosave-mentés csak a verziótáblát írja. A létrehozás bejegyzését a napló
+ * a fő sor beszúrása után írja (afterChange), így a soha újra nem írt sor
+ * `updatedAt`-je legfeljebb a bejegyzés `createdAt`-je; a közzététel ezt
+ * biztosan túllépi. Ezt a visszavonás nem tünteti el, a beküldött
+ * `updatedAt`-et a mentés felülírja, a bejegyzés idejét pedig a napló adja.
+ * A soha nem közzétett, de lomtárba tett és visszaállított kurzus így egyszer
+ * megerősítést kér: ez a biztonságos irány.
+ *
+ * A verziótábla ehhez csak további, szigorító jel: a visszavonás a
+ * legutóbbi közzétett verziót helyben piszkozatra írja (lásd
+ * findLastPublishedSnapshot), így a közzétett verzió HIÁNYA nem bizonyít
+ * semmit; ha viszont van közzétett verzió (például egy lomtár előtti
+ * régebbi), a kurzus közzé volt téve. Bármelyik olvasás hibája kivétel: a
+ * hívó ilyenkor sem bízik a fő sorban.
+ */
+async function provenNeverPublished(
+  req: PayloadRequest | undefined,
+  id: number | string,
+  row: PublishedProduct,
+): Promise<boolean> {
+  if (typeof req?.payload?.find !== 'function' || typeof req.payload.findVersions !== 'function') {
+    throw new Error('a műveletnapló vagy a verziótábla nem olvasható')
+  }
+  const created = await req.payload.find({
+    collection: 'audit-logs',
+    where: {
+      and: [
+        { entityType: { equals: 'products' } },
+        { entityId: { equals: String(id) } },
+        { action: { equals: 'create' } },
+      ],
+    },
+    // A legkorábbi létrehozási bejegyzés: ha (például mentésből visszatöltés
+    // után) több is lenne, a későbbi ideje megengedőbb bizonyíték volna.
+    sort: 'createdAt',
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+    req,
+    select: { createdAt: true },
+  })
+  const createdAt = toValidDate(created.docs[0]?.createdAt)
+  const rowWrittenAt = toValidDate(row.updatedAt)
+  if (createdAt === null || rowWrittenAt === null) return false
+  if (rowWrittenAt.getTime() > createdAt.getTime()) return false
+  const published = await req.payload.findVersions({
+    collection: 'products',
+    where: {
+      and: [{ parent: { equals: id } }, { 'version._status': { equals: 'published' } }],
+    },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+    req,
+  })
+  return published.docs.length === 0
+}
+
+/**
+ * A mentés viszonyítási alapja frissítésnél (új kurzusnál, create: null, ott
+ * nincs vásárló és nincs mihez mérni).
+ * - `row`: a fő sor, ahogy most áll; `undefined`, ha nem olvasható.
+ * - `lastPublished`: a legutóbb közzétett állapot: a fő sor, ha az most is
+ *   élő (közzétett és nem lomtárban lévő), különben a napló pillanatképe;
+ *   null, ha nincs.
+ * - `unknown`: a nem élő kurzus legutóbb közzétett állapota nem állapítható
+ *   meg (a napló nem olvasható; a pillanatkép után a fő sort naplózatlanul
+ *   írták; vagy nincs pillanatkép, és a kurzus nem bizonyítottan soha nem
+ *   közzétett). Ilyenkor egyik őr sem mér a fő sor
+ *   piszkozatához: az ár és az ingyenesség csak a tulajdonos megerősítésével,
+ *   a vég nélküli akció csak véggel tehető közzé (fail-closed).
+ */
+interface ProductReference {
+  row: PublishedProduct | undefined
+  lastPublished: PublishedProduct | null
+  unknown: boolean
+}
+
+async function productReference(options: GuardOptions): Promise<ProductReference | null> {
+  if (options.operation !== 'update' || options.id === undefined) return null
+  const { req, id } = options
+  const row = await readProductRow(req, id)
+  // Olvashatatlan fő sornál a mentés ugyanabban a tranzakcióban úgyis az
+  // adatbázisra vár; ilyenkor az ár-őrök a korábbi döntés szerint csak az
+  // alakot (egész forint, alsó határ) nézik (a munkatársra vonatkozó „első
+  // áras közzététel” szabály sem él, lásd priceChangeVerdict), az
+  // ingyenesség-őr pedig a `row === undefined` miatt amúgy is megerősítést kér.
+  if (row === undefined) return { row, lastPublished: null, unknown: false }
+  if (isLivePublishedRow(row)) return { row, lastPublished: row, unknown: false }
+  try {
+    const lookup = await findLastPublishedSnapshot(req, id, row)
+    if (lookup.kind === 'snapshot') return { row, lastPublished: lookup.snapshot, unknown: false }
+    if (lookup.kind === 'unverified') {
+      logger.warn('kurzus ár-őr: a közzétett pillanatkép nem igazolható a napló láncán', {
+        productId: String(id),
+      })
+      return { row, lastPublished: null, unknown: true }
+    }
+    return { row, lastPublished: null, unknown: !(await provenNeverPublished(req, id, row)) }
+  } catch (error) {
+    logger.warn('kurzus ár-őr: a legutóbb közzétett állapot nem olvasható', {
+      productId: String(id),
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return { row, lastPublished: null, unknown: true }
+  }
+}
+
+/**
+ * A tulajdonos megerősítései ehhez a mentéshez. Két forrásból: az admin
+ * űrlap a mentés adataiban küldi (a HufPriceField jelölőnégyzete, kulcs:
+ * PRODUCT_CONFIRMATIONS_KEY), a Local API-t hívó szkript a `req.context`-ben.
+ * A kulcs nem séma-mező, a Payload nem tárolja (src/components/admin/huf-price.ts).
+ * Más szerepkör (munkatárs) beküldött megerősítése nem számít (H2).
+ */
+async function ownerConfirmations(options: GuardOptions): Promise<ProductChangeConfirmations> {
+  if (!(await ownerMayWrite(options))) return {}
+  const fromContext = readProductConfirmations(options.req?.context?.[PRODUCT_CONFIRMATIONS_KEY])
+  const data = options.data
+  const fromData =
+    typeof data === 'object' && data !== null
+      ? readProductConfirmations((data as Record<string, unknown>)[PRODUCT_CONFIRMATIONS_KEY])
+      : {}
+  return { ...fromData, ...fromContext }
+}
+
 /**
  * WP58: az akció vége ne előzze meg a kezdetét. A dayOnly választó a napot
  * 12:00 UTC-ként menti, a REST API-n pedig éjfél is jöhet, ezért nem a
  * pillanatokat, hanem a Budapest szerinti NAPOKAT hasonlítjuk (azonos nap
  * megengedett: egynapos akció). A `value` futásidőben string vagy Date.
+ *
+ * r2-termekor (a-cms-9): bekapcsolt akcióhoz a vége is kötelező. Vég nélküli
+ * akciónál a kurzusoldal visszavonásig érvényes akciót mutat, az áthúzott ár
+ * pedig időkorlát nélkül áll. A már közzétett, vég nélküli akció nem zárja ki
+ * a kurzus többi mezőjének mentését: az ilyen akció addig marad, amíg a
+ * tulajdonos meg nem adja a végét. Csak ez az ág olvas adatbázist, ezért a
+ * többi eset szinkron marad.
+ *
+ * A kivétel a legutóbb KÖZZÉTETT állapotra él (productReference): a
+ * közzététel visszavonása vagy a lomtár után újra közzétett kurzus meglévő,
+ * vég nélküli akciója nem „új” (H3). Egy élő kurzus másolata (a 4. kurzus is
+ * így készült, docs/akcios-kurzus-2026-09-20.md) a vég nélküli akciót
+ * piszkozat-sorként örökli, közzétett állapota viszont nincs; ha a kivétel ezt
+ * is elfogadná, a másolat első közzétételével egy új termék menne élesbe vég
+ * nélküli akcióval.
  */
-export const validatePromoEnd: DateFieldValidation = (value, { siblingData }) => {
+export const validatePromoEnd: DateFieldValidation = (value, options) => {
+  const sibling = options.siblingData as
+    { promoStart?: unknown; promoEnabled?: unknown } | undefined
   const end = toValidDate(value)
-  const start = toValidDate((siblingData as { promoStart?: unknown } | undefined)?.promoStart)
-  if (end === null || start === null) {
+  const start = toValidDate(sibling?.promoStart)
+  if (end !== null && start !== null && budapestDateString(end) < budapestDateString(start)) {
+    return PROMO_END_BEFORE_START_MESSAGE
+  }
+  if (end !== null || sibling?.promoEnabled !== true) {
     return true
   }
-  return budapestDateString(end) < budapestDateString(start) ? PROMO_END_BEFORE_START_MESSAGE : true
+  return validatePromoEndRequired(options)
 }
 
-export const PROMO_PRICE_MESSAGE =
-  'Az akciós ár csak pozitív egész forintösszeg lehet, vagy hagyd üresen.'
+async function validatePromoEndRequired(options: GuardOptions): Promise<string | true> {
+  const lastPublished = (await productReference(options))?.lastPublished ?? null
+  if (
+    lastPublished !== null &&
+    lastPublished.promoEnabled === true &&
+    (lastPublished.promoEnd === null || lastPublished.promoEnd === undefined)
+  ) {
+    return true
+  }
+  return refusalFor(options, PROMO_END_REQUIRED_MESSAGE)
+}
+
+export const PROMO_PRICE_MESSAGE = `Az akciós ár csak pozitív egész forintösszeg lehet, legalább ${MIN_PRICE_HUF} Ft, vagy hagyd üresen.`
 
 /**
  * K21: a rendes árnál nem kisebb akciós ár üzenete. A kurzus-szerkesztő
@@ -199,7 +682,7 @@ export function promoPriceNotBelowRegularMessage(regularPriceHuf: number): strin
 
 /**
  * A rendes ár a `resolveCoursePromo` szabálya szerint (src/lib/course-promo.ts):
- * csak bekapcsolt „Megvásárolható” mellett, pozitív összegként létezik. Ha
+ * csak bekapcsolt „Fizetős kurzus” mellett, pozitív összegként létezik. Ha
  * nincs rendes ár, az akciós árnak nincs mihez képest kisebbnek lennie.
  */
 export function regularPriceHufFrom(source: unknown): number | null {
@@ -210,79 +693,328 @@ export function regularPriceHufFrom(source: unknown): number | null {
   return typeof price === 'number' && Number.isFinite(price) && price > 0 ? Math.round(price) : null
 }
 
-/**
- * A KÖZZÉTETT (fő táblában álló) akciós ár. A products autosave-es piszkozatot
- * használ, ezért a Payload `previousValue`-ja a legutóbbi PISZKOZAT értéke
- * (payload/dist/collections/operations/utilities/update.js: originalDoc =
- * getLatestCollectionVersion). Ha a tulajdonos beír egy hibás árat, az
- * autosave validálás nélkül elmenti a piszkozatba, és közzétételkor a
- * `previousValue` már ezt a hibás árat mutatná „változatlannak”. A közzétett
- * érték dönti el, hogy az ár valóban régi-e. Hiba esetén `undefined`
- * (fail-closed: az ár ilyenkor új értéknek számít).
- */
-async function publishedPromoPriceHuf(
-  req: PayloadRequest | undefined,
-  id: number | string | undefined,
-): Promise<unknown> {
-  if (id === undefined || typeof req?.payload?.findByID !== 'function') return undefined
-  try {
-    const published = await req.payload.findByID({
-      collection: 'products',
-      id,
-      depth: 0,
-      draft: false,
-      overrideAccess: true,
-      req,
-      select: { promoPriceHuf: true },
-    })
-    return published.promoPriceHuf
-  } catch {
-    return undefined
-  }
+/** Az árcsökkenés viszonyítási ára, a megnevezéséhez szükséges fajtával és forrással. */
+interface DropReference {
+  price: number
+  kind: PriceFieldKind
+  source: PriceReferenceSource
 }
 
 /**
- * WP63 + K21: az akciós ár egész, pozitív forint (a HUF-nak nincs tizedese),
- * és kisebb a rendes árnál (a resolveCoursePromo az egyenlő vagy nagyobb árat
- * úgyis figyelmen kívül hagyja, de korábban erre „Sikeresen frissítve.” jött).
+ * Mihez mérjük az új ár csökkenését. Elsőként a legutóbb KÖZZÉTETT állapothoz
+ * (a vásárló ezt látja most, vagy a közzététel visszavonása előtt ezt látta).
+ * A bizonyítottan soha nem közzétett kurzusnál (új kurzus, admin-másolat) a fő
+ * sorban eddig mentett árhoz: ez csak megerősítést kérhet, átengedni semmit
+ * nem enged (és csak a tulajdonosnál: a munkatárs ilyen kurzust árral nem
+ * tehet közzé, lásd priceChangeVerdict). Ismeretlen közzétett állapotnál
+ * (unknown) a hívó (priceChangeVerdict) ide el sem jut: ott a fő sor a már
+ * elütött piszkozat-ár
+ * lehet, amely önmagához mérve nem csökken (PR #305, Codex P1). Akciós árnál
+ * az akciós ár, ha van, különben a rendes ár (egy új, a rendes ár felénél
+ * kisebb akció is szokatlan).
+ */
+function dropReference(
+  reference: ProductReference | null,
+  kind: PriceFieldKind,
+): DropReference | null {
+  const source = reference?.lastPublished ?? reference?.row ?? null
+  if (source === null) return null
+  const origin: PriceReferenceSource = reference?.lastPublished ? 'kozzetett' : 'eddigi'
+  if (kind === 'akcios') {
+    const promo = positivePriceOrNull(source.promoPriceHuf)
+    if (promo !== null) return { price: promo, kind: 'akcios', source: origin }
+  }
+  const regular = regularPriceHufFrom(source)
+  return regular === null ? null : { price: regular, kind: 'rendes', source: origin }
+}
+
+/**
+ * Változatlan, már közzétett érték: régi sor más mezőjének mentése nem bukhat
+ * el rajta. Csak a legutóbb közzétett állapotra: a másolat vagy a soha nem
+ * közzétett kurzus piszkozat-sorában álló hibás ár nem „régi”.
+ */
+function unchangedPublishedValue(
+  options: GuardOptions,
+  value: unknown,
+  reference: ProductReference | null,
+  field: 'priceInHUF' | 'promoPriceHuf',
+): boolean {
+  return (
+    options.operation === 'update' &&
+    value === options.previousValue &&
+    reference?.lastPublished !== null &&
+    reference?.lastPublished !== undefined &&
+    reference.lastPublished[field] === value
+  )
+}
+
+const UNKNOWN_REFERENCE_LEAD: Record<PriceFieldKind, string> = {
+  rendes: 'Az új ár (',
+  akcios: 'Az új akciós ár (',
+}
+
+/**
+ * PR #305 (Codex P1): az ár közzétételének hibaüzenete, ha a kurzus legutóbb
+ * közzétett ára nem állapítható meg (ProductReference.unknown). A csökkenés
+ * nem mérhető, ezért a tulajdonos kifejezett, erre az összegre szóló
+ * megerősítése kell (WCAG 2.2 SC 3.3.4, Error Prevention: Legal, Financial,
+ * Data). A mondat megmondja, mi a baj és mi a teendő (NN/g, Error-Message
+ * Guidelines: „Offer constructive advice”,
+ * https://www.nngroup.com/articles/error-message-guidelines/; GOV.UK Design
+ * System, Error message: „tell someone what has happened and how to fix it”,
+ * https://design-system.service.gov.uk/components/error-message/).
  *
- * ZÁRÁS ELLENI VÉDELEM: más mező mentése nem bukhat el egy régi, érvénytelen
- * akciós áron.
- * - Akinek nincs írásjoga a mezőre (a field access owner-only), annak a
- *   beküldött értékét a Payload amúgy is eldobja, és a tárolt értéket teszi a
- *   helyére (payload/dist/fields/hooks/beforeValidate/promise.js, access →
- *   getFallbackValue), tehát nem ő változtatta meg: nincs hiba.
- * - Tulajdonosnál a változatlan, már közzétett érték átmegy (previousValue ÉS
- *   a közzétett érték egyezik); a frissen beírt vagy csak piszkozatban álló
- *   hibás érték viszont hibát ad. Így a rendes ár későbbi csökkentése sem zárja
- *   ki a mentést; ezt a helyzetet az állapotdoboz jelzi.
+ * Az alak szándékosan az árcsökkenés-üzenetéé (nyitó rész és a „fele. Ha
+ * elírás” fordulat): az admin ár-mezője erről ismeri fel, hogy a mező alatt
+ * a megerősítő jelölőnégyzetet kell mutatnia (huf-price.ts
+ * isPriceDropMessageFor); más alakú üzenetnél a tulajdonos a felületen nem
+ * tudna megerősíteni.
+ */
+export function unknownPriceReferenceMessage(kind: PriceFieldKind, value: number): string {
+  return `${UNKNOWN_REFERENCE_LEAD[kind]}${formatPriceHuf(value)}) nem vethető össze a legutóbb közzétett árral, mert az nem olvasható ki. Így nem látszik, kevesebb-e, mint annak a fele. Ha elírás, javítsd. Ha szándékos, jelöld be a mező alatti megerősítést.`
+}
+
+/**
+ * Nincs-e a kurzusnak közzétett múltja: új kurzus (create, a mentés
+ * viszonyítási alapja null), vagy olvasható fő sor, amelynek sem most, sem a
+ * napló szerint nincs közzétett állapota (a productReference ilyenkor a
+ * bizonyítottan soha nem közzétett kurzust adja; az ismeretlen múltat az
+ * `unknown` jelzi, azt a hívó előbb kezeli).
+ */
+function hasNoPublishedHistory(reference: ProductReference | null): boolean {
+  return reference === null || (reference.row !== undefined && reference.lastPublished === null)
+}
+
+/**
+ * Az érvényes alakú új ár döntése: ismeretlen közzétett állapotnál mindig
+ * megerősítés kell; különben csak a hivatkozási ár felénél kisebb árnál. A
+ * munkatárs megerősítést nem adhat, ő a tulajdonosi üzenetet kapja (H2).
+ *
+ * PR #305 rev2 (breaker, BRK305-3): közzétett múlt nélküli kurzus áras
+ * közzététele a tulajdonosé, ugyanúgy, mint az első ingyenes közzététel
+ * (validatePriceInHUFEnabled, rev2). A munkatárs nem írhatja az ár-mezőket,
+ * nála az érték mindig egy tárolt, nem validált verzióból jön: az admin
+ * Másolás gombja a másolat árát a forrás legutóbbi, akár autosave-es
+ * piszkozatából tölti, így a tulajdonos elütött, meg nem erősített ára
+ * (79 500 helyett 7 950 Ft) a másolat saját fő sorában áll, és ahhoz mérve
+ * nem „csökken”. A mért út: piszkozat-másolat, majd a munkatárs
+ * közzététele; vagy `?draft=false` másolat azonnal közzétéve. Új kurzusnál
+ * nincs mihez mérni, ezért ott az elütést csak a tulajdonos szeme foghatja
+ * meg; a tulajdonos útja változatlan.
+ */
+async function priceChangeVerdict(
+  options: GuardOptions,
+  value: number,
+  reference: ProductReference | null,
+  kind: PriceFieldKind,
+): Promise<string | true> {
+  const confirmationKey = kind === 'rendes' ? 'priceInHUF' : 'promoPriceHuf'
+  let message: string
+  if (reference?.unknown === true) {
+    message = unknownPriceReferenceMessage(kind, value)
+  } else if (hasNoPublishedHistory(reference) && !(await ownerMayWrite(options))) {
+    return OWNER_ONLY_CHANGE_MESSAGE
+  } else {
+    const drop = dropReference(reference, kind)
+    if (drop === null || !isPriceDrop(value, drop.price)) {
+      return true
+    }
+    message = priceDropMessage(kind, value, drop.price, drop.kind, drop.source)
+  }
+  if ((await ownerConfirmations(options))[confirmationKey] === value) {
+    return true
+  }
+  return refusalFor(options, message)
+}
+
+/**
+ * r2-termekor (a-cms-2): a rendes ár (a plugin gyári `priceInHUF` mezője)
+ * eddig semmilyen szerver-oldali ellenőrzést nem kapott. Mért hiba: a plugin
+ * beviteli mezője a „79.500”-at 80 Ft-ként mentette, és a pénztár minden
+ * pozitív árat elfogadott, így 80 Ft-os számla ment volna a NAV-hoz.
+ *
+ * A szabály: egész forint, legalább MIN_PRICE_HUF (a Barion kártyás alsó
+ * határa); a legutóbb közzétett ár felénél kisebb új ár pedig csak a
+ * tulajdonos kifejezett, erre az összegre szóló megerősítésével menthető
+ * (WCAG 2.2 SC 3.3.4, Error Prevention: Legal, Financial, Data). Üres ár: a
+ * kurzus nem vásárolható (a pénztár elutasítja), de nem is ingyenes, ezért
+ * megengedett. A Payload ezt a validátort csak bekapcsolt „Fizetős kurzus”
+ * mellett futtatja (a plugin mező-feltétele), és piszkozat mentésekor
+ * egyáltalán nem. Ha a nem élő kurzus legutóbb közzétett ára nem állapítható
+ * meg (a napló nem olvasható, a pillanatkép után a fő sort naplózatlanul
+ * írták, vagy a pillanatkép hiányzik egy nem bizonyítottan soha nem közzétett
+ * kurzusnál), a csökkenés nem mérhető: ilyenkor minden ár csak a tulajdonos
+ * megerősítésével tehető közzé (PR #305, Codex P1). A közzétett múlt nélküli
+ * kurzus áras közzététele a tulajdonosé (PR #305 rev2, lásd
+ * priceChangeVerdict). Ha a fő
+ * sor nem olvasható, a csökkenés nem mérhető: ilyenkor az egész forint és a
+ * 10 Ft-os alsó határ él (a mentés ugyanabban a tranzakcióban úgyis az
+ * adatbázisra vár).
+ */
+export const validatePriceInHUF: NumberFieldSingleValidation = async (value, options) => {
+  if (value === null || value === undefined) {
+    return true
+  }
+  const reference = await productReference(options)
+  if (!(Number.isSafeInteger(value) && value >= MIN_PRICE_HUF)) {
+    return unchangedPublishedValue(options, value, reference, 'priceInHUF')
+      ? true
+      : refusalFor(options, PRICE_MESSAGE)
+  }
+  return priceChangeVerdict(options, value, reference, 'rendes')
+}
+
+/**
+ * WP63 + K21: az akciós ár egész forint (a HUF-nak nincs tizedese), és kisebb
+ * a rendes árnál (a resolveCoursePromo az egyenlő vagy nagyobb árat úgyis
+ * figyelmen kívül hagyja, de korábban erre „Sikeresen frissítve.” jött).
+ * r2-termekor: legalább MIN_PRICE_HUF (a Barion alsó határa; korábban 1 Ft is
+ * átment), és a hivatkozási ár felénél kisebb új akciós ár megerősítést kér.
+ *
+ * A változatlan, már közzétett érték átmegy (previousValue ÉS a legutóbb
+ * közzétett érték egyezik); a frissen beírt vagy csak piszkozatban álló hibás
+ * érték viszont hibát ad. Így a rendes ár későbbi csökkentése sem zárja ki a
+ * mentést; ezt a helyzetet az állapotdoboz jelzi.
  */
 export const validatePromoPriceHuf: NumberFieldSingleValidation = async (value, options) => {
   if (value === null || value === undefined) {
     return true
   }
-  const { data, siblingData, previousValue, operation, req, id, overrideAccess } = options
+  const { data, siblingData } = options
   const regular = regularPriceHufFrom(siblingData) ?? regularPriceHufFrom(data)
-  const message = !(Number.isSafeInteger(value) && value > 0)
+  const message = !(Number.isSafeInteger(value) && value >= MIN_PRICE_HUF)
     ? PROMO_PRICE_MESSAGE
     : regular !== null && value >= regular
       ? promoPriceNotBelowRegularMessage(regular)
       : null
-  if (message === null) {
+  const reference = await productReference(options)
+  if (message !== null) {
+    return unchangedPublishedValue(options, value, reference, 'promoPriceHuf')
+      ? true
+      : refusalFor(options, message)
+  }
+  return priceChangeVerdict(options, value, reference, 'akcios')
+}
+
+/**
+ * A kurzus fizetett vagy visszatérített rendeléseinek száma; hiba esetén null
+ * (a hívó ilyenkor fail-closed dönt).
+ */
+async function countPaidOrRefundedOrders(
+  req: PayloadRequest | undefined,
+  id: number | string,
+): Promise<number | null> {
+  if (typeof req?.payload?.count !== 'function') return null
+  try {
+    const { totalDocs } = await req.payload.count({
+      collection: 'orders',
+      overrideAccess: true,
+      req,
+      where: {
+        and: [{ 'items.product': { equals: id } }, { status: { in: ['paid', 'refunded'] } }],
+      },
+    })
+    return totalDocs
+  } catch {
+    return null
+  }
+}
+
+/**
+ * r2-termekor (a-cms-1): a „Fizetős kurzus” pipa kivétele INGYENESSÉ teszi a
+ * kurzust (src/lib/courses.ts isFreeCourse), nem az eladást állítja le. A
+ * régi felirat („Megvásárolható”, „Kikapcsolva a kurzus nem vásárolható
+ * meg.”) az ellenkezőjét mondta: a 79 500 Ft-os program „szüneteltetése”
+ * bárkinek ingyen, visszavonhatatlanul odaadta volna.
+ *
+ * Közzétételkor hibát ad, ha egy eddig fizetős kurzus ingyenes lenne, és van
+ * ára vagy fizetett, visszatérített rendelése, kivéve, ha a tulajdonos a pipa
+ * alatti jelölőnégyzettel kifejezetten megerősítette (WCAG 2.2 SC 3.3.4). A
+ * már ingyenes kurzus (a közzétett érték is kikapcsolt) szabadon menthető. Új
+ * kurzuson (create) nincs vásárló, ott nem kérdez. Ha a közzétett állapot vagy
+ * a rendelések nem olvashatók, fail-closed: megerősítést kér.
+ *
+ * „Már ingyenes” csak a valóban közzétett, lomtáron kívüli fő sor lehet (a
+ * napló pillanatképe itt csak a munkatársat engedi tovább, a tulajdonost nem
+ * mentesíti az „ára van / rendelése van” kérdés alól: egy téves „már ingyenes”
+ * visszavonhatatlan hozzáféréseket adna). Az aszimmetria szándékos: a
+ * munkatárs nem tud megerősíteni, a pillanatkép nélkül a visszavont ingyenes
+ * kurzust sem tehetné újra közzé; a tulajdonosnak a kérdés egy jelölőnégyzet,
+ * és az ár-maradékot (pl. 79 500 Ft kivett pipa mellett) ő látja és dönti el.
+ * A lomtárba helyezés, a lomtárból
+ * `_status: 'published'` nélküli visszaállítás és a közzététel visszavonása
+ * validálás nélkül a legutóbbi (akár autosave-es) piszkozatot írja a fő sorba
+ * (update.js: skipValidation), így ott a kivett pipa ez az őr nélkül is a fő sorba
+ * kerülhet. Ezek az írások ezért mindig piszkozat-sort hagynak, a kérés
+ * `_status`-ától függetlenül (unpublishAndRestoreWritesStayDraft,
+ * trashWritesStayDraft), az ingyenes kurzust kiadó utak
+ * (src/lib/free-course/request-access.ts, src/lib/free-course-grant.ts) pedig
+ * a piszkozat-sort nem tekintik élőnek (H4). Élő sor csak validált mentésből
+ * lesz: a közzététel és a „visszaállítás közzétettként” ezen az őrön megy át,
+ * a munkatárs verzió-visszaállítása pedig, amely a tulajdonosi mezőket nem
+ * validálja, nem élő fő sornál piszkozat marad (restoreVersionByNonOwnerStaysDraft).
+ *
+ * Új kurzuson (create) nincs vásárló, ott a tulajdonostól nem kérdez. Munkatárs
+ * viszont a pipát maga nem állíthatja (T-011), így a create-nél kivett pipa csak
+ * egy másik kurzus legutóbbi verziójából jöhet (a duplikálás a mezőt a forrás
+ * autosave-es piszkozatából tölti: payload/dist/duplicateDocument, fallback);
+ * ha ez közzétett másolat lenne, a tulajdonos meg nem erősített „ingyenes”
+ * döntése egy új, élő kurzuson jelenne meg a fizetős kurzus tartalmával.
+ *
+ * rev2: a munkatárs a kivett pipát csak akkor teheti közzé, ha a kurzus
+ * legutóbb közzétett állapota is ingyenes volt (élő ingyenes sor, vagy a
+ * visszavonás előtti pillanatkép a naplóban). A munkatárs értéke mindig a
+ * legutóbbi verzióé, és az „ár nélkül, rendelés nélkül” kivétel nála a
+ * tulajdonos meg nem erősített piszkozatát engedte élesbe: az admin Másolás
+ * gombja (piszkozat-másolat, saját közzétett múlt és rendelés nélkül) és egy
+ * közzététel ingyenes, élő másolatot adott a fizetős kurzus tartalmával, ha a
+ * tulajdonos piszkozatában a pipa és az ár is üres volt (mérve valódi Payload +
+ * Postgres mellett). Soha nem közzétett kurzus első ingyenes közzététele ezért
+ * a tulajdonosé.
+ *
+ * Az „ára van” a legutóbb közzétett árat is nézi: a közzététel visszavonása a
+ * piszkozatot írja a fő sorba, így ott az ár már üres lehet, és a még rendelés
+ * nélküli, 79 500 Ft-os kurzus megerősítés nélkül lett volna ingyenes.
+ *
+ * PR #305 (Codex P1): ha a legutóbb közzétett állapot nem állapítható meg
+ * (ProductReference.unknown), az „ár nélkül, rendelés nélkül” kivétel sem él:
+ * a fő sorban ilyenkor a visszavonáskor odaírt piszkozat állhat (üres ár,
+ * kivett pipa), a régi, 79 500 Ft-os közzétett állapotról pedig nincs adat.
+ */
+export const validatePriceInHUFEnabled: CheckboxFieldValidation = async (value, options) => {
+  if (value !== false) {
     return true
   }
-  if (overrideAccess !== true && req !== undefined) {
-    const canWrite = await isOwnerFieldAccess({ req, data, siblingData, id })
-    if (!canWrite) {
-      return true
-    }
+  if (options.operation === 'create') {
+    return (await ownerMayWrite(options)) ? true : OWNER_ONLY_CHANGE_MESSAGE
   }
-  if (operation === 'update' && value === previousValue) {
-    if ((await publishedPromoPriceHuf(req, id)) === value) {
-      return true
-    }
+  if (options.operation !== 'update' || options.id === undefined) {
+    return true
   }
-  return message
+  if ((await ownerConfirmations(options)).freeCourse === true) {
+    return true
+  }
+  const reference = await productReference(options)
+  const row = reference?.row
+  if (isLivePublishedRow(row) && row.priceInHUFEnabled === false) {
+    return true
+  }
+  if (!(await ownerMayWrite(options))) {
+    return reference?.lastPublished?.priceInHUFEnabled === false ? true : OWNER_ONLY_CHANGE_MESSAGE
+  }
+  if (reference?.unknown === true) {
+    return FREE_COURSE_GUARD_MESSAGE
+  }
+  const sibling = options.siblingData as { priceInHUF?: unknown } | undefined
+  const hasPrice =
+    positivePriceOrNull(sibling?.priceInHUF) !== null ||
+    positivePriceOrNull(row?.priceInHUF) !== null ||
+    positivePriceOrNull(reference?.lastPublished?.priceInHUF) !== null
+  const orders = await countPaidOrRefundedOrders(options.req, options.id)
+  if (!hasPrice && orders === 0 && row !== undefined) {
+    return true
+  }
+  return FREE_COURSE_GUARD_MESSAGE
 }
 
 /**
@@ -374,13 +1106,69 @@ const courseFieldAdminOverrides: Record<
   inventory: { hidden: true },
   priceInHUF: {
     label: 'Ár (Ft)',
+    description: `A kurzus rendes, bruttó ára egész forintban, legalább ${MIN_PRICE_HUF} Ft. Ennyit fizet a vásárló a pénztárnál, ha nincs élő akció. Ezres tagolónak szóközt vagy pontot is írhatsz (79 500 vagy 79.500), a mező alatt látod, hogyan jelenik meg. Csak a tulajdonos állíthatja.`,
+  },
+  /*
+   * r2-termekor (a-cms-1): a felirat azt mondja, amit a kód csinál. A régi
+   * „Megvásárolható” / „Kikapcsolva a kurzus nem vásárolható meg.” szerint a
+   * pipa kivétele az eladást állítja le, valójában a kurzust ingyenessé teszi
+   * (src/lib/courses.ts isFreeCourse). NN/g, Match Between the System and the
+   * Real World (https://www.nngroup.com/articles/match-system-real-world/);
+   * GOV.UK Design System, hint text: „how their information will be used”
+   * (https://design-system.service.gov.uk/components/text-input/).
+   */
+  priceInHUFEnabled: {
+    label: 'Fizetős kurzus',
     description:
-      'A kurzus rendes, bruttó ára forintban. Ennyit fizet a vásárló a pénztárnál, ha nincs élő akció. Csak a tulajdonos állíthatja.',
+      'Bepipálva a vásárló az Ár (Ft) mezőben megadott összeget fizeti. Pipa nélkül a kurzus ingyenes: bárki megkapja, aki megadja a nevét és az e-mail-címét, és a hozzáférése akkor is megmarad, ha a pipát később visszateszed. Az eladás leállítása nem ez, hanem a „Megjelenés a weboldalon” mező „Archivált” értéke (a „Piszkozat” a vásárlóktól is elveszi a videókat). Csak a tulajdonos állíthatja.',
+  },
+}
+
+/**
+ * r2-termekor: a plugin két ár-mezőjének szerver-oldali validátora és admin
+ * beviteli komponense. Csak a `validate` és az `admin.components.Field` kerül
+ * a mezőre; az access (T-011, withOwnerOnlyPriceAccess), a feltétel, a lista
+ * cellája és a többi admin-beállítás változatlan.
+ * - Ár (Ft): a gyári PriceInput a pontot tizedesjelnek vette („79.500” → 80 Ft);
+ *   a HufPriceField ezres tagolónak veszi, és megmutatja a mentendő összeget.
+ * - Fizetős kurzus: a gyári pipa, alatta a kikapcsolás következményével és a
+ *   megerősítő jelölőnégyzettel (PaidCourseField).
+ */
+const HUF_PRICE_FIELD_COMPONENT = '/components/admin/HufPriceField#HufPriceField'
+const PAID_COURSE_FIELD_COMPONENT = '/components/admin/HufPriceField#PaidCourseField'
+
+const pluginPriceFieldGuards: Record<
+  string,
+  {
+    validate: NumberFieldSingleValidation | CheckboxFieldValidation
+    Field: { path: string; clientProps?: Record<string, unknown> }
+  }
+> = {
+  priceInHUF: {
+    validate: validatePriceInHUF,
+    Field: { path: HUF_PRICE_FIELD_COMPONENT, clientProps: { kind: 'rendes' } },
   },
   priceInHUFEnabled: {
-    label: 'Megvásárolható',
-    description: 'Kikapcsolva a kurzus nem vásárolható meg.',
+    validate: validatePriceInHUFEnabled,
+    Field: { path: PAID_COURSE_FIELD_COMPONENT },
   },
+}
+
+const withPluginPriceGuards = (field: Field): Field => {
+  const named = namedField(field)
+  const guard = named === null ? undefined : pluginPriceFieldGuards[named.name]
+  if (named === null || guard === undefined) {
+    return field
+  }
+  const admin = (named as { admin?: { components?: Record<string, unknown> } }).admin
+  return {
+    ...named,
+    validate: guard.validate,
+    admin: {
+      ...admin,
+      components: { ...admin?.components, Field: guard.Field },
+    },
+  } as Field
 }
 
 const withCourseFriendlyAdmin = (field: Field): Field => {
@@ -398,6 +1186,44 @@ const withCourseFriendlyAdmin = (field: Field): Field => {
       ...(override.description === undefined ? {} : { description: override.description }),
     },
   } as Field
+}
+
+/** Van-e a mezőfában (névtelen konténereken át is) ilyen nevű mező. */
+const containsFieldNamed = (fields: readonly Field[], name: string): boolean =>
+  fields.some(
+    (field) =>
+      ('name' in field && field.name === name) ||
+      ('fields' in field &&
+        Array.isArray(field.fields) &&
+        containsFieldNamed(field.fields as Field[], name)),
+  )
+
+/**
+ * r2-termekor (H6): a plugin ár-csoportja (pricesField: NÉVTELEN group → row →
+ * „Fizetős kurzus” + „Ár (Ft)”) címke nélkül érkezik. A Payload a mentés
+ * hibaüzenetének mezőútvonalában a névtelen csoport helyére a mező TÍPUSÁT
+ * írja (payload/dist/fields/hooks/beforeChange/promise.js: `fallbackLabel =
+ * field?.label || (isNamedGroup ? field.name : field?.type)`), így az ár-őrök
+ * elutasításakor a toast így szólt: „Javítsd ezt a mezőt: Ár és hozzáférés →
+ * Group → Ár (Ft)”. A `label: false` kihagyja a csoportot az útvonalból
+ * (ugyanott: `field?.label === false`), a felületen pedig nem változtat: a
+ * Payload GroupField csak igaz értékű címkét rajzol ki.
+ *
+ * A csoport gyári, angol súgója („Prices for this product in different
+ * currencies.”) a fül tetején állt; a két mező saját magyar súgója mindent
+ * elmond, ezért elhagyjuk (a felületi szöveg magyar, CLAUDE.md).
+ */
+const withUnlabelledPriceGroup = (field: Field): Field => {
+  if (
+    field.type !== 'group' ||
+    ('name' in field && typeof field.name === 'string' && field.name.length > 0) ||
+    !containsFieldNamed(field.fields, 'priceInHUF')
+  ) {
+    return field
+  }
+  const admin = { ...field.admin }
+  delete admin.description
+  return { ...field, label: false, admin } as Field
 }
 
 /**
@@ -752,6 +1578,257 @@ const visitOrderFields = (field: Field): Field =>
  */
 const WEBSHOP_GROUP = 'Webshop'
 
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * r2-termekor (rev1): a validálás nélküli írás nem hagyhat élő fő sort.
+ *
+ * A Payload 3.88 a kurzus fő sorát három írás-alaknál validálás NÉLKÜL írja
+ * (payload/dist/collections/operations/utilities/update.js, `skipValidation`):
+ * - a közzététel visszavonásánál (`unpublishAllLocales`);
+ * - a lomtárból visszaállításnál, ha a KÉRÉS `_status`-a nem 'published'
+ *   (`isRestoringDraftFromTrash`, a kérés nyers adatából számolva);
+ * - ha a mentendő adatban `deletedAt` áll: a lomtárba helyezésnél, és a
+ *   lomtárban álló sor minden olyan mentésénél, amely a `deletedAt`-et nem
+ *   törli (a mező-szintű beforeValidate a hiányzó mezőt a legutóbbi verzióból
+ *   tölti, és a Payload ezt az összefésült adatot nézi).
+ * A `_status`-t ilyenkor a kérés adataiból, ennek híján a legutóbbi verzióból
+ * írja. Egy kézzel összerakott kérés (visszavonás `_status: 'published'`-del,
+ * lomtár `{ deletedAt, _status: 'published' }`-del, majd `_status` nélküli
+ * visszaállítás) így az ár-őrök megkerülésével élesítette a tulajdonos
+ * autosave-es, meg nem erősített piszkozatát: ingyenes 79 500 Ft-os kurzus,
+ * 5 Ft-os ár, vég nélküli akció (mérve valódi Payload + Postgres mellett,
+ * munkatársi fiókkal).
+ *
+ * Ezért ezek az írások mindig piszkozat-sort hagynak, bárki végzi; élő sor
+ * csak validált mentésből lesz, ott pedig az ár-őrök döntenek. Az admin
+ * kérései érdemben nem változnak: a visszavonás és a „visszaállítás
+ * piszkozatként” eddig is 'draft'-ot küldött, a lomtárba tett sor láthatatlan,
+ * a „visszaállítás közzétettként” pedig validál, és a legutóbb közzétett
+ * állapothoz mér (findLastPublishedSnapshot: a lomtár előtti sor).
+ *
+ * Két helyen kell beavatkozni, mert a Payload a két feltételt különböző
+ * adatból számolja:
+ * - a visszavonás jelzője és a visszaállítás a nyers kérésből derül ki, ezért a
+ *   művelet elején (beforeOperation) állítjuk a kérés `_status`-át 'draft'-ra.
+ *   A Payload a lomtár-szűrőt a LEGUTÓBBI VERZIÓ `deletedAt`-jére alkalmazza,
+ *   nem a fő soréra (getLatestCollectionVersion): lomtárban álló sort, amelynek
+ *   legutóbbi verziója is lomtárban van, csak `trash: true` mellett lehet
+ *   menteni, így a `trash: true`, 'published' nélküli mentés lefedi a
+ *   visszaállítást. Ha a legutóbbi verzió már nincs lomtárban (például egy
+ *   `?draft=true&trash=true` mentés csak verziót írt), a Payload a sort nem
+ *   tekinti lomtárban lévőnek, és `trash` nélkül is menti: ilyenkor viszont a
+ *   `isRestoringDraftFromTrash` is ugyanebből a verzióból számol, tehát a
+ *   mentés vagy validál, vagy piszkozat (mérve). Élő sornál a `trash: true`,
+ *   'published' nélküli kérés közzététel-visszavonás lesz, ami biztonságos
+ *   irány. A Payload a visszavonás jelzőjét szövegként is elfogadja (REST:
+ *   `?unpublishAllLocales=true`), csak a 'true' számít.
+ * - a `deletedAt` az összefésült adatból derül ki, ezért a kollekció
+ *   beforeChange hookjában (az a validálás kihagyásakor is lefut, és a fő sor
+ *   meg a verzió írása előtt).
+ */
+export const unpublishAndRestoreWritesStayDraft: CollectionBeforeOperationHook = ({
+  args,
+  operation,
+}) => {
+  if (operation !== 'update' || !isPlainRecord(args)) {
+    return args
+  }
+  const rawData: unknown = args.data
+  const data: Record<string, unknown> = isPlainRecord(rawData) ? rawData : {}
+  const flag = args.unpublishAllLocales
+  const unpublishing = typeof flag === 'string' ? flag === 'true' : Boolean(flag)
+  const restoringWithoutPublish = args.trash === true && data._status !== 'published'
+  if (!unpublishing && !restoringWithoutPublish) {
+    return args
+  }
+  return { ...args, data: { ...data, _status: 'draft' } }
+}
+
+/** A Payload postgres-adapterének a kérés-tranzakcióhoz szükséges felülete. */
+interface RequestTransactionAdapter {
+  execute: (args: { db: unknown; sql: SQL }) => Promise<unknown>
+  sessions?: Record<string, { db?: unknown } | undefined>
+}
+
+function isRequestTransactionAdapter(value: unknown): value is RequestTransactionAdapter {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { execute?: unknown }).execute === 'function'
+  )
+}
+
+/**
+ * rev3: a kurzus fő sorának zárolása (`SELECT … FOR NO KEY UPDATE`) a kérés
+ * saját tranzakciójában; a zár a tranzakció végéig, tehát a mentés
+ * `db.updateOne`-jáig és commitjáig tart. A kapcsolat `statement_timeout`-ja
+ * (payload.config.ts) korlátozza a várakozást: egy beragadt tranzakció mögött
+ * a mentés hibával leáll, és nem ír (CLAUDE.md 6. tanulság).
+ *
+ * PR #305 rev3 (breaker BRK-L1, BRK-L3): a zár erőssége `NO KEY UPDATE`, nem
+ * `FOR UPDATE`. Két író így is kizárja egymást (a `NO KEY UPDATE` önmagával,
+ * a sima UPDATE-tel, a DELETE-tel és a Payload nem piszkozat mentésének
+ * `INSERT … ON CONFLICT (id) DO UPDATE SET "id" = …` upsertjével is ütközik),
+ * de nem ütközik a `FOR KEY SHARE` zárral, amelyet a Postgres a kurzusra
+ * hivatkozó sor beszúrásakor (idegen kulcs) vesz: vásárlás (users_rels),
+ * kosár- és rendelés-tétel, haladás, menü, a „Kapcsolódó kurzusok” verziósorai.
+ * `FOR UPDATE` mellett egy ilyen nyitott tranzakció megállította a kurzus
+ * autosave-jét (és fordítva), két egymásra „Kapcsolódó kurzus”-ként hivatkozó
+ * kurzus egyidejű autosave-je pedig holtpontba került (mérve valódi Payload +
+ * Postgres mellett).
+ * https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS
+ *
+ * Visszatérés: `false`, ha nincs kérés-tranzakció vagy az adapter nem futtat
+ * SQL-t (a hívó dönti el, mi legyen ilyenkor). Az SQL-hiba nem nyelhető el: a
+ * megszakadt tranzakcióban a mentés úgysem folytatható, hibával áll le.
+ */
+async function lockProductRow(req: PayloadRequest, id: number | string): Promise<boolean> {
+  const transactionID = await req.transactionID
+  const rawAdapter: unknown = req.payload?.db
+  const adapter = isRequestTransactionAdapter(rawAdapter) ? rawAdapter : undefined
+  const transaction =
+    adapter === undefined || transactionID === undefined || transactionID === null
+      ? undefined
+      : adapter.sessions?.[String(transactionID)]?.db
+  if (adapter === undefined || transaction === undefined || transaction === null) {
+    return false
+  }
+  await adapter.execute({
+    db: transaction,
+    sql: sql`SELECT id FROM "products" WHERE id = ${id} FOR NO KEY UPDATE`,
+  })
+  return true
+}
+
+/**
+ * PR #305 rev2-b (breaker X1): a kurzus minden mentése a kérés tranzakciójában
+ * zárolja a fő sort (lockProductRow), MIELŐTT a napló a „before” pillanatképet
+ * (src/plugins/audit.ts auditProductBeforeChange) és az ár-őrök a mércét
+ * olvassák. Az audit plugin a saját hookját a kollekció beforeChange listájának
+ * VÉGÉRE fűzi (az ecommerce plugin után fut, payload.config.ts), a mezők
+ * validálása pedig a kollekció-hookok után jön (payload/dist/collections/
+ * operations/utilities/update.js és restoreVersion.js), így ez a hook
+ * mindkettő előtt fut.
+ *
+ * Zár nélkül a „before” oldal egy párhuzamos, még nem commitolt írás előtti,
+ * elavult sor lehetett. A naplózott párhuzamos írást a findLastPublishedSnapshot
+ * utólag felismeri (a régebbi bejegyzés későbbi „after” oldala), a naplózatlant
+ * viszont nem: a tulajdonos élő kurzuson futó verzió-visszaállítása
+ * (79 500 Ft) és a munkatárs egyidejű visszavonása után a visszavonás „before”
+ * oldala még a visszaállítás előtti 10 000 Ft volt, és a 7 950 Ft-os elütést a
+ * munkatárs megerősítés nélkül tehette közzé (mérve valódi Payload + Postgres
+ * mellett). A zárral a párhuzamos írás előbb commitol, és ez a mentés a friss
+ * sort olvassa; READ COMMITTED mellett minden utasítás a zár megszerzése utáni
+ * állapotot látja.
+ *
+ * Minden `update`-et zárol, a piszkozat-mentést is: az a fő sort nem írja, de
+ * a zár ára egy rövid várakozás, és így nincs olyan ág, amelyről bizonyítani
+ * kellene, hogy nem olvas mércét. A nem piszkozat mentés `db.updateOne`-ja
+ * (upsert, `FOR UPDATE` erősségű sorzár) ugyanezt a sort eddig is zárolta,
+ * csak később; a korábbi, gyengébb zár a mentők sorrendjét nem változtatja.
+ * A piszkozat-mentés eddig a fő sort nem zárolta; most a verziósorok előtt a
+ * fő sort is zárolja, de `NO KEY UPDATE`-tel, így a más kurzusokra hivatkozó
+ * verziósorok beszúrása (`FOR KEY SHARE`) nem akad meg rajta (lásd
+ * lockProductRow). A kurzus törlése fordítva halad (verziók, majd a fő sor),
+ * ezért egy egyidejű törlés és autosave holtpontba kerülhet. Ezt a Postgres
+ * felismeri, és az egyik műveletet hibával leállítja; a közzététel és a
+ * törlés között ez eddig is így volt.
+ * Kérés-tranzakció nélkül a zár nem tartana a mentésig: ilyenkor a mentés zár
+ * nélkül megy tovább (a korábbi viselkedés), a napló-lánc ellenőrzése a
+ * naplózott párhuzamos írást így is felismeri.
+ */
+export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
+  if (operation !== 'update') return data
+  const id = isPlainRecord(originalDoc) ? originalDoc.id : undefined
+  if (typeof id !== 'number' && typeof id !== 'string') return data
+  if (!(await lockProductRow(req, id))) {
+    logger.warn('kurzus mentése: a fő sor nem zárolható (nincs kérés-tranzakció)', {
+      productId: String(id),
+    })
+  }
+  return data
+}
+
+/**
+ * r2-termekor (rev2): a munkatárs verzió-visszaállítása nem élesítheti a
+ * tulajdonos piszkozatát.
+ *
+ * A Payload verzió-visszaállítása (restoreVersionOperation, az admin
+ * „Visszaállítás” gombja alapból `?draft=false`) a `req.context.isRestoringVersion`
+ * jelzőt állítja, és a mező-szintű beforeValidate ilyenkor a munkatárs által
+ * nem írható mezőket (ár, „Fizetős kurzus”, akció) törli, de NEM tölti vissza
+ * (payload/dist/fields/hooks/beforeValidate/promise.js). Az ár-őrök így
+ * `undefined`-ot kapnak és átengednek, a `db.updateOne` pedig a hiányzó
+ * oszlopokat nem írja: a fő sorban marad, ami ott állt, a visszaállított
+ * verzió viszont `_status: 'published'`-et ír. Élő fő sornál ez rendben van
+ * (ott validált, közzétett értékek állnak); közzététel-visszavonás vagy
+ * lomtár után viszont a fő sorban a tulajdonos meg nem erősített piszkozata
+ * áll, és az élesedett volna (mérve valódi Payload + Postgres mellett:
+ * ingyenes 79 500 Ft-os kurzus, 5 Ft-os ár).
+ *
+ * Ezért a nem tulajdonos közzétett visszaállítása nem élő fő sornál piszkozat
+ * marad; a kurzust utána a szokásos Közzététel gomb viszi ki, amely az ár-őrökön
+ * megy át. Csak a `_status`-t normalizálja, a jogosultságot nem érinti. A
+ * tulajdonos visszaállítása validál (minden mezőt ír), azt nem érinti.
+ * Felhasználó nélküli (rendszer-)visszaállításnál sem tudjuk, ki a szereplő:
+ * ott is a fő sor dönt (fail-closed). Olvasási hiba: piszkozat.
+ *
+ * rev3 (BRK-RACE): a fő sort a kérés tranzakciójában zároljuk, MIELŐTT
+ * elolvassuk (lockProductRow). READ COMMITTED mellett a zár nélküli
+ * olvasás még az élő sort láthatta, miközben egy párhuzamos visszavonás vagy
+ * lomtár már a tulajdonos piszkozatát írta a fő sorba; a visszaállítás
+ * `_status: 'published'`-je aztán erre került (mérve: élő, ingyenes,
+ * 79 500 Ft-os kurzus). A zárral a párhuzamos írás vagy előbb commitol (akkor
+ * a friss olvasás már piszkozatot lát), vagy megvárja ezt a tranzakciót.
+ * Tranzakció nélkül a zár nem tartana a mentésig: ilyenkor piszkozat marad.
+ */
+export const restoreVersionByNonOwnerStaysDraft: CollectionBeforeChangeHook = async ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
+  if (
+    operation !== 'update' ||
+    req.context?.isRestoringVersion !== true ||
+    !isPlainRecord(data) ||
+    data._status !== 'published'
+  ) {
+    return data
+  }
+  const id = isPlainRecord(originalDoc) ? originalDoc.id : undefined
+  if (typeof id !== 'number' && typeof id !== 'string') {
+    return { ...data, _status: 'draft' }
+  }
+  if (await ownerMayWrite({ req, data, id })) {
+    return data
+  }
+  if (!(await lockProductRow(req, id))) {
+    logger.warn(
+      'A munkatárs verzió-visszaállítása piszkozat marad: a kurzus sora nem zárolható (nincs kérés-tranzakció)',
+      { productId: id },
+    )
+    return { ...data, _status: 'draft' }
+  }
+  const row = await readProductRow(req, id)
+  return isLivePublishedRow(row) ? data : { ...data, _status: 'draft' }
+}
+
+/** A lomtárba helyezés és a lomtárban álló sor mentése (lásd fent). */
+export const trashWritesStayDraft: CollectionBeforeChangeHook = ({ data, operation }) => {
+  if (operation !== 'update' || !isPlainRecord(data) || !data.deletedAt) {
+    return data
+  }
+  return { ...data, _status: 'draft' }
+}
+
 /**
  * Products override: a plugin gyári mezői (inventory, priceInHUF…) megmaradnak,
  * a kurzus-specifikus mezők mögéjük kerülnek.
@@ -798,6 +1875,19 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
   },
   hooks: {
     ...defaultCollection.hooks,
+    // r2-termekor (rev1): validálás nélküli írás nem hagyhat élő fő sort (a
+    // közzétett sort csak validált mentés írhatja, ott döntenek az ár-őrök).
+    beforeOperation: [
+      ...(defaultCollection.hooks?.beforeOperation ?? []),
+      unpublishAndRestoreWritesStayDraft,
+    ],
+    beforeChange: [
+      trashWritesStayDraft,
+      restoreVersionByNonOwnerStaysDraft,
+      ...(defaultCollection.hooks?.beforeChange ?? []),
+      // A lista végén, közvetlenül az audit plugin hozzáfűzött hookja előtt.
+      productUpdateLocksRow,
+    ],
     // A menü szövege az ártól és a publikációtól is függ; mentés és törlés után újraépítendő.
     afterChange: [
       ...(defaultCollection.hooks?.afterChange ?? []),
@@ -876,8 +1966,14 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       },
     },
     ...mapFieldsDeep(
-      mapFieldsDeep(defaultCollection.fields, withOwnerOnlyPriceAccess),
-      withCourseFriendlyAdmin,
+      mapFieldsDeep(
+        mapFieldsDeep(
+          mapFieldsDeep(defaultCollection.fields, withOwnerOnlyPriceAccess),
+          withCourseFriendlyAdmin,
+        ),
+        withPluginPriceGuards,
+      ),
+      withUnlabelledPriceGroup,
     ),
     {
       // C3: a látogatónak szóló kurzuscím. A `sku` egyszerre volt eddig
@@ -1315,8 +2411,18 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       },
       validate: validateAccessDurationDays,
       admin: {
+        // r2-termekor (a-cms-8): a hozzáférést a rendszer minden ellenőrzéskor
+        // ebből a mezőből számolja (src/lib/course-access.ts
+        // resolveCourseAccess), a vásárláskor nem készül róla pillanatkép. A
+        // módosítás ezért a korábbi vásárlókra is visszamenőleg érvényes; a
+        // súgó ezt a mező mellett mondja ki (NN/g, Confirmation Dialogs:
+        // „Be specific and inform users about the consequence of their
+        // action”, https://www.nngroup.com/articles/confirmation-dialog/; GOV.UK
+        // Design System, Warning text: „warn users about something important,
+        // such as legal consequences of an action”,
+        // https://design-system.service.gov.uk/components/warning-text/).
         description:
-          'Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.',
+          'Hány napig érvényes a hozzáférés a vásárlástól számítva. Hagyd üresen, ha a hozzáférés soha nem jár le. Figyelem: a módosítás a korábbi vásárlókra is érvényes, mert a rendszer a hozzáférést mindig ebből a mezőből számolja. Ha például 365 napra állítod, aki egy évnél régebben vásárolt, azonnal elveszíti a hozzáférést, pedig a kurzusoldal lejárat nélküli hozzáférést ígérhetett neki. Csak a tulajdonos állíthatja.',
       },
     },
     {
@@ -1387,7 +2493,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           validate: validatePromoEnd,
           admin: {
             description:
-              'Az akció utolsó napja, például 2026. 12. 31. Az akció a megadott nap végéig, éjfélig él. Ha üresen hagyod, az akciónak nincs vége.',
+              'Az akció utolsó napja, például 2026. 12. 31. Az akció a megadott nap végéig, éjfélig él. Bekapcsolt akciónál kötelező; egy korábban vég nélkül közzétett akció addig marad így, amíg meg nem adod a végét.',
             date: { pickerAppearance: 'dayOnly', displayFormat: 'yyyy. MM. dd.' },
           },
         },
@@ -1395,7 +2501,9 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           name: 'promoPriceHuf',
           type: 'number',
           label: 'Akciós ár (Ft)',
-          min: 1,
+          // A tényleges alsó határt a validatePromoPriceHuf kényszeríti ki;
+          // a `min` ugyanazt mondja, hogy a konfiguráció ne állítson mást.
+          min: MIN_PRICE_HUF,
           // Fizetendő ár, ezért az Ár mezővel azonos owner-only írás védi
           // (T-011). Az `ownerOnlyProductFieldNames` bejárása csak a plugin
           // gyári mezőit éri el, ezért itt közvetlenül áll (őr:
@@ -1407,8 +2515,12 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           validate: validatePromoPriceHuf,
           admin: {
             step: 1,
-            description:
-              'Ezt fizeti a vásárló az akció ideje alatt, a fenti Ár (Ft) áthúzva jelenik meg mellette. Kisebbnek kell lennie a rendes árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak a tulajdonos állíthatja.',
+            // r2-termekor: ugyanaz a forintos beviteli mező, mint az Ár (Ft)
+            // mellett (ezres tagoló, előnézet, megerősítés nagy csökkentésnél).
+            components: {
+              Field: { path: HUF_PRICE_FIELD_COMPONENT, clientProps: { kind: 'akcios' } },
+            },
+            description: `Ezt fizeti a vásárló az akció ideje alatt, a fenti Ár (Ft) áthúzva jelenik meg mellette. Egész forint, legalább ${MIN_PRICE_HUF} Ft, és kisebb a rendes árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak a tulajdonos állíthatja.`,
           },
         },
         {

@@ -28,6 +28,7 @@ function silentLogger(): Logger {
 interface FixtureProduct {
   id: number
   status: string
+  _status?: string | null
   priceInHUFEnabled?: boolean | null
   priceInHUF?: number | null
   accessDurationDays?: number | null
@@ -63,6 +64,18 @@ const MISCONFIGURED: FixtureProduct = {
   priceInHUFEnabled: true,
   priceInHUF: null,
 }
+/**
+ * r2-termekor H4: lomtárból piszkozatként visszaállított fizetős kurzus. A
+ * Payload validálás nélkül a meg nem erősített piszkozatot (kivett pipa) írta
+ * a fő sorba, `_status: 'draft'`-tal; a `status` közben „published” maradt.
+ */
+const RESTORED_AS_DRAFT: FixtureProduct = {
+  id: 51,
+  status: 'published',
+  _status: 'draft',
+  priceInHUFEnabled: false,
+  priceInHUF: 79500,
+}
 
 const ALL_PRODUCTS = [
   FREE_PUBLISHED,
@@ -72,6 +85,7 @@ const ALL_PRODUCTS = [
   PAID_PUBLISHED,
   FREE_ARCHIVED,
   MISCONFIGURED,
+  RESTORED_AS_DRAFT,
 ]
 
 function matchesWhere(product: FixtureProduct, where: unknown): boolean {
@@ -261,10 +275,15 @@ describe('grantFreeCoursesToUser — csak a kért SKU', () => {
     expect(priceClause?.priceInHUFEnabled).toEqual({ equals: false })
   })
 
-  it('fizetős, archivált és hibásan konfigurált termék NEM kerül be', async () => {
+  it('fizetős, archivált, hibásan konfigurált és piszkozat-sorban álló termék NEM kerül be', async () => {
     const { payload, updates } = createMockPayload()
 
-    for (const productId of [PAID_PUBLISHED.id, FREE_ARCHIVED.id, MISCONFIGURED.id]) {
+    for (const productId of [
+      PAID_PUBLISHED.id,
+      FREE_ARCHIVED.id,
+      MISCONFIGURED.id,
+      RESTORED_AS_DRAFT.id,
+    ]) {
       const result = await grantFreeCoursesToUser({
         payload,
         user: { id: 7, purchases: [] },

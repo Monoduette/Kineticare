@@ -4,6 +4,7 @@ import { useFormFields } from '@payloadcms/ui'
 import { useEffect, useState, type CSSProperties, type JSX } from 'react'
 
 import { formatPriceHuf } from '../../lib/format-price'
+import { PROMO_END_MISSING_NOTE } from './huf-price'
 
 import {
   promoDayLabel,
@@ -282,13 +283,31 @@ const noticeStyle: CSSProperties = {
   margin: 'calc(var(--base) * 0.5) 0 0',
 }
 
+/**
+ * r2-termekor (a-cms-9): bekapcsolt akciónál a hiányzó vég jegyzete. Új akciót
+ * a mentés csak záró nappal enged közzétenni (src/plugins/ecommerce.ts
+ * validatePromoEnd); a doboz ezt mentés előtt kimondja, a korábban vég nélkül
+ * közzétett akciónál pedig emlékeztet rá (NN/g, 10 Usability Heuristics, #5
+ * Error Prevention, https://www.nngroup.com/articles/ten-usability-heuristics/).
+ */
+export function promoEndNote(fields: {
+  promoEnabled?: unknown
+  promoEnd?: unknown
+}): string | null {
+  return fields.promoEnabled === true && (fields.promoEnd === null || fields.promoEnd === undefined)
+    ? PROMO_END_MISSING_NOTE
+    : null
+}
+
 /** Megjelenítés (állapot-független, tesztelhető). */
 export function CoursePromoStatusView({
   status,
   priceNotes = [],
+  endNote = null,
 }: {
   status: CoursePromoStatusText
   priceNotes?: readonly string[]
+  endNote?: string | null
 }): JSX.Element {
   // Az állapot mentés nélkül változik, ezért a felolvasónak is szólnia kell:
   // a teljes doboz egy udvarias élő régió (a figyelmeztetés is).
@@ -299,6 +318,12 @@ export function CoursePromoStatusView({
         <div className="kc-admin-notice kc-admin-notice--figyelem" style={noticeStyle}>
           <p className="kc-admin-notice__cim">Figyelem</p>
           <p className="kc-admin-notice__szoveg">{status.warning}</p>
+        </div>
+      ) : null}
+      {endNote !== null ? (
+        <div className="kc-admin-notice kc-admin-notice--figyelem" style={noticeStyle}>
+          <p className="kc-admin-notice__cim">Hiányzik az akció utolsó napja</p>
+          <p className="kc-admin-notice__szoveg">{endNote}</p>
         </div>
       ) : null}
       {priceNotes.length > 0 ? (
@@ -396,6 +421,7 @@ export function CoursePromoStatus(): JSX.Element {
 
   return (
     <CoursePromoStatusView
+      endNote={promoEndNote(values)}
       priceNotes={handwrittenPriceNotes({
         longDescription,
         guaranteeTitle,
