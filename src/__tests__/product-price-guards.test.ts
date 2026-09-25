@@ -74,6 +74,33 @@ const ROW_INSERTED_AT = '2026-09-01T08:00:00.000Z'
 const CREATE_LOGGED_AT = '2026-09-01T08:00:00.004Z'
 const WRITTEN_LATER = '2026-09-02T10:30:00.000Z'
 
+/** A fő sor egy későbbi, naplózott írás (közzététel, visszavonás, lomtár) után. */
+const rewritten = (row: Record<string, unknown>) => ({ ...row, updatedAt: WRITTEN_LATER })
+
+/**
+ * A napló bejegyzései (a legújabbal kezdve) hiánytalan láncként, ahogy a
+ * valódi mentések hagyják (src/plugins/audit.ts: a fő sor írás előtti és
+ * utáni állapota): a legújabb „after” oldala a fő sor írási ideje
+ * (WRITTEN_LATER, lásd rewritten), minden régebbi bejegyzés „after” oldala a
+ * nála újabb „before” oldalának ideje. A létrehozásnál (`before` nélkül) a
+ * lánc véget ér.
+ */
+function loggedHistory(entries: AuditEntry[]): AuditEntry[] {
+  let writtenAt = Date.parse(WRITTEN_LATER)
+  return entries.map(({ before, after }) => {
+    const afterAt = new Date(writtenAt).toISOString()
+    writtenAt -= 60_000
+    const beforeAt = new Date(writtenAt).toISOString()
+    return {
+      after: { ...(after as Record<string, unknown>), updatedAt: afterAt },
+      before:
+        before === undefined
+          ? undefined
+          : { ...(before as Record<string, unknown>), updatedAt: beforeAt },
+    }
+  })
+}
+
 /** A közzétett (fő táblás) sor, ahogy a findByID adja; `undefined`: olvasás nem várható. */
 function fakeReq(
   options: {
@@ -295,14 +322,54 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     )
   })
 
+  it('soha nem közzétett kurzus, a fő sor írási ideje a létrehozás bejegyzésével azonos ezredmásodperc: még bizonyítottan soha nem közzétett', async () => {
+    // A fő sor `updatedAt`-jét a beszúrás előtt, a bejegyzés idejét utána
+    // állítja a Payload, így a kettő ugyanarra az ezredmásodpercre eshet. Az
+    // egyenlőség nem írás: `>=` mellett az új kurzus néha ismeretlen múltúnak
+    // számítana, és a tulajdonostól is megerősítést kérne.
+    const copy = fakeReq({
+      published: { ...PAID_PUBLISHED, _status: 'draft', updatedAt: CREATE_LOGGED_AT },
+      audit: [],
+      created: true,
+    })
+    expect(await validatePriceInHUF(69_500, numberOpts({ req: copy.req }))).toBe(true)
+    expect(await validatePriceInHUF(7_950, numberOpts({ req: copy.req }))).toBe(
+      priceDropMessage('rendes', 7_950, 79_500, 'rendes', 'eddigi'),
+    )
+  })
+
+  it('rev2 (BRK305-3): közzétett múlt nélküli kurzus (másolat) áras közzététele a tulajdonosé, az akciós árnál is', async () => {
+    // A másolat fő sorában a forrás piszkozatának ára áll; önmagához mérve
+    // egyik ár sem csökken, a munkatárs mégsem teheti közzé.
+    const copyRow = {
+      ...PAID_PUBLISHED,
+      _status: 'draft',
+      promoEnabled: true,
+      promoPriceHuf: 29_500,
+    }
+    const staff = fakeReq({ role: 'staff', published: copyRow, audit: [], created: true })
+    expect(
+      await validatePriceInHUF(79_500, numberOpts({ req: staff.req, previousValue: 79_500 })),
+    ).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+    expect(
+      await validatePromoPriceHuf(29_500, numberOpts({ req: staff.req, previousValue: 29_500 })),
+    ).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+    // A tulajdonos útja változatlan.
+    const owner = fakeReq({ published: copyRow, audit: [], created: true })
+    expect(
+      await validatePriceInHUF(79_500, numberOpts({ req: owner.req, previousValue: 79_500 })),
+    ).toBe(true)
+    expect(
+      await validatePromoPriceHuf(29_500, numberOpts({ req: owner.req, previousValue: 29_500 })),
+    ).toBe(true)
+  })
+
   it('H3: a közzététel visszavonása után a napló szerinti utolsó közzétett árhoz mér', async () => {
     // A visszavonás a fő sorba a piszkozatot írta (benne már az elütött 7 950),
     // a napló „before” oldala a visszavonás előtti közzétett sor.
-    const unpublished = { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 7_950 }
-    const { req, find } = fakeReq({
-      published: unpublished,
-      audit: [{ before: PAID_PUBLISHED, after: unpublished }],
-    })
+    const unpublished = rewritten({ ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 7_950 })
+    const history = loggedHistory([{ before: PAID_PUBLISHED, after: unpublished }])
+    const { req, find } = fakeReq({ published: unpublished, audit: history })
     expect(await validatePriceInHUF(7_950, numberOpts({ req, previousValue: 7_950 }))).toBe(
       priceDropMessage('rendes', 7_950, 79_500),
     )
@@ -310,26 +377,14 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
       expect.objectContaining({
         collection: 'audit-logs',
         where: {
-          and: [
-            { entityType: { equals: 'products' } },
-            { entityId: { equals: '1' } },
-            {
-              or: [
-                { 'after._status': { equals: 'published' } },
-                { 'before._status': { equals: 'published' } },
-              ],
-            },
-          ],
+          and: [{ entityType: { equals: 'products' } }, { entityId: { equals: '1' } }],
         },
-        sort: '-createdAt',
+        sort: ['-createdAt', '-id'],
         page: 1,
         overrideAccess: true,
       }),
     )
-    const confirmed = fakeReq({
-      published: unpublished,
-      audit: [{ before: PAID_PUBLISHED, after: unpublished }],
-    })
+    const confirmed = fakeReq({ published: unpublished, audit: history })
     const data = { [PRODUCT_CONFIRMATIONS_KEY]: { priceInHUF: 7_950 } }
     expect(await validatePriceInHUF(7_950, numberOpts({ req: confirmed.req, data }))).toBe(true)
   })
@@ -337,12 +392,12 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
   it('H3: a legfrissebb közzétett pillanatkép számít, a régebbi nem', async () => {
     const draftRow = { ...PAID_PUBLISHED, _status: 'draft' }
     const { req } = fakeReq({
-      published: draftRow,
-      audit: [
+      published: rewritten({ ...draftRow, deletedAt: '2026-09-24T10:00:00.000Z' }),
+      audit: loggedHistory([
         { before: draftRow, after: { ...draftRow, deletedAt: '2026-09-24T10:00:00.000Z' } },
         { before: { ...PAID_PUBLISHED, priceInHUF: 99_000 }, after: draftRow },
         { before: undefined, after: PAID_PUBLISHED },
-      ],
+      ]),
     })
     expect(await validatePriceInHUF(45_000, numberOpts({ req }))).toBe(
       priceDropMessage('rendes', 45_000, 99_000),
@@ -351,14 +406,17 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
 
   it('H3: egy bejegyzésen belül az „after” az újabb állapot', async () => {
     // Közzétett árváltás 99 000-ről 49 000-re, utána visszavonás: a mérce 49 000.
+    // A visszavonás bejegyzése elveszett helyett naplózott: a lánc hiánytalan.
+    const unpublished = { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 24_000 }
     const { req } = fakeReq({
-      published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 24_000 },
-      audit: [
+      published: rewritten(unpublished),
+      audit: loggedHistory([
+        { before: { ...PAID_PUBLISHED, priceInHUF: 49_000 }, after: unpublished },
         {
           before: { ...PAID_PUBLISHED, priceInHUF: 99_000 },
           after: { ...PAID_PUBLISHED, priceInHUF: 49_000 },
         },
-      ],
+      ]),
     })
     expect(await validatePriceInHUF(24_000, numberOpts({ req, previousValue: 24_000 }))).toBe(
       priceDropMessage('rendes', 24_000, 49_000),
@@ -370,12 +428,13 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     // `{ deletedAt, _status: 'published' }` után a fő sorban és a bejegyzés
     // „after” oldalán a tulajdonos meg nem erősített 5 Ft-os piszkozata állt.
     const poisoned = { ...PAID_PUBLISHED, priceInHUF: 5, deletedAt: '2026-09-24T10:00:00.000Z' }
-    const trashEntry = { before: PAID_PUBLISHED, after: poisoned }
     const rows = [
       ['közzétett státuszú lomtár-sor', poisoned],
       ['piszkozat lomtár-sor, mérgezett naplóoldallal', { ...poisoned, _status: 'draft' }],
     ] as const
-    for (const [label, row] of rows) {
+    for (const [label, trashedRow] of rows) {
+      const row = rewritten(trashedRow)
+      const trashEntry = loggedHistory([{ before: PAID_PUBLISHED, after: poisoned }])[0]
       const staff = fakeReq({ role: 'staff', published: row, audit: [trashEntry] })
       expect(
         await validatePriceInHUF(5, numberOpts({ req: staff.req, previousValue: 5 })),
@@ -396,14 +455,17 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     // lomtár-írások alakja (lomtárba helyezés, majd lomtárban álló sor mentése).
     const draftRow = { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 7_950 }
     const trashedPublished = { ...PAID_PUBLISHED, priceInHUF: 7_950, deletedAt: '2026-09-24' }
-    const firstPage = Array.from({ length: 20 }, (_, index) =>
-      index % 2 === 0
-        ? { before: draftRow, after: trashedPublished }
-        : { before: trashedPublished, after: trashedPublished },
-    )
+    const history = loggedHistory([
+      ...Array.from({ length: 20 }, (_, index) =>
+        index % 2 === 0
+          ? { before: draftRow, after: trashedPublished }
+          : { before: trashedPublished, after: trashedPublished },
+      ),
+      { before: PAID_PUBLISHED, after: draftRow },
+    ])
     const { req } = fakeReq({
-      published: draftRow,
-      auditPages: [firstPage, [{ before: PAID_PUBLISHED, after: draftRow }]],
+      published: rewritten(trashedPublished),
+      auditPages: [history.slice(0, 20), history.slice(20)],
     })
     expect(await validatePriceInHUF(7_950, numberOpts({ req, previousValue: 7_950 }))).toBe(
       priceDropMessage('rendes', 7_950, 79_500),
@@ -491,6 +553,32 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
         { audit: [], created: true, publishedVersion: true },
       ],
       ['a verziótábla olvasása elbukik', { audit: [], created: true, publishedVersion: 'hiba' }],
+      // PR #305 rev2 (breaker, BRK305-2): a pillanatkép után a fő sort
+      // naplózatlanul írták (elveszett közzétételi és visszavonási bejegyzés).
+      [
+        '12 900 Ft-on közzétettként létrehozott kurzus: a létrehozás pillanatképe után a fő sort naplózatlanul írták',
+        {
+          published: rewritten(mistyped),
+          audit: [{ after: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT } }],
+        },
+      ],
+      [
+        'a pillanatkép után egy bejegyzés hiányzik, a későbbi írás naplózott',
+        {
+          published: rewritten(mistyped),
+          audit: [
+            ...loggedHistory([{ before: mistyped, after: mistyped }]),
+            { after: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT } },
+          ],
+        },
+      ],
+      [
+        'a bejegyzés írási ideje nem olvasható',
+        {
+          published: rewritten(mistyped),
+          audit: [{ before: { ...PAID_PUBLISHED, priceInHUF: 12_900 }, after: mistyped }],
+        },
+      ],
     ]
 
     it.each(cases)('%s: a tulajdonosnak meg kell erősítenie az árat', async (_label, setup) => {
@@ -787,8 +875,8 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     const unpublishedFree = { ...free, _status: 'draft' }
     const wasFree = fakeReq({
       role: 'staff',
-      published: unpublishedFree,
-      audit: [{ before: free, after: unpublishedFree }],
+      published: rewritten(unpublishedFree),
+      audit: loggedHistory([{ before: free, after: unpublishedFree }]),
       orders: 0,
     })
     const noPrice = { priceInHUFEnabled: false, priceInHUF: null }
@@ -806,9 +894,12 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
   it('„már ingyenes” a tulajdonosnál csak a közzétett fő sor lehet, a napló pillanatképe nem', async () => {
     // Egy téves „már ingyenes” visszavonhatatlan hozzáféréseket adna, ezért a
     // napló (akár régi, ingyenes állapotú) bejegyzése itt nem kivétel.
+    const unpublished = { ...PAID_PUBLISHED, _status: 'draft', priceInHUFEnabled: false }
     const { req } = fakeReq({
-      published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUFEnabled: false },
-      audit: [{ after: { ...PAID_PUBLISHED, priceInHUFEnabled: false } }],
+      published: rewritten(unpublished),
+      audit: loggedHistory([
+        { before: { ...PAID_PUBLISHED, priceInHUFEnabled: false }, after: unpublished },
+      ]),
       orders: 0,
     })
     expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req }))).toBe(
@@ -953,14 +1044,14 @@ describe('validatePromoEnd: új akciót csak záró nappal (a-cms-9)', () => {
     }
     const unpublished = { ...product4, _status: 'draft' }
     const { req } = fakeReq({
-      published: unpublished,
-      audit: [{ before: product4, after: unpublished }],
+      published: rewritten(unpublished),
+      audit: loggedHistory([{ before: product4, after: unpublished }]),
     })
     expect(await validatePromoEnd(null, dateOpts({ req }, { promoEnabled: true }))).toBe(true)
     // Ha az utolsó közzétett állapotban nem volt vég nélküli akció, ez új akció.
     const added = fakeReq({
-      published: unpublished,
-      audit: [{ before: PAID_PUBLISHED, after: unpublished }],
+      published: rewritten(unpublished),
+      audit: loggedHistory([{ before: PAID_PUBLISHED, after: unpublished }]),
     })
     expect(await validatePromoEnd(null, dateOpts({ req: added.req }, { promoEnabled: true }))).toBe(
       PROMO_END_REQUIRED_MESSAGE,

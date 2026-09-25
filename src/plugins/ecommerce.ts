@@ -319,13 +319,31 @@ function isLivePublishedRow(
   return isPublishedRow(published) && !isTrashedRow(published)
 }
 
-/** A pillanatkép-keresés lapmérete (a napló csak közzétett oldalú bejegyzéseit lapozza). */
+/** A pillanatkép-keresés lapmérete (a napló kurzus-bejegyzéseit lapozza, a legújabbal kezdve). */
 const LAST_PUBLISHED_PAGE_SIZE = 20
 
 const asRecord = (value: unknown): PublishedProduct | null =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as PublishedProduct)
     : null
+
+/** Két időpont ugyanaz a pillanat-e; olvashatatlan érték sosem egyezik. */
+function sameInstant(left: unknown, right: unknown): boolean {
+  const a = toValidDate(left)
+  const b = toValidDate(right)
+  return a !== null && b !== null && a.getTime() === b.getTime()
+}
+
+/**
+ * A napló szerinti legutóbb közzétett állapot keresésének eredménye:
+ * - `snapshot`: megvan, és a fő sort azóta csak naplózott írás érte;
+ * - `none`: a naplóban nincs élő, közzétett oldal;
+ * - `unverified`: van pillanatkép, de utána a fő sort legalább egyszer
+ *   naplózatlanul írták (elveszett bejegyzés), így nem bizonyos, hogy ez a
+ *   legutóbb közzétett állapot.
+ */
+type SnapshotLookup =
+  { kind: 'snapshot'; snapshot: PublishedProduct } | { kind: 'none' } | { kind: 'unverified' }
 
 /**
  * A kurzus LEGUTÓBB KÖZZÉTETT állapota, ha a fő sor most nem közzétett
@@ -337,45 +355,56 @@ const asRecord = (value: unknown): PublishedProduct | null =>
  * és ha ez a közzétett volt, a `_products_v`-ben nem marad közzétett változat
  * (mérve: az egyetlen közzétett verzió `_status`-a draftra váltott).
  *
- * A műveletnapló igen: a közzétételt, a visszavonást és a lomtárba helyezést a
- * fő sor előtte/utána állapotával naplózzuk (src/plugins/audit.ts, a-cms-12),
- * a bejegyzést csak a rendszer írhatja (src/collections/AuditLogs.ts). A
- * legfrissebb bejegyzés, amelynek egyik oldala élő (közzétett, nem lomtárban
- * lévő) sor, a legutóbb közzétett állapot: az utolsó közzététel utáni sor
- * („after”, a bejegyzésen belül ez az újabb), vagy a visszavonás, lomtárba
- * helyezés előtti („before”). Hiány: null; olvasási hiba: kivétel (a hívó
- * ilyenkor ismeretlen mércét ad, lásd productReference).
+ * A műveletnapló igen: a létrehozást, a közzétételt, a visszavonást, a
+ * lomtárat és a visszaállítást a fő sor előtte/utána állapotával naplózzuk
+ * (src/plugins/audit.ts, a-cms-12), a bejegyzést csak a rendszer írhatja
+ * (src/collections/AuditLogs.ts). A legfrissebb bejegyzés, amelynek egyik
+ * oldala élő (közzétett, nem lomtárban lévő) sor, a legutóbb közzétett
+ * állapot: az utolsó közzététel utáni sor („after”, a bejegyzésen belül ez az
+ * újabb), vagy a visszavonás, lomtárba helyezés előtti („before”). Olvasási
+ * hiba: kivétel (a hívó ilyenkor ismeretlen mércét ad, lásd productReference).
  *
- * A lekérdezés eleve csak a közzétett oldalú bejegyzéseket kéri (JSON-útvonal
- * a `before`/`after` mezőn), és addig lapoz, amíg élő oldalt nem talál. Rögzített
- * ablak nem jó: minden lomtár + „visszaállítás piszkozatként” kör két, közzétett
- * oldal nélküli bejegyzést ír, és néhány ilyen kör kitolná az ablakból a
- * közzétett állapotot (a mérce ekkor a piszkozat-sor lenne, és az elütött ár
- * megerősítés nélkül mehetne ki).
+ * PR #305 rev2 (breaker, BRK305-1/2): a pillanatkép csak akkor mérce, ha a fő
+ * sort utána egyetlen naplózatlan írás sem érte. Közzétettként létrehozott
+ * kurzusnál (restore-legacy-content, seed, szkriptek) a létrehozás
+ * bejegyzésének „after” oldala is élő sor; ha a későbbi közzététel és
+ * visszavonás bejegyzése elvész, ez az elavult ár (vagy „ingyenes”) lett
+ * volna a mérce. A Payload a fő sor minden írásánál az `updatedAt`-et a
+ * pillanatnyi időre állítja (update.js, restoreVersion.js), a bejegyzés két
+ * oldala pedig a fő sor írás előtti és utáni állapota. A lánc tehát
+ * hiánytalan, ha a legújabb bejegyzés „after” `updatedAt`-je a fő soré, és
+ * minden bejegyzés „after” `updatedAt`-je a nála újabb bejegyzés „before”
+ * `updatedAt`-je, egészen a pillanatképet adó bejegyzésig. Bármely hézag
+ * (elveszett bejegyzés, olvashatatlan idő, a régi, verzió-alakú bejegyzés):
+ * `unverified`. Egy naplózatlan írás (például egy szkript nem piszkozat-mentése
+ * a visszavont kurzuson) így egyszer tulajdonosi megerősítést kér: ez a
+ * biztonságos irány.
+ *
+ * A lekérdezés a kurzus minden bejegyzését lapozza (a lánchoz a közzétett oldal
+ * nélküli lomtár- és visszaállítás-bejegyzések is kellenek), amíg élő oldalt
+ * nem talál. Rögzített ablak nem jó: minden lomtár + „visszaállítás
+ * piszkozatként” kör két bejegyzést ír, és néhány ilyen kör kitolná az
+ * ablakból a közzétett állapotot.
  */
 async function findLastPublishedSnapshot(
   req: PayloadRequest | undefined,
   id: number | string,
-): Promise<PublishedProduct | null> {
+  row: PublishedProduct,
+): Promise<SnapshotLookup> {
   if (typeof req?.payload?.find !== 'function') {
     throw new Error('a műveletnapló nem olvasható')
   }
+  // A lánc következő elvárt pontja: a fő sor, majd mindig az előző (újabb)
+  // bejegyzés „before” oldalának írási ideje.
+  let expectedWrittenAt: unknown = row.updatedAt
+  let intact = true
   for (let page = 1; ; page += 1) {
     const result = await req.payload.find({
       collection: 'audit-logs',
       where: {
-        and: [
-          { entityType: { equals: 'products' } },
-          { entityId: { equals: String(id) } },
-          {
-            or: [
-              { 'after._status': { equals: 'published' } },
-              { 'before._status': { equals: 'published' } },
-            ],
-          },
-        ],
+        and: [{ entityType: { equals: 'products' } }, { entityId: { equals: String(id) } }],
       },
-      sort: '-createdAt',
+      sort: ['-createdAt', '-id'],
       limit: LAST_PUBLISHED_PAGE_SIZE,
       page,
       depth: 0,
@@ -384,12 +413,17 @@ async function findLastPublishedSnapshot(
       select: { before: true, after: true },
     })
     for (const entry of result.docs) {
-      for (const side of [entry.after, entry.before]) {
-        const snapshot = asRecord(side)
-        if (isLivePublishedRow(snapshot)) return snapshot
+      const after = asRecord(entry.after)
+      const before = asRecord(entry.before)
+      intact = intact && sameInstant(after?.updatedAt, expectedWrittenAt)
+      for (const snapshot of [after, before]) {
+        if (isLivePublishedRow(snapshot)) {
+          return intact ? { kind: 'snapshot', snapshot } : { kind: 'unverified' }
+        }
       }
+      expectedWrittenAt = before?.updatedAt
     }
-    if (result.hasNextPage !== true) return null
+    if (result.hasNextPage !== true) return { kind: 'none' }
   }
 }
 
@@ -442,7 +476,9 @@ async function provenNeverPublished(
         { action: { equals: 'create' } },
       ],
     },
-    sort: '-createdAt',
+    // A legkorábbi létrehozási bejegyzés: ha (például mentésből visszatöltés
+    // után) több is lenne, a későbbi ideje megengedőbb bizonyíték volna.
+    sort: 'createdAt',
     limit: 1,
     depth: 0,
     overrideAccess: true,
@@ -474,8 +510,9 @@ async function provenNeverPublished(
  *   élő (közzétett és nem lomtárban lévő), különben a napló pillanatképe;
  *   null, ha nincs.
  * - `unknown`: a nem élő kurzus legutóbb közzétett állapota nem állapítható
- *   meg (a napló nem olvasható, vagy nincs pillanatkép, és a kurzus nem
- *   bizonyítottan soha nem közzétett). Ilyenkor egyik őr sem mér a fő sor
+ *   meg (a napló nem olvasható; a pillanatkép után a fő sort naplózatlanul
+ *   írták; vagy nincs pillanatkép, és a kurzus nem bizonyítottan soha nem
+ *   közzétett). Ilyenkor egyik őr sem mér a fő sor
  *   piszkozatához: az ár és az ingyenesség csak a tulajdonos megerősítésével,
  *   a vég nélküli akció csak véggel tehető közzé (fail-closed).
  */
@@ -491,13 +528,20 @@ async function productReference(options: GuardOptions): Promise<ProductReference
   const row = await readProductRow(req, id)
   // Olvashatatlan fő sornál a mentés ugyanabban a tranzakcióban úgyis az
   // adatbázisra vár; ilyenkor az ár-őrök a korábbi döntés szerint csak az
-  // alakot (egész forint, alsó határ) nézik, az ingyenesség-őr pedig a
-  // `row === undefined` miatt amúgy is megerősítést kér.
+  // alakot (egész forint, alsó határ) nézik (a munkatársra vonatkozó „első
+  // áras közzététel” szabály sem él, lásd priceChangeVerdict), az
+  // ingyenesség-őr pedig a `row === undefined` miatt amúgy is megerősítést kér.
   if (row === undefined) return { row, lastPublished: null, unknown: false }
   if (isLivePublishedRow(row)) return { row, lastPublished: row, unknown: false }
   try {
-    const lastPublished = await findLastPublishedSnapshot(req, id)
-    if (lastPublished !== null) return { row, lastPublished, unknown: false }
+    const lookup = await findLastPublishedSnapshot(req, id, row)
+    if (lookup.kind === 'snapshot') return { row, lastPublished: lookup.snapshot, unknown: false }
+    if (lookup.kind === 'unverified') {
+      logger.warn('kurzus ár-őr: a közzétett pillanatkép után naplózatlan írás történt', {
+        productId: String(id),
+      })
+      return { row, lastPublished: null, unknown: true }
+    }
     return { row, lastPublished: null, unknown: !(await provenNeverPublished(req, id, row)) }
   } catch (error) {
     logger.warn('kurzus ár-őr: a legutóbb közzétett állapot nem olvasható', {
@@ -617,8 +661,10 @@ interface DropReference {
  * (a vásárló ezt látja most, vagy a közzététel visszavonása előtt ezt látta).
  * A bizonyítottan soha nem közzétett kurzusnál (új kurzus, admin-másolat) a fő
  * sorban eddig mentett árhoz: ez csak megerősítést kérhet, átengedni semmit
- * nem enged. Ismeretlen közzétett állapotnál (unknown) a hívó
- * (priceChangeVerdict) ide el sem jut: ott a fő sor a már elütött piszkozat-ár
+ * nem enged (és csak a tulajdonosnál: a munkatárs ilyen kurzust árral nem
+ * tehet közzé, lásd priceChangeVerdict). Ismeretlen közzétett állapotnál
+ * (unknown) a hívó (priceChangeVerdict) ide el sem jut: ott a fő sor a már
+ * elütött piszkozat-ár
  * lehet, amely önmagához mérve nem csökken (PR #305, Codex P1). Akciós árnál
  * az akciós ár, ha van, különben a rendes ár (egy új, a rendes ár felénél
  * kisebb akció is szokatlan).
@@ -685,9 +731,32 @@ export function unknownPriceReferenceMessage(kind: PriceFieldKind, value: number
 }
 
 /**
+ * Nincs-e a kurzusnak közzétett múltja: új kurzus (create, a mentés
+ * viszonyítási alapja null), vagy olvasható fő sor, amelynek sem most, sem a
+ * napló szerint nincs közzétett állapota (a productReference ilyenkor a
+ * bizonyítottan soha nem közzétett kurzust adja; az ismeretlen múltat az
+ * `unknown` jelzi, azt a hívó előbb kezeli).
+ */
+function hasNoPublishedHistory(reference: ProductReference | null): boolean {
+  return reference === null || (reference.row !== undefined && reference.lastPublished === null)
+}
+
+/**
  * Az érvényes alakú új ár döntése: ismeretlen közzétett állapotnál mindig
  * megerősítés kell; különben csak a hivatkozási ár felénél kisebb árnál. A
  * munkatárs megerősítést nem adhat, ő a tulajdonosi üzenetet kapja (H2).
+ *
+ * PR #305 rev2 (breaker, BRK305-3): közzétett múlt nélküli kurzus áras
+ * közzététele a tulajdonosé, ugyanúgy, mint az első ingyenes közzététel
+ * (validatePriceInHUFEnabled, rev2). A munkatárs nem írhatja az ár-mezőket,
+ * nála az érték mindig egy tárolt, nem validált verzióból jön: az admin
+ * Másolás gombja a másolat árát a forrás legutóbbi, akár autosave-es
+ * piszkozatából tölti, így a tulajdonos elütött, meg nem erősített ára
+ * (79 500 helyett 7 950 Ft) a másolat saját fő sorában áll, és ahhoz mérve
+ * nem „csökken”. A mért út: piszkozat-másolat, majd a munkatárs
+ * közzététele; vagy `?draft=false` másolat azonnal közzétéve. Új kurzusnál
+ * nincs mihez mérni, ezért ott az elütést csak a tulajdonos szeme foghatja
+ * meg; a tulajdonos útja változatlan.
  */
 async function priceChangeVerdict(
   options: GuardOptions,
@@ -699,6 +768,8 @@ async function priceChangeVerdict(
   let message: string
   if (reference?.unknown === true) {
     message = unknownPriceReferenceMessage(kind, value)
+  } else if (hasNoPublishedHistory(reference) && !(await ownerMayWrite(options))) {
+    return OWNER_ONLY_CHANGE_MESSAGE
   } else {
     const drop = dropReference(reference, kind)
     if (drop === null || !isPriceDrop(value, drop.price)) {
@@ -726,9 +797,12 @@ async function priceChangeVerdict(
  * megengedett. A Payload ezt a validátort csak bekapcsolt „Fizetős kurzus”
  * mellett futtatja (a plugin mező-feltétele), és piszkozat mentésekor
  * egyáltalán nem. Ha a nem élő kurzus legutóbb közzétett ára nem állapítható
- * meg (a napló nem olvasható, vagy a pillanatkép hiányzik egy nem bizonyítottan
- * soha nem közzétett kurzusnál), a csökkenés nem mérhető: ilyenkor minden ár
- * csak a tulajdonos megerősítésével tehető közzé (PR #305, Codex P1). Ha a fő
+ * meg (a napló nem olvasható, a pillanatkép után a fő sort naplózatlanul
+ * írták, vagy a pillanatkép hiányzik egy nem bizonyítottan soha nem közzétett
+ * kurzusnál), a csökkenés nem mérhető: ilyenkor minden ár csak a tulajdonos
+ * megerősítésével tehető közzé (PR #305, Codex P1). A közzétett múlt nélküli
+ * kurzus áras közzététele a tulajdonosé (PR #305 rev2, lásd
+ * priceChangeVerdict). Ha a fő
  * sor nem olvasható, a csökkenés nem mérhető: ilyenkor az egész forint és a
  * 10 Ft-os alsó határ él (a mentés ugyanabban a tranzakcióban úgyis az
  * adatbázisra vár).

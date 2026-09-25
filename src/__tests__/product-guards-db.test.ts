@@ -630,8 +630,9 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
   it('rev1 (a napló szűrője): sok lomtár + piszkozatként visszaállítás kör után is a legutóbb közzétett ár a mérce', async () => {
     // Minden kör két, közzétett oldal nélküli naplóbejegyzést ír; 11 kör (22
     // bejegyzés) kitolta a korábbi, 20-as ablakból a visszavonás bejegyzését, és
-    // a mérce az elütött árat hordozó piszkozat-sor lett. A lekérdezés szűrője
-    // (csak közzétett oldalú bejegyzés) ezeket eleve kihagyja.
+    // a mérce az elütött árat hordozó piszkozat-sor lett. A lekérdezés lapozva
+    // megy végig rajtuk (rev2: a lánc ellenőrzéséhez ezek is kellenek, a
+    // naplózott lomtár és visszaállítás a láncot nem szakítja meg).
     const id = await createPublished('lookback')
     expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
     await autosave(id, owner, { priceInHUF: 7_950 })
@@ -651,20 +652,24 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
 
   it('rev2 (a napló lapozása): 20-nál több, lomtárban álló közzétett oldalú bejegyzés mögött is megtalálja a közzétett árat', async () => {
     // A rev1 előtti, `_status: 'published'`-del küldött lomtár-írások alakja: a
-    // bejegyzés közzétett oldala lomtárban áll (a szűrő átengedi, mérce nem
-    // lehet). 21 ilyen bejegyzés az első lapra nem fér, a visszavonás előtti
-    // közzétett sor a második lapon van.
+    // bejegyzés közzétett oldala lomtárban áll (mérce nem lehet). 21 ilyen
+    // bejegyzés az első lapra nem fér, a visszavonás előtti közzétett sor a
+    // második lapon van.
     // Az elütött ár autosave-je a visszavonás ELŐTT: a visszavonás a
     // piszkozatot (7 950) írja a fő sorba, így a napló nélkül nincs mihez mérni.
     const id = await createPublished('paging')
     await autosave(id, owner, { priceInHUF: 7_950 })
     expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
-    expect((await mainRow(id)).priceInHUF).toBe(7_950)
+    const row = await mainRow(id)
+    expect(row.priceInHUF).toBe(7_950)
+    // rev2: a beszúrt bejegyzések a fő sor írási idejét hordozzák, így a lánc
+    // (before/after `updatedAt`) hiánytalan marad, és a teszt a lapozást méri.
     const poisoned = {
       _status: 'published',
       priceInHUFEnabled: true,
       priceInHUF: 7_950,
       deletedAt: new Date().toISOString(),
+      updatedAt: row.updatedAt,
     }
     for (let index = 0; index < 21; index += 1) {
       await payload.create({
@@ -1095,7 +1100,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
    * igaz lett volna, a piszkozat-sor önmagához mérve „nem csökkent”, és a
    * munkatárs megerősítés nélkül tette volna közzé.
    */
-  it('PR #305 rev1: közzétett, majd visszavont kurzus elveszett közzétételi naplóval: az elütött ár csak a tulajdonos megerősítésével élesedik', async () => {
+  it('PR #305 rev1: közzétett, visszavont, lomtárba tett és visszaállított kurzus elveszett közzétételi naplóval: az elütött ár csak a tulajdonos megerősítésével élesedik', async () => {
     const id = await createDraftAsOwner('published-then-lost-audit')
     expect(await save(id, owner, { _status: 'published' })).toBe('OK')
     expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
@@ -1139,5 +1144,140 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     expect(publishedVersions.totalDocs).toBe(0)
 
     await expectConfirmationRequired(id)
+  }, 120_000)
+
+  /**
+   * A kurzus összes naplóbejegyzését törli a létrehozásé kivételével: a
+   * best-effort naplóírás (src/lib/audit.ts writeAuditLog) elveszett
+   * bejegyzéseinek alakja.
+   */
+  async function keepOnlyCreateEntry(id: number): Promise<void> {
+    await payload.db.deleteMany({
+      collection: 'audit-logs',
+      where: {
+        and: [
+          { entityType: { equals: 'products' } },
+          { entityId: { equals: String(id) } },
+          { action: { not_equals: 'create' } },
+        ],
+      },
+    })
+  }
+
+  /*
+   * PR #305 rev2 (breaker, BRK305-1/2): a közzétettként létrehozott kurzus
+   * (restore-legacy-content, seed, szkriptek) létrehozási bejegyzésének
+   * „after” oldala élő, közzétett sor. Ha a későbbi közzététel és visszavonás
+   * bejegyzése elvész, ez az elavult pillanatkép lett a „legutóbb közzétett”
+   * állapot: a fő sort azóta naplózatlanul írták, mégis mérce maradt.
+   */
+  it('PR #305 rev2 (BRK305-1): ingyenesként létrehozott, később 79 500 Ft-on közzétett, visszavont kurzus elveszett naplóval nem tehető közzé ingyenesként megerősítés nélkül', async () => {
+    const id = await createPublished('brk1', { priceInHUFEnabled: false, priceInHUF: null })
+    expect(
+      await save(id, owner, { priceInHUFEnabled: true, priceInHUF: 79_500, _status: 'published' }),
+    ).toBe('OK')
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await autosave(id, owner, { priceInHUFEnabled: false })
+    await keepOnlyCreateEntry(id)
+
+    expect(await save(id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUFEnabled',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    expect(await save(id, owner, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUFEnabled',
+      message: FREE_COURSE_GUARD_MESSAGE,
+    })
+    expect((await mainRow(id))._status).toBe('draft')
+    expect((await claimAsStranger(id, 'brk1b')).status).toBe('course-not-available')
+  }, 120_000)
+
+  it('PR #305 rev2 (BRK305-2): 12 900 Ft-on létrehozott, 79 500 Ft-on közzétett, visszavont kurzus elveszett naplóval: a 7 950 Ft csak megerősítéssel élesedik', async () => {
+    const id = await createPublished('brk2', { priceInHUF: 12_900 })
+    expect(await save(id, owner, { priceInHUF: 79_500, _status: 'published' })).toBe('OK')
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    await keepOnlyCreateEntry(id)
+    await expectConfirmationRequired(id)
+  }, 120_000)
+
+  /*
+   * A „fő sor azóta nem íródott” próba nem elég, ha az elveszett bejegyzések
+   * után a lomtár és a visszaállítás naplózva fut: a legfrissebb bejegyzés
+   * ideje ekkor már a fő sor írása utáni. A láncnak kell hiánytalannak lennie
+   * (minden bejegyzés „before” oldala az előző „after” oldala).
+   */
+  it('PR #305 rev2 (BRK305-2, lánc): az elveszett közzétételi bejegyzések után naplózott lomtár és visszaállítás sem teszi mércévé az elavult pillanatképet', async () => {
+    const id = await createPublished('brk2-chain', { priceInHUF: 12_900 })
+    expect(await save(id, owner, { priceInHUF: 79_500, _status: 'published' })).toBe('OK')
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    await keepOnlyCreateEntry(id)
+    expect(await save(id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
+    expect(await saveWhere(id, staff, { deletedAt: null }, { trashed: true })).toBe('OK')
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'draft',
+      priceInHUF: 7_950,
+    })
+    await expectConfirmationRequired(id)
+  }, 120_000)
+
+  /*
+   * PR #305 rev2 (breaker, BRK305-3): az admin Másolás gombja a munkatárs által
+   * nem írható ár-mezőket a forrás legutóbbi (autosave-es) verziójából tölti.
+   * A másolat bizonyítottan soha nem közzétett, a csökkenést pedig a saját fő
+   * sorához mérné, amelyben már a tulajdonos elütött ára áll. A soha nem
+   * közzétett kurzus első áras közzététele ezért a tulajdonosé.
+   */
+  it('PR #305 rev2 (BRK305-3): a munkatárs piszkozat-másolata nem viszi élesbe a tulajdonos meg nem erősített 7 950 Ft-os ár-piszkozatát; a tulajdonos közzéteheti', async () => {
+    const id = await createPublished('brk3-dup-source')
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    const copy = (await payload.duplicate({
+      collection: 'products',
+      id,
+      draft: true,
+      data: { _status: 'draft' },
+      overrideAccess: false,
+      user: asUser(staff),
+    })) as unknown as Doc
+    productIds.push(copy.id)
+    expect((await mainRow(copy.id)).priceInHUF).toBe(7_950)
+
+    expect(await save(copy.id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    expect((await mainRow(copy.id))._status).toBe('draft')
+
+    expect(await save(copy.id, owner, { _status: 'published' })).toBe('OK')
+    const row = await mainRow(copy.id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'published',
+      priceInHUF: 7_950,
+    })
+  }, 120_000)
+
+  it('PR #305 rev2 (BRK305-3, `?draft=false`): a munkatárs azonnal közzétett másolata sem viszi élesbe a tulajdonos ár-piszkozatát', async () => {
+    const id = await createPublished('brk3-dup-live-source')
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    let result: 'OK' | ErrorEntry[]
+    try {
+      const copy = (await payload.duplicate({
+        collection: 'products',
+        id,
+        draft: false,
+        data: { _status: 'published' },
+        overrideAccess: false,
+        user: asUser(staff),
+      })) as unknown as Doc
+      productIds.push(copy.id)
+      result = 'OK'
+    } catch (error) {
+      const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
+      if (!Array.isArray(errors)) throw error
+      result = errors.map(({ path, message }) => ({ path, message }))
+    }
+    expect(result).toContainEqual({ path: 'priceInHUF', message: OWNER_ONLY_CHANGE_MESSAGE })
   }, 120_000)
 })
