@@ -14,7 +14,7 @@ import {
   type StartPaymentThreeDsInput,
 } from '../lib/barion/start'
 import { CHECKOUT_START_REJECTED } from '../lib/checkout/form-submission'
-import { CheckoutError, startCheckout } from '../lib/checkout/start-checkout'
+import { CheckoutError, paymentWindowToMs, startCheckout } from '../lib/checkout/start-checkout'
 import type { Logger } from '../lib/logger'
 import type { Order, Product, User } from '../payload-types'
 
@@ -319,21 +319,35 @@ describe('BARION_SEND_3DS — nem ismert érték: egyszeri figyelmeztetés a nap
 
   /**
    * A kapcsolóba tévedésből titok is kerülhet (például a POSKey rossz mezőbe
-   * másolva). A figyelmeztetés a kulcs nevét mondja, az értékét soha: a logger
-   * csak kulcsnév alapján redaktál (REDACTED_KEYS, REDACT_KEY_MARKERS), egy
-   * ártatlan nevű mezőben az érték a naplóba jutna.
+   * másolva). A figyelmeztetés a kulcs nevét mondja, az értékből semmit: a
+   * logger csak kulcsnév alapján redaktál (REDACTED_KEYS, REDACT_KEY_MARKERS),
+   * egy ártatlan nevű mezőben vagy magában az üzenetben az érték, akár csak egy
+   * előtagja, a naplóba jutna. Ezért a titokra és egy másik nem ismert értékre
+   * ('off') kiírt sorok az időbélyegen kívül betűre egyeznek: bármi, ami az
+   * értékből a sorba kerülne, eltérést okozna.
    */
-  it('a figyelmeztetés a nyers értéket (a tévedésből ide másolt titkot) nem írja a naplóba', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
-    const build = await freshBuild()
-    process.env.BARION_SEND_3DS = DUMMY_POS_KEY
+  it('a figyelmeztetés a nyers értékből (a tévedésből ide másolt titokból) semmit nem ír a naplóba: a kiírt sor független az értéktől', async () => {
+    async function logLinesFor(value: string): Promise<Array<Record<string, unknown>>> {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      const build = await freshBuild()
+      process.env.BARION_SEND_3DS = value
+      build({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+      const lines = logSpy.mock.calls.map((call) => {
+        const line = JSON.parse(String(call[0])) as Record<string, unknown>
+        delete line.ts
+        return line
+      })
+      logSpy.mockRestore()
+      return lines
+    }
 
-    build({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+    const withSecret = await logLinesFor(DUMMY_POS_KEY)
+    const withOff = await logLinesFor('off')
 
-    expect(send3dsWarnings(logSpy.mock.calls)).toHaveLength(1)
-    const output = logSpy.mock.calls.map((call) => String(call[0])).join('\n')
-    // Kisbetűsítve is: a kód a normalizált (kisbetűs) alakkal hasonlít.
-    expect(output.toLowerCase()).not.toContain(DUMMY_POS_KEY.toLowerCase())
+    expect(withSecret).toHaveLength(1)
+    expect(withSecret[0]).toMatchObject({ level: 'warn', module: 'barion' })
+    expect(withSecret[0]?.context).toEqual({ envKey: 'BARION_SEND_3DS', effective3ds: true })
+    expect(withSecret).toEqual(withOff)
   })
 
   it.each<[string | undefined, 'NoPreference' | undefined]>([
@@ -623,4 +637,52 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
       expect(mail.text).toContain(`barionErrorKind: ${expectedKind}`)
     },
   )
+})
+
+/**
+ * A runbook 11 vészkapcsoló-teendője az ügyeletes egyetlen fogódzója, amikor a
+ * Barion minden fizetésindítást elutasít. A sorban megadott értéket a VALÓDI
+ * body-építőn futtatjuk végig: a `0`, az `off` vagy az idézőjeles `"false"`
+ * a szigorú értelmezés miatt nem kapcsol ki (`barionSend3dsEnabled`), és egy
+ * ilyen elírás az eladást továbbra is állva hagyná. A sor a részletekért egy
+ * szakaszra mutat, annak is léteznie kell.
+ */
+describe('runbook 11, 3DS-vészkapcsoló: a teendő és az élesítési próba a kóddal egyezik', () => {
+  it('a riasztáskód sorában megadott érték kikapcsolja a négy 3DS-blokkot, és a sor által hivatkozott szakasz létezik', () => {
+    const row = runbookRow('a-barion-elutasitotta-a-fizetesinditast') ?? ''
+    const value = /`BARION_SEND_3DS` változót `([^`]+)` értékkel/.exec(row)?.[1]
+    expect(value, 'a sor nem nevez meg beállítandó értéket').toBeDefined()
+    process.env.BARION_SEND_3DS = value ?? ''
+
+    const request = buildPaymentStartRequest({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+
+    expect(request).not.toHaveProperty('BillingAddress')
+    expect(request).not.toHaveProperty('PurchaseInformation')
+    expect(request).not.toHaveProperty('PayerAccountInformation')
+    expect(request).not.toHaveProperty('ChallengePreference')
+    const section = /„([^”]+)” szakasz/.exec(row)?.[1]
+    expect(section, 'a sor nem nevez meg szakaszt').toBeDefined()
+    expect(
+      RUNBOOK.split('\n').some((line) => line.startsWith(`## ${String(section)}`)),
+      `a runbookban nincs „${String(section)}” szakasz`,
+    ).toBe(true)
+  })
+
+  /**
+   * Nyitott, egyező adatú fizetésnél a pénztár új Start helyett a régit
+   * folytatja (resolveDuplicatePurchase: 'resume'; a viselkedést a
+   * checkout-start.test.ts „nyitott Barion-fizetés: … második Start nincs”
+   * esete rögzíti), a Barion-oldal mégis megnyílik: a próba sikeresnek
+   * látszana, pedig a 3DS-adatokat hordozó Start ki sem ment. A fizetés a
+   * Start fizetési ablakáig nyitott, ezért a próba előfeltétele ugyanennyi
+   * percet nevez meg; ha az ablak változik, a runbooknak is követnie kell.
+   */
+  it('az élesítési próba előfeltétele a Start fizetési ablakával egyező időt nevez meg', () => {
+    const minutes = paymentWindowToMs() / 60_000
+    const section = RUNBOOK.slice(RUNBOOK.indexOf('\n## A 3DS-vészkapcsoló'))
+    const procedure = section.slice(section.indexOf('**Élesítési próba**'))
+
+    expect(procedure.startsWith('**Élesítési próba**')).toBe(true)
+    expect(procedure).toMatch(new RegExp(`\\b${minutes} perc`))
+  })
 })

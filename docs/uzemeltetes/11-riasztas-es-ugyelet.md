@@ -87,18 +87,18 @@ A kód a levélben és a naplóban is szerepel. A saját kóddal küldött riasz
 A régebbi riasztások kódja az üzenet első mondatrészéből képződik (ékezet
 nélkül, kötőjellel). A leggyakoribbak:
 
-| Kód                                                         | Teendő                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `barion-hitelesitesi-hiba`                                  | A Barion elutasítja a kulcsot: azonnal fejlesztő, fizetés nem megy                                                                                                                                                                                                                                                                                                       |
-| `a-szamlazz-hu-konfiguracio-hibas`                          | Számlázási beállítás hibás: fejlesztő                                                                                                                                                                                                                                                                                                                                    |
-| `a-szamlakiallitas-bekuldesei-kimerultek`                   | [05](05-szamla-storno-helyesbito-kezi.md) 2. pont                                                                                                                                                                                                                                                                                                                        |
-| `a-storno-kiallitas-ujraprobalasai-kimerultek`              | [05](05-szamla-storno-helyesbito-kezi.md) 3. pont                                                                                                                                                                                                                                                                                                                        |
-| `a-helyesbito-kiallitas-bekuldesei-kimerultek`              | [05](05-szamla-storno-helyesbito-kezi.md) 4. pont                                                                                                                                                                                                                                                                                                                        |
-| `hianyos-vevo-szamlazasi-adatok`                            | [05](05-szamla-storno-helyesbito-kezi.md), a vevőtől kérd el az adatot                                                                                                                                                                                                                                                                                                   |
-| `a-vevo-termek-parhoz-mar-letezik-mas-paid-rendeles`        | Dupla fizetés: [06](06-visszaterites.md) 5. pont                                                                                                                                                                                                                                                                                                                         |
-| `a-pending-repoll-ujraprobalasai-kimerultek`                | [02](02-fizetett-de-nincs-hozzaferes.md) 4. pont                                                                                                                                                                                                                                                                                                                         |
-| `a-barion-elutasitotta-a-fizetesinditast`                   | Fizetés nem megy: azonnal fejlesztő. Ha a levélben a ModelValidationError kód áll, és közvetlenül egy deploy után jött: a Railway-en add meg a `BARION_SEND_3DS` változót `false` értékkel, majd a projekt tetején megjelenő sávban a „Deploy” gombbal alkalmazd (enélkül nem lép életbe), utána szólj a fejlesztőnek. Részletek alább, „A 3DS-vészkapcsoló” szakaszban. |
-| `a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem` | Webshop → **Kurzusok**: a levélben a `source: product-<szám>` mutatja, melyik kurzusról van szó. A szám a kurzus azonosítója: a kurzus közvetlenül a `.../admin/collections/products/<szám>` címen nyílik meg, a listában pedig az „Ár (Ft)” oszlopban látszik a 10 Ft alatti ár. Az árat állítsd legalább 10 Ft-ra (csak a tulajdonos állíthatja).                      |
+| Kód                                                         | Teendő                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `barion-hitelesitesi-hiba`                                  | A Barion elutasítja a kulcsot: azonnal fejlesztő, fizetés nem megy                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `a-szamlazz-hu-konfiguracio-hibas`                          | Számlázási beállítás hibás: fejlesztő                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `a-szamlakiallitas-bekuldesei-kimerultek`                   | [05](05-szamla-storno-helyesbito-kezi.md) 2. pont                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `a-storno-kiallitas-ujraprobalasai-kimerultek`              | [05](05-szamla-storno-helyesbito-kezi.md) 3. pont                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `a-helyesbito-kiallitas-bekuldesei-kimerultek`              | [05](05-szamla-storno-helyesbito-kezi.md) 4. pont                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `hianyos-vevo-szamlazasi-adatok`                            | [05](05-szamla-storno-helyesbito-kezi.md), a vevőtől kérd el az adatot                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `a-vevo-termek-parhoz-mar-letezik-mas-paid-rendeles`        | Dupla fizetés: [06](06-visszaterites.md) 5. pont                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `a-pending-repoll-ujraprobalasai-kimerultek`                | [02](02-fizetett-de-nincs-hozzaferes.md) 4. pont                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `a-barion-elutasitotta-a-fizetesinditast`                   | Fizetés nem megy. Ha a levélben a ModelValidationError kód áll, és közvetlenül egy deploy után jött: a Railway-en add meg a `BARION_SEND_3DS` változót `false` értékkel (idézőjelek nélkül), majd a projekt tetején megjelenő sávban a „Deploy” gombbal alkalmazd (enélkül nem lép életbe), és szólj a fejlesztőnek. Minden más esetben azonnal szólj a fejlesztőnek. Részletek alább, „A 3DS-vészkapcsoló” szakaszban.                                                                                                                    |
+| `a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem` | Webshop → **Kurzusok**: a levélben a `source: product-<szám>` mutatja, melyik kurzusról van szó. A szám a kurzus azonosítója, a kurzus közvetlenül a `.../admin/collections/products/<szám>` címen nyílik meg. Az „Ár (Ft)” mezőt állítsd legalább 10 Ft-ra, majd kattints a „Módosítások közzététele” gombra. Az automatikus mentés csak piszkozatot ment: a lista „Ár (Ft)” oszlopa már az új árat mutatja, a pénztár viszont a közzétételig a régit látja, és addig a kurzus nem vásárolható meg. Az árat csak a tulajdonos állíthatja. |
 
 Minden más kódnál: nézd meg a Railway naplóját a `@alertCode:<kód>` szűrővel,
 és ha a teendő nem egyértelmű, küldd el a fejlesztőnek a kódot és a
@@ -133,14 +133,15 @@ biztonságos.
 
 A fizetésindításkor (Barion Payment/Start) a rendszer a kártyás fizetés
 biztonsági ellenőrzéséhez (3DS) négy adatblokkot is elküld: a számlázási
-címet, a vásárlás adatait, a vevői fiók adatait és a kihívás-beállítást. Ezek
-csökkentik annak esélyét, hogy a vevőnek a bankja külön megerősítést kérjen.
-Ha a Barion valamelyik adatot nem fogadja el, minden fizetésindítást
-elutasít, és addig egyetlen vásárlás sem megy át.
+címet, a vásárlás adatait, a vevői fiók adatait és a banki megerősítés
+kérésének beállítását. Ezek csökkentik annak esélyét, hogy a vevőnek a bankja
+külön megerősítést kérjen. Ha a Barion valamelyik adatot nem fogadja el,
+minden fizetésindítást elutasít, és amíg a 3DS-adatok küldését ki nem
+kapcsolod, egyetlen vásárlás sem megy át.
 
 A kapcsoló a Railway-en, a Kineticare szolgáltatás változói (Variables)
 között állítható. Ha a változó még nincs a listán, a „New Variable” gombbal
-vedd fel.
+vedd fel. Az értéket idézőjelek nélkül írd be.
 
 - **Üres vagy nincs beállítva:** a 3DS-adatok mennek (ez az alapállapot).
 - **`true`:** ugyanaz, mint az üres: a 3DS-adatok mennek.
@@ -151,12 +152,23 @@ vedd fel.
   nem kapcsol ki, a 3DS-adatok mennek. A napló ilyenkor egyszer figyelmeztet.
 
 A változó mentése önmagában még semmit nem kapcsol: a Railway a módosítást
-függőben tartja, és a projektoldal tetején egy sávban jelzi. Kattints ott a
-„Deploy” gombra (az Alt billentyű lenyomása nélkül): a Railway csak ekkor
-alkalmazza a változást, és újraindítja a szolgáltatást. A kapcsoló akkor él,
-amikor az új deploy a Deployments listán aktívként (Active) látszik.
-Alt-kattintásnál a Railway újraindítás nélkül menti a változást, és a futó
-szolgáltatás a régi beállítással dolgozik tovább.
+függőben tartja, és a projektoldal tetején egy sávban jelzi. Előbb a sáv
+„Details” gombjával nézd meg, mi vár alkalmazásra: csak a Kineticare
+szolgáltatás `BARION_SEND_3DS` változója szerepeljen. A „Deploy” ugyanis
+minden függő módosítást egyszerre alkalmaz, és minden érintett szolgáltatást
+újraindít. Ha más módosítás is ott van, azt a jobb oldalán álló x-szel vesd
+el, vagy kérdezd meg a fejlesztőt. Ezután kattints a „Deploy” gombra (az Alt
+billentyű lenyomása nélkül): a Railway csak ekkor alkalmazza a változást, és
+újraindítja a szolgáltatást. Alt-kattintásnál a Railway újraindítás nélkül
+menti a változást, és a futó szolgáltatás a régi beállítással dolgozik
+tovább.
+
+A kapcsoló akkor él, amikor az új deploy a Deployments listán aktívként
+(Active) látszik. Ezután egy próbafizetéssel győződj meg róla, hogy a
+vásárlás újra működik (az alábbi Élesítési próba 1. lépése szerint, egy
+próba is elég): ha a Barion fizetési oldala megnyílik, rendben van. Ha nem
+jön újabb riasztás, az még nem bizonyíték, mert ugyanarra a kódra óránként
+legfeljebb egy levél megy ki.
 
 A visszakapcsoláshoz töröld a változót, és ugyanígy alkalmazd a „Deploy”
 gombbal.
@@ -170,13 +182,29 @@ időpontban):
    a próba nem ellenőrizne semmit.
 1. Indíts két fizetést egy legalább 10 Ft-os kurzusra: egyet vendégként
    (kijelentkezve, olyan e-mail-címmel, amelyhez nincs fiók), egyet pedig
-   bejelentkezve, olyan vevői fiókkal, amelyik még nem vette meg a kurzust. A
-   Barion fizetési oldalán egyiknél se fizess, csak zárd be. Ez nem kerül
-   pénzbe, és a próbához elég, mert egy elutasítás már a fizetésindításkor
-   visszajön. Két próba kell, mert a rendszer a vendégről és a bejelentkezett
-   vevőről más fiókadatot küld a Barionnak.
-2. Ha a Barion fizetési oldala mindkét esetben megnyílt, és nem jött
-   `a-barion-elutasitotta-a-fizetesinditast` riasztás, a próba sikeres.
+   bejelentkezve, olyan vevői fiókkal, amelyik még nem vette meg a kurzust.
+   Egyik próba e-mail-címe se legyen a bolt Barion-fiókjának címe
+   (`BARION_PAYEE_EMAIL`): azzal a pénztár már a Barion megkeresése előtt
+   hibát ad, így a próba semmit nem mond a 3DS-ről. Olyan e-mail-címet és
+   fiókot válassz, amellyel az utóbbi 30 percben nem indult fizetés erre a
+   kurzusra (a 0. lépés előtti próbákat is beleértve). Ha indult, a pénztár a
+   még nyitott fizetést folytatja: új fizetésindítás nem megy ki, és a próba
+   semmit nem ellenőriz. A Barion fizetési oldalán egyiknél se fizess, csak
+   zárd be. Ez nem kerül pénzbe, és a próbához elég, mert egy elutasítás már
+   a fizetésindításkor visszajön. Két próba kell, mert a rendszer a vendégről
+   és a bejelentkezett vevőről más fiókadatot küld a Barionnak.
+2. A próba akkor sikeres, ha a Barion fizetési oldala mindkét esetben
+   megnyílt, nem jött `a-barion-elutasitotta-a-fizetesinditast` riasztás, és
+   a Webshop → Rendelések listáján mindkét próbához tartozik egy új,
+   „Fizetésre vár” állapotú rendelés, amely a próba idején jött létre
+   (Létrehozva oszlop). Ha valamelyikhez nincs új rendelés, a pénztár egy
+   korábbi fizetést folytatott: ismételd meg azt a próbát másik
+   e-mail-címmel, illetve másik vevői fiókkal. Ha a pénztár azt írta ki, hogy
+   a Barion nem fogadta el a fizetés indítását, vagy megjött a riasztás, a
+   próba sikertelen: azonnal add meg újra a `BARION_SEND_3DS` változót
+   `false` értékkel, és alkalmazd a „Deploy” gombbal. A hiba okát a levélben
+   álló `barionErrorKind` kód és a Railway-napló mutatja; a 3DS-t csak a
+   javítás után kapcsold vissza.
 3. Ha a bank megerősítési lépését is látni szeretnétek: egy valódi, legalább
    10 Ft-os kártyás vásárlás, majd annak visszatérítése a Kineticare
    adminjából (a Barion felületén soha). A vásárlásról valódi számla, a

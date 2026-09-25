@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 
+import { initI18n } from '@payloadcms/translations'
 import { NextRequest } from 'next/server'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -640,11 +641,13 @@ describe('startCheckout — számlázási adatok (B)', () => {
 describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
   /**
    * a-cms-2: a Barion kártyás minimuma 10 Ft (docs.barion.com Troubleshooting:
-   * „HUF: 10 HUF or more"). A plugin ár-mezője a „4.990" beírást 5 Ft-ként
-   * tárolja; ilyen áron a rendelés nem jöhet létre, és a tulajdonos RIASZTÁS-t
-   * kap (termékenként fojtva).
+   * „HUF: 10 HUF or more"). Friss beírás ilyen árat már nem menthet (a plugin
+   * `validatePriceInHUF`-ja a MIN_PRICE_HUF alatti új értéket elutasítja); az
+   * ág a validátor előtt mentett, azóta változatlan publikált árakért és a
+   * validációt kihagyó főrekord-írásokért van. Ilyen áron a rendelés nem jöhet
+   * létre, és a tulajdonos RIASZTÁS-t kap (termékenként fojtva).
    */
-  it('10 Ft alatti ár → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva; a levél megnevezi a terméket, a runbook-sor a valódi admin-menübe és a kurzus címére visz)', async () => {
+  it('10 Ft alatti ár → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva; a levél megnevezi a terméket, a runbook-sor a valódi admin-menübe, a kurzus címére és a közzététel gombjához visz)', async () => {
     const product = { ...publishedProduct, priceInHUF: 5 } as unknown as Product
     const { payload, calls } = createMockPayload({ product })
     const { log, errors } = captureLogger()
@@ -687,6 +690,15 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
     expect(runbookLine).toContain(
       `${config.routes.admin}/collections/${String(products?.slug)}/<szám>`,
     )
+    // A kurzusok automatikus mentése csak piszkozatot ír (versions.drafts.autosave),
+    // a pénztár viszont a fő sort olvassa (lásd a piszkozat-regresszió blokkot):
+    // közzététel nélkül az átírt ár nem hat, a riasztás tovább jön (valódi
+    // Payload 3.88 + Postgres mellett mérve). A sor ezért a közzététel gombját is
+    // megnevezi, betűre úgy, ahogy az admin mutatja: a Payload saját fordítója a
+    // config i18n-jével, ahogy az admin kérésenként (next/dist/utilities/initReq.js)
+    // is hívja.
+    const { t } = await initI18n({ config: config.i18n, context: 'client', language: 'hu' })
+    expect(runbookLine).toContain(`„${t('version:publishChanges')}”`)
   })
 
   it('pontosan 10 Ft-os ár még vásárolható (a Barion minimuma „10 HUF or more")', async () => {

@@ -68,7 +68,13 @@ import {
  * 0 Ft-ba kerül, és mindkét vevőtípus body-ját élőben ellenőrzi, mert a
  * ModelValidationError magából a Startból jön vissza; a fiók korának többi
  * sávját (amelybe a próbafiók nem esik) csak a fenti két forrás igazolja. A
- * kihívás-ág (challenge) ellenőrzéséhez ezt követheti egy valódi, legalább
+ * próbavevővel (e-mail-cím, illetve fiók) az előző 30 percben
+ * (BARION_DEFAULT_PAYMENT_WINDOW) nem indulhatott fizetés ugyanarra a
+ * kurzusra: egyező adatoknál a pénztár a még nyitott fizetést folytatja
+ * (start-checkout.ts, resolveDuplicatePurchase: 'resume'), új Start nem megy
+ * ki, a Barion-oldal mégis megnyílik, és a próba sikeresnek látszana. Ezért a
+ * runbook azt is ellenőrizteti, hogy mindkét próbához új rendelés jött létre.
+ * A kihívás-ág (challenge) ellenőrzéséhez ezt követheti egy valódi, legalább
  * 10 Ft-os kártyás vásárlás és annak visszatérítése a Kineticare adminjából.
  *
  * Recurring-előkészítés (jövőbeli tokenfizetés): az InitiateRecurrence és a
