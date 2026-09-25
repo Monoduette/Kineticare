@@ -161,8 +161,14 @@ export function WithdrawalForm({
   const hasErrorSummary =
     submitError !== null || Object.values(errors).some((message) => Boolean(message))
 
+  // A hidratálás előtti vagy JavaScript nélküli natív beküldés is POST legyen.
+  // GET-tel a név, az e-mail-cím és a rendelésszám az URL-be kerülne, onnan a
+  // böngészési előzménybe, a naplókba és az analitikába (CWE-598,
+  // https://cwe.mitre.org/data/definitions/598.html). A JavaScript nélküli
+  // útról: GOV.UK Service Manual, Using progressive enhancement,
+  // https://www.gov.uk/service-manual/technology/using-progressive-enhancement.
   return (
-    <form className="kc-contact-form" noValidate onSubmit={handleSubmit}>
+    <form className="kc-contact-form" method="post" noValidate onSubmit={handleSubmit}>
       {hasErrorSummary ? (
         <div
           aria-live="assertive"

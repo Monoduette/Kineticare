@@ -621,6 +621,19 @@ describe('az elállási funkció elérhetősége (22. § (1b))', () => {
     expect(html).not.toContain('type="checkbox"')
   })
 
+  // Hibavadász C (PR #307): method nélkül a hidratálás előtti beküldés GET
+  // volt, és a személyes adatok az URL-be kerültek (előzmény, napló, analitika).
+  it('az űrlap natív beküldése is POST, a személyes adat nem kerülhet az URL-be', () => {
+    const html = renderToStaticMarkup(
+      createElement(WithdrawalForm, {
+        initialOrderReference: '',
+        turnstileSiteKey: null,
+        supportEmail: 'info@kineticare.hu',
+      }),
+    )
+    expect(html).toMatch(/<form[^>]*\smethod="post"/)
+  })
+
   it.each([
     [true, 'elküldtük erre a címre'],
     [false, 'most nem tudtuk e-mailben elküldeni'],
