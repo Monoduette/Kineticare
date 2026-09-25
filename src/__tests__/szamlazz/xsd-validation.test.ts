@@ -121,7 +121,6 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
       teljesitesDatum: '2026-09-30',
       vatMode: '27',
       buyer: BUYER_MAGANSZEMELY,
-      reason: 'Részleges visszatérítés <kérésre>',
     }),
   },
   {
@@ -179,7 +178,7 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
     }),
   },
   {
-    name: 'helyesbítő — tiltott XML-karakter a vevőadatban és az indokban',
+    name: 'helyesbítő — tiltott XML-karakter a vevőadatban',
     xsd: 'szamla',
     xml: buildCorrectiveInvoiceXml({
       agentKey: DUMMY_AGENT_KEY,
@@ -191,7 +190,6 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
       issueDate: '2026-10-05',
       vatMode: 'AAM',
       buyer: { ...BUYER_MAGANSZEMELY, nev: 'Kovács\uFFFFÉva' },
-      reason: 'Részleges\uFFFF visszatérítés\u000B',
     }),
   },
   {

@@ -336,11 +336,10 @@ describe('corrective-invoice-issue task', () => {
     }
   })
 
-  // A kiállító a kapott indokot a helyesbítő vevőnek is látható megjegyzésébe
-  // írja (szamlazz/corrective.test.ts: „a megjegyzés … a visszatérítés
-  // indokára hivatkozik”). A refund-bejegyzés indoka a visszatérítési API
-  // belső, szabad szövege, ezért a job nem adhatja tovább.
-  it('a kiállítónak csak a sorszámot és az összeget adja át, a visszatérítés indokát nem', async () => {
+  // A helyesbítő összege a kért sorszámú refund-bejegyzésé: ez megy a NAV-hoz.
+  // A visszatérítés indokát a kiállító nem is fogadja (corrective.ts, a
+  // típusellenőrzés őrzi), ezért itt csak a sorszám és az összeg számít.
+  it('a kiállító a kért sorszámú refund-bejegyzés összegét kapja, a kimenet a kiállítás eredménye', async () => {
     const restore = withAgentKey()
     try {
       const order = {
@@ -355,25 +354,30 @@ describe('corrective-invoice-issue task', () => {
             status: 'PartiallyRefunded',
             refundedAt: '2026-09-20T10:00:00.000Z',
             type: 'partial',
-            reason: 'Kedvezmény utólag, telefonos egyeztetés után',
+          },
+          {
+            transactionId: 'c4a2e3f5-6a7b-4c8d-9e0f-1a2b3c4d5e6f',
+            amountHuf: 2000,
+            status: 'PartiallyRefunded',
+            refundedAt: '2026-09-21T10:00:00.000Z',
+            type: 'partial',
           },
         ],
       } as unknown as Order
       szamlazz.issueCorrective.mockResolvedValueOnce({
         outcome: 'issued',
-        correctiveInvoiceNumber: 'E-TESZT-H1',
+        correctiveInvoiceNumber: 'E-TESZT-H2',
       })
       const { req } = reqWith(order)
       const result = await runTask(correctiveInvoiceIssueTask, {
         req,
-        input: { orderId: 557, refundSeq: 1 },
+        input: { orderId: 557, refundSeq: 2 },
       })
-      expect(szamlazz.issueCorrective).toHaveBeenCalledExactlyOnceWith(order, {
-        payload: req.payload,
-        refundSeq: 1,
-        amountHuf: 3000,
-      })
-      expect(result.output).toEqual({ outcome: 'issued', correctiveInvoiceNumber: 'E-TESZT-H1' })
+      expect(szamlazz.issueCorrective).toHaveBeenCalledExactlyOnceWith(
+        order,
+        expect.objectContaining({ payload: req.payload, refundSeq: 2, amountHuf: 2000 }),
+      )
+      expect(result.output).toEqual({ outcome: 'issued', correctiveInvoiceNumber: 'E-TESZT-H2' })
     } finally {
       restore()
     }

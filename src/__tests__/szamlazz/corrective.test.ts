@@ -162,7 +162,7 @@ function createMockPayload(order: Order | null) {
 }
 
 describe('buildCorrectiveInvoiceXml — helyesbítő számla séma', () => {
-  const xml = buildCorrectiveInvoiceXml({
+  const input = {
     agentKey: DUMMY_AGENT_KEY,
     originalInvoiceNumber: ORIGINAL_INVOICE_NUMBER,
     orderNumber: ORDER_NUMBER,
@@ -172,8 +172,8 @@ describe('buildCorrectiveInvoiceXml — helyesbítő számla séma', () => {
     amountHuf: REFUND_HUF,
     issueDate: '2026-08-09',
     buyer: BUYER,
-    reason: 'Kedvezmény utólag',
-  })
+  }
+  const xml = buildCorrectiveInvoiceXml(input)
 
   it('helyesbitoszamla=true ÉS helyesbitettSzamlaszam = az EREDETI számla száma', () => {
     expect(xml).toContain('<helyesbitoszamla>true</helyesbitoszamla>')
@@ -203,9 +203,21 @@ describe('buildCorrectiveInvoiceXml — helyesbítő számla séma', () => {
     expect(xml.match(/<tetel>/g)).toHaveLength(1)
   })
 
-  it('a megjegyzés az eredeti számlára és a visszatérítés indokára hivatkozik', () => {
-    expect(xml).toContain(`Helyesbítő számla a(z) ${ORIGINAL_INVOICE_NUMBER} számú számlához`)
-    expect(xml).toContain('indok: Kedvezmény utólag')
+  // Vezetői döntés (w1 integráció): a helyesbítő megjegyzését a vevő is
+  // megkapja, ezért a visszatérítés belső indoka nem kerülhet rá. A kiállító
+  // típusa nem fogad indokot (ezt a @ts-expect-error őrzi a típusellenőrzésben),
+  // és a futás közben mégis átadott indokot sem írja ki.
+  it('a megjegyzés az eredeti számlára és a rendelésre hivatkozik, a visszatérítés indokára nem', () => {
+    const withReason = buildCorrectiveInvoiceXml({
+      ...input,
+      // @ts-expect-error -- a helyesbítő nem fogad indokot: a vevőnek látható megjegyzésbe kerülne
+      reason: 'Kedvezmény utólag, telefonos egyeztetés után',
+    })
+    const note = /<megjegyzes>([\s\S]*?)<\/megjegyzes>/u.exec(withReason)?.[1] ?? ''
+    expect(note).toContain(`Helyesbítő számla a(z) ${ORIGINAL_INVOICE_NUMBER} számú számlához`)
+    expect(note).toContain(`rendelés: ${ORDER_NUMBER}`)
+    expect(note).not.toContain('Kedvezmény utólag')
+    expect(note).not.toMatch(/indok/iu)
   })
 
   it('a vevőblokk a rendelés számlázási adataiból épül', () => {
@@ -271,7 +283,6 @@ describe('issueCorrectiveInvoiceForOrder', () => {
       queryByKulsoAzon: emptyLookup,
       refundSeq: 1,
       amountHuf: REFUND_HUF,
-      reason: 'Kedvezmény utólag',
       postXml: async (xml) => {
         sentXml.push(xml)
         return { szamlaszam: 'KIN-2026-9' }

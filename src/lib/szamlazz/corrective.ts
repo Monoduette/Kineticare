@@ -132,16 +132,17 @@ export interface BuildCorrectiveInvoiceXmlInput {
    */
   vatMode?: SzamlazzVatMode
   buyer: Parameters<typeof buildInvoiceXml>[0]['buyer']
-  /** A visszatérítés indoka — a fejléc-megjegyzésbe kerül. */
-  reason?: string | null
 }
 
 /**
  * A helyesbítő számla XML-je: a normál számla-váz, `corrective` hivatkozással
  * és EGY negatív korrekciós tétellel a visszatérített összegre.
+ *
+ * A megjegyzés csak az eredeti számlára és a rendelésre hivatkozik. A vevő is
+ * megkapja, ezért a visszatérítés indoka (belső, szabad szöveg) szándékosan
+ * nem bemenet (vezetői döntés, w1 integráció).
  */
 export function buildCorrectiveInvoiceXml(input: BuildCorrectiveInvoiceXmlInput): string {
-  const reasonSuffix = input.reason?.trim() ? ` — indok: ${input.reason.trim()}` : ''
   return buildInvoiceXml({
     agentKey: input.agentKey,
     orderNumber: input.orderNumber,
@@ -164,7 +165,7 @@ export function buildCorrectiveInvoiceXml(input: BuildCorrectiveInvoiceXmlInput)
     },
     megjegyzes:
       `Helyesbítő számla a(z) ${input.originalInvoiceNumber} számú számlához — ` +
-      `részleges visszatérítés, rendelés: ${input.orderNumber}${reasonSuffix}`,
+      `részleges visszatérítés, rendelés: ${input.orderNumber}`,
   })
 }
 
@@ -185,8 +186,6 @@ export interface IssueCorrectiveInvoiceDeps {
   refundSeq: number
   /** A visszatérített bruttó összeg HUF-ban (pozitív egész). */
   amountHuf: number
-  /** A visszatérítés indoka — a fejléc-megjegyzésbe kerül. */
-  reason?: string | null
   config?: SzamlazzClientConfig
   logger?: Logger
   /** Injektálható HTTP-hívó (teszteléshez); alapból a valódi postInvoiceXml. */
@@ -440,7 +439,6 @@ async function performCorrectiveInvoiceForOrder(
     ...(originalCompletionDate ? { teljesitesDatum: originalCompletionDate } : {}),
     vatMode: config.vatMode,
     buyer,
-    ...(deps.reason ? { reason: deps.reason } : {}),
   })
 
   const lookup = deps.queryByKulsoAzon ?? queryInvoiceByKulsoAzon
