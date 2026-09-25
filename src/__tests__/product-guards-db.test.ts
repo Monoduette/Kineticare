@@ -1000,14 +1000,22 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     return id
   }
 
-  async function expectConfirmationRequired(id: number): Promise<void> {
+  /**
+   * A 7 950 Ft csak a tulajdonos megerősítésével élesedik: a munkatárs
+   * elutasítást kap, a tulajdonos megerősítés nélküli közzététele az ár-mezőn
+   * akad fenn (alapból ismeretlen mércével), a megerősített átmegy.
+   */
+  async function expectConfirmationRequired(
+    id: number,
+    ownerMessage: string = unknownPriceReferenceMessage('rendes', 7_950),
+  ): Promise<void> {
     expect(await save(id, staff, { _status: 'published' })).toContainEqual({
       path: 'priceInHUF',
       message: OWNER_ONLY_CHANGE_MESSAGE,
     })
     expect(await save(id, owner, { _status: 'published' })).toContainEqual({
       path: 'priceInHUF',
-      message: unknownPriceReferenceMessage('rendes', 7_950),
+      message: ownerMessage,
     })
     expect((await mainRow(id))._status).toBe('draft')
     expect(
@@ -1290,6 +1298,10 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
    * 10 000 Ft-os sor, pedig a legutóbb közzétett ár 79 500 Ft volt. Ha ez az
    * elavult pillanatkép mérce, a tulajdonos 7 950 Ft-os elütését (nem kisebb a
    * 10 000 felénél) a munkatárs megerősítés nélkül tette volna közzé.
+   *
+   * rev2-b: a mentés a fő sort a napló olvasása előtt zárolja
+   * (productUpdateLocksRow), így a visszavonás „before” oldala már a friss,
+   * 79 500 Ft-os sor, és a tulajdonos a valódi mércéhez mért csökkenést látja.
    */
   it('PR #305 rev1-b (B1): párhuzamos áremelés és visszavonás után az elavult „before” pillanatkép nem mérce, a 7 950 Ft csak megerősítéssel élesedik', async () => {
     const pg = await import('pg')
@@ -1312,7 +1324,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       expect((await mainRow(id))._status).toBe('draft')
 
       await autosave(id, owner, { priceInHUF: 7_950 })
-      await expectConfirmationRequired(id)
+      await expectConfirmationRequired(id, priceDropMessage('rendes', 7_950, 79_500))
     } finally {
       await client.query('ROLLBACK').catch(() => undefined)
       await client.end()
@@ -1335,10 +1347,10 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
    * piszkozat fő sor-írás naplózása, a verzió-visszaállítás pillanatképével);
    * ha az elkészül, ezek az elvárások megfordulnak (a munkatárs közzéteheti).
    */
-  it('ismert súrlódás (B4, B4b): a visszavont kurzus második visszavonása után a változatlan 79 500 Ft is a tulajdonos megerősítését kéri', async () => {
+  it('ismert súrlódás (B4, B4b): a visszavont kurzus második visszavonása (a tulajdonosé is) után a változatlan 79 500 Ft is a tulajdonos megerősítését kéri', async () => {
     const id = await createPublished('b4-double-unpublish')
     expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
-    expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
 
     expect(await save(id, staff, { _status: 'published' })).toContainEqual({
       path: 'priceInHUF',
@@ -1374,5 +1386,84 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       message: OWNER_ONLY_CHANGE_MESSAGE,
     })
     expect((await mainRow(id))._status).toBe('draft')
+  }, 120_000)
+
+  /**
+   * PR #305 rev2-b (breaker X1): a naplózatlan párhuzamos írás. A tulajdonos
+   * „Visszaállítás” gombja (verzió-visszaállítás közzétettként) a 10 000 Ft-on
+   * élő kurzust a régi, 79 500 Ft-os verzióra állítja; ez az írás naplóbejegyzés
+   * nélkül fut (src/plugins/audit.ts, a verzió-visszaállítás útja). Közben a
+   * munkatárs visszavonja a közzétételt; a sorrendet egy külső kapcsolat
+   * sorzára rögzíti (a visszaállítás áll be elsőnek). Zár nélkül a visszavonás
+   * „before” oldala még a 10 000 Ft-os sor lett, és mivel a régebbi bejegyzés
+   * (10 000 Ft-ra csökkentés) nem későbbi nála, mérce lett: a tulajdonos
+   * 7 950 Ft-os elütését a munkatárs megerősítés nélkül tette közzé, pedig a
+   * legutóbb közzétett ár 79 500 Ft volt.
+   */
+  it('PR #305 rev2-b (X1): naplózatlan tulajdonosi visszaállítás és visszavonás versenye után a 7 950 Ft csak megerősítéssel élesedik', async () => {
+    const pg = await import('pg')
+    const client = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await client.connect()
+    await observer.connect()
+    try {
+      const id = await createPublished('x1-restore-race', { priceInHUF: 79_500 })
+      const versionId = await publishedVersionId(id)
+      expect(
+        await save(id, owner, {
+          priceInHUF: 10_000,
+          _status: 'published',
+          [PRODUCT_CONFIRMATIONS_KEY]: { priceInHUF: 10_000 },
+        }),
+      ).toBe('OK')
+      const holderPid = await backendPid(client)
+      await client.query('BEGIN')
+      await client.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id])
+      const restore = restoreVersion(versionId, owner)
+      expect(await untilWaitersBehind(observer, holderPid, 1)).toBe(true)
+      const unpublish = save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })
+      expect(await untilWaitersBehind(observer, holderPid, 2)).toBe(true)
+      await client.query('COMMIT')
+      await restore
+      expect(await unpublish).toBe('OK')
+      expect((await mainRow(id))._status).toBe('draft')
+
+      await autosave(id, owner, { priceInHUF: 7_950 })
+      await expectConfirmationRequired(id, priceDropMessage('rendes', 7_950, 79_500))
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined)
+      await client.end()
+      await observer.end()
+    }
+  }, 120_000)
+
+  /**
+   * Zárás elleni védelem (PR #305 rev2-b, breaker X2): az élő kurzus
+   * naplózatlan mentése (csak a cikkszám változik, naplózott mező nem) a
+   * létrehozás és a visszavonás bejegyzése között szabályos. A visszavonás
+   * „before” oldala ekkor a friss sor, a régebbi (létrehozási) bejegyzés
+   * „after” oldala korábbi nála: a pillanatkép mérce, a munkatárs a változatlan
+   * árat közzéteheti. Ha az elavultság-vizsgálat azonos időt várna el, itt is
+   * a tulajdonos megerősítése kellene.
+   */
+  it('zárás elleni védelem (rev2-b, X2): élő kurzus naplózatlan mentése, majd visszavonás után a munkatárs a változatlan árat közzéteheti', async () => {
+    const id = await createPublished('x2-unlogged-live-save')
+    expect(
+      await save(id, owner, { sku: `DB-GUARD x2-uj-cikkszam ${stamp}`, _status: 'published' }),
+    ).toBe('OK')
+    const { docs } = await payload.find({
+      collection: 'audit-logs',
+      where: {
+        and: [{ entityType: { equals: 'products' } }, { entityId: { equals: String(id) } }],
+      },
+      depth: 0,
+      limit: 10,
+      overrideAccess: true,
+    })
+    expect(docs.map((entry) => entry.action)).toEqual(['create'])
+
+    expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    expect(await save(id, staff, { _status: 'published' })).toBe('OK')
+    expect((await mainRow(id))._status).toBe('published')
   }, 120_000)
 })

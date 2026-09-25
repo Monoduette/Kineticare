@@ -595,6 +595,62 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
           ],
         },
       ],
+      // PR #305 rev2-b (breaker X3): a pillanatkép a lap utolsó bejegyzésén áll,
+      // az elavultságát eldöntő régebbi bejegyzés a következő lap első eleme.
+      [
+        'a pillanatkép elavult, és a régebbi bejegyzés a következő lapon áll',
+        {
+          published: rewritten(mistyped),
+          auditPages: [
+            [
+              {
+                before: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT },
+                after: rewritten(mistyped),
+              },
+            ],
+            [
+              {
+                before: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT },
+                after: { ...PAID_PUBLISHED, updatedAt: CREATE_LOGGED_AT },
+              },
+            ],
+          ],
+        },
+      ],
+      // PR #305 rev2-b: az elavultság nem dönthető el, ha a pillanatkép vagy a
+      // régebbi bejegyzés írási ideje nem olvasható (a lánc szabálya szerint).
+      [
+        'a pillanatkép mögötti régebbi bejegyzés írási ideje nem olvasható',
+        {
+          published: rewritten(mistyped),
+          audit: [
+            {
+              before: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT },
+              after: rewritten(mistyped),
+            },
+            {
+              before: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT },
+              after: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: 'nem dátum' },
+            },
+          ],
+        },
+      ],
+      [
+        'a pillanatkép írási ideje nem olvasható',
+        {
+          published: rewritten(mistyped),
+          audit: [
+            {
+              before: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: null },
+              after: rewritten(mistyped),
+            },
+            {
+              before: undefined,
+              after: { ...PAID_PUBLISHED, priceInHUF: 12_900, updatedAt: ROW_INSERTED_AT },
+            },
+          ],
+        },
+      ],
       [
         'a bejegyzés írási ideje nem olvasható',
         {

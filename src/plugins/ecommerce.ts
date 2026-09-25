@@ -388,16 +388,25 @@ type SnapshotLookup =
  * láncban lehet élő (ekkor `unverified`); hogy egy bejegyzésen belül az
  * „after” az újabb állapot, az hiánytalan láncnál nem figyelhető meg.
  *
- * PR #305 rev1-b (breaker, B1): a „before” oldalt a napló a mentés előtt, sorzár
- * nélkül olvassa (src/plugins/audit.ts auditProductBeforeChange), így
+ * PR #305 rev1-b (breaker, B1): a „before” oldalt a napló a mentés előtt
+ * olvassa (src/plugins/audit.ts auditProductBeforeChange); sorzár nélkül ez
  * párhuzamos mentésnél elavult lehet. Ha a tulajdonos közzétett áremelése és a
  * munkatárs visszavonása egyszerre fut, a visszavonás a sorzárra vár, a
  * „before” oldala viszont még az emelés előtti ár; az emelés bejegyzése a
  * nála régebbi. Ezért a „before” pillanatkép csak akkor mérce, ha a következő
  * (régebbi) bejegyzés „after” oldala nem későbbi írás nála; ha későbbi, a
- * pillanatkép elavult: `unverified`. Azonos időt nem várunk el: egy élő
- * kurzus naplózatlan mentése (például csak a cím változik) a két bejegyzés
- * között szabályos, és a visszavonás „before” oldala ekkor is a friss sor.
+ * pillanatkép elavult: `unverified`. Olvashatatlan idő (bármelyik oldalon)
+ * a lánc szabálya szerint szintén `unverified`. Azonos időt nem várunk el:
+ * egy élő kurzus naplózatlan mentése (például csak a cím változik) a két
+ * bejegyzés között szabályos, és a visszavonás „before” oldala ekkor is a
+ * friss sor.
+ *
+ * PR #305 rev2-b (breaker X1): ez az utólagos felismerés csak a NAPLÓZOTT
+ * párhuzamos írást látja. A naplózatlan írás (a tulajdonos élő kurzuson futó
+ * verzió-visszaállítása) után a régebbi bejegyzés „after” oldala nem későbbi,
+ * így az elavult „before” mérce lett volna. Ezért a „before” olvasása ma
+ * sorzár mögött fut (productUpdateLocksRow), és nem lehet elavult; ez az
+ * ellenőrzés a zár nélküli (kérés-tranzakció nélküli) mentésekre marad.
  *
  * A lekérdezés a kurzus minden bejegyzését lapozza (a lánchoz a közzétett oldal
  * nélküli lomtár- és visszaállítás-bejegyzések is kellenek), amíg élő oldalt
@@ -440,8 +449,8 @@ async function findLastPublishedSnapshot(
       if (found !== null) {
         const olderWrittenAt = toValidDate(after?.updatedAt)
         const foundWrittenAt = toValidDate(found.updatedAt)
-        return olderWrittenAt !== null &&
-          foundWrittenAt !== null &&
+        return olderWrittenAt === null ||
+          foundWrittenAt === null ||
           olderWrittenAt.getTime() > foundWrittenAt.getTime()
           ? { kind: 'unverified' }
           : { kind: 'snapshot', snapshot: found }
@@ -1653,20 +1662,16 @@ function isRequestTransactionAdapter(value: unknown): value is RequestTransactio
 
 /**
  * rev3: a kurzus fő sorának zárolása (`SELECT … FOR UPDATE`) a kérés saját
- * tranzakciójában; a zár a tranzakció végéig, tehát a visszaállítás
+ * tranzakciójában; a zár a tranzakció végéig, tehát a mentés
  * `db.updateOne`-jáig és commitjáig tart. A kapcsolat `statement_timeout`-ja
  * (payload.config.ts) korlátozza a várakozást: egy beragadt tranzakció mögött
- * a visszaállítás hibával leáll, és nem ír (CLAUDE.md 6. tanulság).
+ * a mentés hibával leáll, és nem ír (CLAUDE.md 6. tanulság).
  *
  * Visszatérés: `false`, ha nincs kérés-tranzakció vagy az adapter nem futtat
- * SQL-t (a hívó ilyenkor piszkozatot hagy). Az SQL-hiba nem nyelhető el: a
- * megszakadt tranzakcióban a mentés úgysem folytatható, a visszaállítás
- * hibával áll le.
+ * SQL-t (a hívó dönti el, mi legyen ilyenkor). Az SQL-hiba nem nyelhető el: a
+ * megszakadt tranzakcióban a mentés úgysem folytatható, hibával áll le.
  */
-async function lockProductRowForRestore(
-  req: PayloadRequest,
-  id: number | string,
-): Promise<boolean> {
+async function lockProductRow(req: PayloadRequest, id: number | string): Promise<boolean> {
   const transactionID = await req.transactionID
   const rawAdapter: unknown = req.payload?.db
   const adapter = isRequestTransactionAdapter(rawAdapter) ? rawAdapter : undefined
@@ -1675,10 +1680,6 @@ async function lockProductRowForRestore(
       ? undefined
       : adapter.sessions?.[String(transactionID)]?.db
   if (adapter === undefined || transaction === undefined || transaction === null) {
-    logger.warn(
-      'A munkatárs verzió-visszaállítása piszkozat marad: a kurzus sora nem zárolható (nincs kérés-tranzakció)',
-      { productId: id },
-    )
     return false
   }
   await adapter.execute({
@@ -1686,6 +1687,57 @@ async function lockProductRowForRestore(
     sql: sql`SELECT id FROM "products" WHERE id = ${id} FOR UPDATE`,
   })
   return true
+}
+
+/**
+ * PR #305 rev2-b (breaker X1): a kurzus minden mentése a kérés tranzakciójában
+ * zárolja a fő sort (lockProductRow), MIELŐTT a napló a „before” pillanatképet
+ * (src/plugins/audit.ts auditProductBeforeChange) és az ár-őrök a mércét
+ * olvassák. Az audit plugin a saját hookját a kollekció beforeChange listájának
+ * VÉGÉRE fűzi (az ecommerce plugin után fut, payload.config.ts), a mezők
+ * validálása pedig a kollekció-hookok után jön (payload/dist/collections/
+ * operations/utilities/update.js és restoreVersion.js), így ez a hook
+ * mindkettő előtt fut.
+ *
+ * Zár nélkül a „before” oldal egy párhuzamos, még nem commitolt írás előtti,
+ * elavult sor lehetett. A naplózott párhuzamos írást a findLastPublishedSnapshot
+ * utólag felismeri (a régebbi bejegyzés későbbi „after” oldala), a naplózatlant
+ * viszont nem: a tulajdonos élő kurzuson futó verzió-visszaállítása
+ * (79 500 Ft) és a munkatárs egyidejű visszavonása után a visszavonás „before”
+ * oldala még a visszaállítás előtti 10 000 Ft volt, és a 7 950 Ft-os elütést a
+ * munkatárs megerősítés nélkül tehette közzé (mérve valódi Payload + Postgres
+ * mellett). A zárral a párhuzamos írás előbb commitol, és ez a mentés a friss
+ * sort olvassa; READ COMMITTED mellett minden utasítás a zár megszerzése utáni
+ * állapotot látja.
+ *
+ * Minden `update`-et zárol, a piszkozat-mentést is: az a fő sort nem írja, de
+ * a zár ára egy rövid várakozás, és így nincs olyan ág, amelyről bizonyítani
+ * kellene, hogy nem olvas mércét. Új zársorrendet nem hoz: a nem piszkozat
+ * mentés `db.updateOne`-ja ugyanezt a sort eddig is zárolta, csak később, és
+ * a zár és az írás között más sort nem zárol. A piszkozat-mentés a
+ * verziósorok előtt most a fő sort is zárolja; a kurzus törlése fordítva
+ * halad (verziók, majd a fő sor), ezért egy egyidejű törlés és autosave
+ * holtpontba kerülhet. Ezt a Postgres felismeri, és az egyik műveletet
+ * hibával leállítja; a közzététel és a törlés között ez eddig is így volt.
+ * Kérés-tranzakció nélkül a zár nem tartana a mentésig: ilyenkor a mentés zár
+ * nélkül megy tovább (a korábbi viselkedés), a napló-lánc ellenőrzése a
+ * naplózott párhuzamos írást így is felismeri.
+ */
+export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
+  if (operation !== 'update') return data
+  const id = isPlainRecord(originalDoc) ? originalDoc.id : undefined
+  if (typeof id !== 'number' && typeof id !== 'string') return data
+  if (!(await lockProductRow(req, id))) {
+    logger.warn('kurzus mentése: a fő sor nem zárolható (nincs kérés-tranzakció)', {
+      productId: String(id),
+    })
+  }
+  return data
 }
 
 /**
@@ -1713,7 +1765,7 @@ async function lockProductRowForRestore(
  * ott is a fő sor dönt (fail-closed). Olvasási hiba: piszkozat.
  *
  * rev3 (BRK-RACE): a fő sort a kérés tranzakciójában zároljuk, MIELŐTT
- * elolvassuk (lockProductRowForRestore). READ COMMITTED mellett a zár nélküli
+ * elolvassuk (lockProductRow). READ COMMITTED mellett a zár nélküli
  * olvasás még az élő sort láthatta, miközben egy párhuzamos visszavonás vagy
  * lomtár már a tulajdonos piszkozatát írta a fő sorba; a visszaállítás
  * `_status: 'published'`-je aztán erre került (mérve: élő, ingyenes,
@@ -1742,7 +1794,11 @@ export const restoreVersionByNonOwnerStaysDraft: CollectionBeforeChangeHook = as
   if (await ownerMayWrite({ req, data, id })) {
     return data
   }
-  if (!(await lockProductRowForRestore(req, id))) {
+  if (!(await lockProductRow(req, id))) {
+    logger.warn(
+      'A munkatárs verzió-visszaállítása piszkozat marad: a kurzus sora nem zárolható (nincs kérés-tranzakció)',
+      { productId: id },
+    )
     return { ...data, _status: 'draft' }
   }
   const row = await readProductRow(req, id)
@@ -1813,6 +1869,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       trashWritesStayDraft,
       restoreVersionByNonOwnerStaysDraft,
       ...(defaultCollection.hooks?.beforeChange ?? []),
+      // A lista végén, közvetlenül az audit plugin hozzáfűzött hookja előtt.
+      productUpdateLocksRow,
     ],
     // A menü szövege az ártól és a publikációtól is függ; mentés és törlés után újraépítendő.
     afterChange: [
