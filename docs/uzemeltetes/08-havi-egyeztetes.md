@@ -27,14 +27,29 @@ bizonylataiból és a Barion havi kivonatából kell.
    npx tsx src/scripts/export-penzugyi-egyeztetes.ts --honap 2026-09 --kimenet ./egyeztetes-2026-09.csv
    ```
 
-   A fájlban minden rendelés benne van, amely a hónapban jött létre vagy a
-   hónapban kapott visszatérítést. A részleges visszatérítés is ide tartozik,
-   akkor is, ha a rendelés egy korábbi hónapban jött létre. Oszlopok:
+   A fájlban minden rendelés benne van, amely a hónapban jött létre, a
+   hónapban fizették ki, vagy a hónapban kapott visszatérítést. A részleges
+   visszatérítés is ide tartozik, akkor is, ha a rendelés egy korábbi hónapban
+   jött létre. Oszlopok:
    rendelésszám, létrehozás és fizetés ideje (magyar idő), állapot, bruttó
    összeg, számla, stornó és helyesbítő száma és állapota, teljesítés dátuma,
    visszatérítések, Barion PaymentId. Vevő neve és e-mail-címe nincs benne. A
    szkript csak olvas. A fejlesztő a lenti A–G ellenőrző lekérdezéseket is
    futtassa le.
+
+   A hónap végén létrehozott és a következő hónapban kifizetett rendelés
+   mindkét hónap fájljában szerepel. Például az augusztus 31-én 23:50-kor
+   leadott és szeptember 1-jén 00:10-kor kifizetett rendelés az augusztusi
+   fájlban a létrehozása, a szeptemberiben a fizetése miatt van benne. A
+   Barion-fizetést abban a hónapban párosítsd, amelyikbe a `fizetve_budapest`
+   esik; a másik hónap sorához nem tartozik Barion-fizetés. A
+   `fizetve_budapest` az az időpont, amikor a Kineticare a fizetést
+   feldolgozta (a hozzáférés megnyílt). Ez néhány perccel később is lehet,
+   mint a Barion-exportban látható idő, ezért éjfél körül mindkét hónap
+   fájljában keresd. Ha a `fizetve_budapest` üres, a fizetés ideje nem
+   ismert. Ilyen rendelés a fizetése miatt nem kerül be másik hónap
+   fájljába, ezért a Barion-exportból kell megkeresni, a rendelésszám
+   alapján.
 
    A visszatérítésnek három oszlopa van:
    - `visszaterites_honapban_huf`: a hónapban visszautalt összeg. Ha a

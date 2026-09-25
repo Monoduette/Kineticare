@@ -204,10 +204,20 @@ export class AamIncompleteError extends Error {
 }
 
 /**
- * A tárgyév kiállított számlás rendelései. A teljesítési dátum szöveges
- * mező, ezért a szűrés a `createdAt`-re megy (az előző év decemberétől, mert
- * az év végi rendelés teljesítése átcsúszhat), a pontos évet a
- * `computeAamStatus` dönti el.
+ * A tárgyév kiállított számlás rendelései, a számla TELJESÍTÉSI DÁTUMA
+ * szerint. A jelöltet ugyanaz a mező választja ki, amely szerint az
+ * `aamContribution` az évhez rendel: a létrehozás ideje erre nem jó, mert egy
+ * korábbi rendelés számlája később is kiállhat (vagy kézzel újra kiállhat), és
+ * akkor a tárgyévbe számít (PR #305, Devin: novemberi rendelés, januári
+ * teljesítés). A `createdAt`-visszatekintés az ilyen rendelést kihagyta, és a
+ * keret-használatot alábecsülte.
+ *
+ * A teljesítési dátum szöveges mező (varchar, ÉÉÉÉ-HH-NN, a
+ * `budapestDateString` írja), ezért szöveges tartományra szűrünk:
+ * [`ÉÉÉÉ-`, `ÉÉÉÉ+1-`). Ez a `ÉÉÉÉ-` kezdetű értékeket bármely
+ * adatbázis-rendezés (C és nyelvi collation) mellett lefedi; a Payload `like`
+ * operátora nem előtag-, hanem tartalmazás-keresés, ezért nem az. A pontos
+ * évet továbbra is a `computeAamStatus` dönti el.
  *
  * TELJESSÉG: az eredmény csak akkor épül, ha a lapozás igazoltan a végére ért
  * (rövid oldal vagy `hasNextPage === false`). Ha az `AAM_MAX_PAGES` korlát
@@ -222,7 +232,8 @@ export async function queryAamStatus(find: AamFindFn, nowMs: number): Promise<Aa
   const where: Where = {
     and: [
       { invoiceStatus: { equals: 'issued' } },
-      { createdAt: { greater_than_equal: new Date(Date.UTC(year - 1, 11, 1)).toISOString() } },
+      { invoiceCompletionDate: { greater_than_equal: `${String(year)}-` } },
+      { invoiceCompletionDate: { less_than: `${String(year + 1)}-` } },
     ],
   }
   const orders: AamOrderInput[] = []
@@ -275,7 +286,9 @@ export function payloadAamFind(
       page,
       limit,
       depth: 0,
-      sort: 'createdAt',
+      // Az id a holtversenyt dönti el: nem egyedi rendezési kulcs mellett a
+      // Postgres oldalanként más sorrendet adhat, és egy sor kimaradhatna.
+      sort: ['createdAt', 'id'],
       select: AAM_ORDER_SELECT,
       ...access,
     } as unknown as Parameters<Payload['find']>[0])

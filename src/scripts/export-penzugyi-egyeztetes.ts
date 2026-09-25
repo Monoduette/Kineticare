@@ -12,9 +12,13 @@
  * Számlázz.hu-export × rendelésszám) harmadik lábát adja; útmutató:
  * docs/uzemeltetes/08-havi-egyeztetes.md.
  *
- * MIT TARTALMAZ: minden rendelést, amely a hónapban jött létre VAGY a
- * hónapban kapott visszatérítést (teljeset vagy részlegeset, akkor is, ha a
- * rendelés egy korábbi hónapban jött létre). Oszlopok: rendelésszám,
+ * MIT TARTALMAZ: minden rendelést, amely a hónapban jött létre, VAGY a
+ * hónapban fizették ki, VAGY a hónapban kapott visszatérítést (teljeset vagy
+ * részlegeset, akkor is, ha a rendelés egy korábbi hónapban jött létre). A
+ * hónap végén létrehozott és a következő hónapban kifizetett rendelés ezért
+ * mindkét hónap fájljában szerepel: a létrehozás hónapjában a létrehozás, a
+ * fizetés hónapjában a Barion-tranzakció miatt (PR #305, Devin: augusztus 31.
+ * 23:50-es rendelés, szeptember 1. 00:10-es fizetés). Oszlopok: rendelésszám,
  * létrehozás és fizetés ideje (Budapest), állapot, bruttó összeg,
  * számla/stornó/helyesbítő száma és állapota, teljesítési dátum, a HÓNAPBAN
  * visszatérített összeg és tételei (tételenként összeg és időpont, hogy
@@ -32,6 +36,15 @@
  * mentések pedig csak növelik az `updatedAt`-et), és a pontos hónap-szűrés
  * JS-ben fut a `createdAt`, a `refundedAt` és minden `refunds[].refundedAt`
  * alapján.
+ *
+ * A FIZETÉS HÓNAPJA ugyanebből a bővebb halmazból jön: a paid-átmenet előbb a
+ * hozzáférés-órát írja, UTÁNA menti a rendelést `status: paid`-dal
+ * (src/lib/order-status/apply-barion-state.ts), így a rendelés `updatedAt`-je
+ * sosem korábbi a `grantedAt`-nél. A fizetési időt ezért a TELJES jelölt-halmazra
+ * lekérdezzük (kötegenként, nem rendelésenként), és a hónap-szűrés már ezzel
+ * együtt fut. Ha a hozzáférés-óra írása elbukott (arról RIASZTÁS szól), a
+ * fizetési idő ismeretlen, és a rendelés csak a létrehozás hónapjában jelenik
+ * meg.
  *
  * ADATVÉDELEM: vevőnév, e-mail, cím, IP NEM kerül a fájlba; a könyvelő a
  * rendelésszámmal párosít. A fájl mégis pénzügyi adat: ne küldd nyílt
@@ -59,6 +72,8 @@ const log = createLogger({ script: 'export-penzugyi-egyeztetes' })
 
 const PAGE_SIZE = 200
 const MAX_PAGES = 100
+/** Egy fizetésiidő-lekérdezés legfeljebb ennyi rendelés-azonosítót kér. */
+const FIZETES_KOTEG = 200
 
 export const CSV_FEJLEC = [
   'rendelesszam',
@@ -212,10 +227,18 @@ function visszateritesek(
   return { honapban, honapbanTetelek, halmozott }
 }
 
-/** A rendelés a hónapban jött létre, vagy a hónapban kapott (bármilyen) visszatérítést. */
-function honapbanErintett(order: ExportOrder, honap: HonapHatarai): boolean {
+/**
+ * A rendelés a hónapban jött létre, a hónapban fizették ki (`fizetveIso`, a
+ * hozzáférés-óra ideje), vagy a hónapban kapott (bármilyen) visszatérítést.
+ */
+function honapbanErintett(
+  order: ExportOrder,
+  fizetveIso: string | undefined,
+  honap: HonapHatarai,
+): boolean {
   return (
     honapba(order.createdAt, honap) ||
+    honapba(fizetveIso, honap) ||
     honapba(order.refundedAt, honap) ||
     visszateritesiTetelek(order.refunds).some((entry) => honapba(entry.refundedAt, honap))
   )
@@ -324,6 +347,39 @@ async function osszesOldal<T>(
   )
 }
 
+/**
+ * A rendelések fizetési ideje (a hozzáférés-órákból), `FIZETES_KOTEG`
+ * azonosítónként egy lekérdezéssel. Ugyanaz a vevő több kötegben is
+ * visszajöhet; a `fizetesiIdok` rendelésenként a legkorábbi időt tartja meg.
+ */
+async function jeloltekFizetesiIdeje(
+  payload: Pick<Payload, 'find'>,
+  ids: readonly number[],
+): Promise<Map<number, string>> {
+  const users: unknown[] = []
+  for (let kezdo = 0; kezdo < ids.length; kezdo += FIZETES_KOTEG) {
+    const koteg = ids.slice(kezdo, kezdo + FIZETES_KOTEG)
+    users.push(
+      ...(await osszesOldal<unknown>(
+        (page) =>
+          payload.find({
+            collection: 'users',
+            where: { 'accessGrants.sourceOrder': { in: koteg } },
+            page,
+            limit: PAGE_SIZE,
+            depth: 0,
+            select: { accessGrants: true },
+            overrideAccess: true,
+          } as unknown as Parameters<Payload['find']>[0]) as Promise<{
+            docs: unknown[]
+            hasNextPage?: boolean
+          }>,
+      )),
+    )
+  }
+  return fizetesiIdok(users)
+}
+
 /** A hónap rendelései és a CSV. Csak `find`-et hív. */
 export async function penzugyiExport(
   payload: Pick<Payload, 'find'>,
@@ -365,31 +421,16 @@ export async function penzugyiExport(
   )
   const egyedi = new Map<number, ExportOrder>()
   for (const order of jeloltek) {
-    if (!egyedi.has(order.id) && honapbanErintett(order, hatarok)) {
+    if (!egyedi.has(order.id)) {
       egyedi.set(order.id, order)
     }
   }
-  const orders = [...egyedi.values()]
-  const ids = orders.map((order) => order.id)
-  const users =
-    ids.length === 0
-      ? []
-      : await osszesOldal<unknown>(
-          (page) =>
-            payload.find({
-              collection: 'users',
-              where: { 'accessGrants.sourceOrder': { in: ids } },
-              page,
-              limit: PAGE_SIZE,
-              depth: 0,
-              select: { accessGrants: true },
-              overrideAccess: true,
-            } as unknown as Parameters<Payload['find']>[0]) as Promise<{
-              docs: unknown[]
-              hasNextPage?: boolean
-            }>,
-        )
-  const idok = fizetesiIdok(users)
+  // A fizetési idő a szűrés RÉSZE (a hónapban fizetett rendelés bekerül), ezért
+  // a teljes jelölt-halmazra kell, nem csak a már kiválasztott sorokra.
+  const idok = await jeloltekFizetesiIdeje(payload, [...egyedi.keys()])
+  const orders = [...egyedi.values()].filter((order) =>
+    honapbanErintett(order, idok.get(order.id), hatarok),
+  )
   const sorok = orders.map((order) => exportSor(order, idok.get(order.id), hatarok))
   return { csv: csvSzoveg(sorok), sorok: sorok.length }
 }

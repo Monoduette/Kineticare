@@ -286,3 +286,143 @@ describe('export — a hónap visszatérítései (valódi where-kiértékelésse
     })
   })
 })
+
+/**
+ * PR #305 (Devin): a hónapban FIZETETT rendelés is bekerül, akkor is, ha
+ * korábban jött létre, és a hónapban visszatérítést sem kapott. A fizetés ideje
+ * a hozzáférés-óra (`accessGrants.grantedAt`); a paid-átmenet a rendelést ezután
+ * menti, ezért a fixtúrában a rendelés `updatedAt`-je nem korábbi a
+ * `grantedAt`-nél.
+ *
+ * A rendeléseket a memória-payload szűri (valódi where-kiértékeléssel); a
+ * vevőket egy szűk kiszolgáló adja, amely kizárólag az export
+ * `accessGrants.sourceOrder in [...]` lekérdezését ismeri, minden mást
+ * hangosan elutasít.
+ */
+describe('export — a hónapban fizetett rendelés (Budapest szerinti hónaphatár)', () => {
+  interface Hozzaferes {
+    sourceOrder: number
+    grantedAt: string
+  }
+
+  const rendeles = (
+    id: number,
+    mezok: {
+      createdAt: string
+      updatedAt: string
+      refunds?: Array<{ type: string; amountHuf: number; refundedAt: string }>
+    },
+  ) => ({
+    id,
+    orderNumber: `KH-2026-${String(id).padStart(6, '0')}`,
+    status: 'paid',
+    totalHufSnapshot: 79_500,
+    refundedAt: null,
+    refunds: mezok.refunds ?? [],
+    createdAt: mezok.createdAt,
+    updatedAt: mezok.updatedAt,
+  })
+
+  function exportPayload(
+    orders: ReadonlyArray<Record<string, unknown>>,
+    hozzaferesek: readonly Hozzaferes[],
+  ) {
+    const { payload } = createMemoryPayload({ orders })
+    const vevok = hozzaferesek.map((grant) => ({ accessGrants: [grant] }))
+    return {
+      find: async (args: { collection: string; where?: Record<string, unknown> }) => {
+        if (args.collection !== 'users') {
+          return payload.find(args as Parameters<typeof payload.find>[0])
+        }
+        const feltetel = args.where?.['accessGrants.sourceOrder'] as { in?: unknown } | undefined
+        const ids = feltetel?.in
+        if (!Array.isArray(ids) || Object.keys(args.where ?? {}).length !== 1) {
+          throw new Error('váratlan vevő-lekérdezés')
+        }
+        return {
+          docs: vevok.filter((vevo) => ids.includes(vevo.accessGrants[0]?.sourceOrder)),
+          hasNextPage: false,
+        }
+      },
+    }
+  }
+
+  // Devin példája: augusztus 31. 23:50-kor (Budapest) jött létre, szeptember
+  // 1. 00:10-kor fizették, visszatérítés nélkül.
+  const devinPeldaja = {
+    createdAt: '2026-08-31T21:50:00.000Z',
+    updatedAt: '2026-08-31T22:10:01.000Z',
+  }
+  const orders = [
+    rendeles(1, devinPeldaja),
+    // Ugyanígy a hónapfordulón fizetett, majd októberben részben visszatérített.
+    rendeles(2, {
+      createdAt: '2026-08-31T21:55:00.000Z',
+      updatedAt: '2026-10-05T09:00:01.000Z',
+      refunds: [{ type: 'partial', amountHuf: 20_000, refundedAt: '2026-10-05T09:00:00.000Z' }],
+    }),
+    // Téli időre váltó hónap: október 31. 23:40-kor (CET) jött létre, november
+    // 1. 00:10-kor (CET) fizették. Egy rögzített nyári (+2 órás) hónaphatár
+    // mindkettőt novemberinek látná.
+    rendeles(3, { createdAt: '2026-10-31T22:40:00.000Z', updatedAt: '2026-10-31T23:10:01.000Z' }),
+    // Szeptember 30. 23:50-kor (CEST) jött létre, október 1. 00:30-kor fizették.
+    rendeles(4, { createdAt: '2026-09-30T21:50:00.000Z', updatedAt: '2026-09-30T22:30:01.000Z' }),
+  ]
+  const devinFizetese: Hozzaferes = { sourceOrder: 1, grantedAt: '2026-08-31T22:10:00.000Z' }
+  const hozzaferesek: Hozzaferes[] = [
+    devinFizetese,
+    { sourceOrder: 2, grantedAt: '2026-08-31T22:12:00.000Z' },
+    { sourceOrder: 3, grantedAt: '2026-10-31T23:10:00.000Z' },
+    { sourceOrder: 4, grantedAt: '2026-09-30T22:30:00.000Z' },
+  ]
+
+  it.each([
+    ['2026-08', ['KH-2026-000001', 'KH-2026-000002']],
+    ['2026-09', ['KH-2026-000001', 'KH-2026-000002', 'KH-2026-000004']],
+    ['2026-10', ['KH-2026-000002', 'KH-2026-000003', 'KH-2026-000004']],
+    ['2026-11', ['KH-2026-000003']],
+    ['2026-12', []],
+  ])(
+    '%s: a létrehozás, a fizetés és a visszatérítés hónapja is behozza a rendelést, más hónap nem',
+    async (honap, varhato) => {
+      const payload = exportPayload(orders, hozzaferesek)
+
+      const { csv } = await penzugyiExport(payload as never, honap)
+
+      expect(
+        csvSorok(csv)
+          .map((sor) => sor.rendelesszam)
+          .sort(),
+      ).toEqual(varhato)
+    },
+  )
+
+  it('a fizetés hónapjának sora a fizetés idejét mutatja, visszatérítés nélkül', async () => {
+    const payload = exportPayload(orders, hozzaferesek)
+
+    const szeptember = csvSorok((await penzugyiExport(payload as never, '2026-09')).csv)
+
+    expect(szeptember.find((sor) => sor.rendelesszam === 'KH-2026-000001')).toMatchObject({
+      letrehozva_budapest: '2026. 08. 31. 23:50',
+      fizetve_budapest: '2026. 09. 01. 00:10',
+      visszaterites_honapban_huf: '',
+      visszaterites_halmozott_huf: '',
+    })
+  })
+
+  it('nagy jelölt-halmaznál a későbbi köteg rendelésének fizetési ideje is megvan', async () => {
+    // Júliusi rendelések, amelyek szeptemberben módosultak (jelöltek), de
+    // szeptemberben nem jöttek létre és nem is fizették őket.
+    const toltelek = Array.from({ length: 450 }, (_, index) =>
+      rendeles(1_000 + index, {
+        createdAt: '2026-07-10T08:00:00.000Z',
+        updatedAt: '2026-09-15T08:00:00.000Z',
+      }),
+    )
+    const payload = exportPayload([...toltelek, rendeles(1, devinPeldaja)], [devinFizetese])
+
+    const { csv } = await penzugyiExport(payload as never, '2026-09')
+
+    expect(csvSorok(csv).map((sor) => sor.rendelesszam)).toEqual(['KH-2026-000001'])
+  })
+})
