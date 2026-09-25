@@ -47,6 +47,9 @@ export type RequestErrorContext = OnRequestErrorParams[2]
 /** A naplósor `msg` mezője (a `server_start` mintájára). */
 export const REQUEST_ERROR_LOG_MSG = 'request_error'
 
+/** A Next vezérlési jelzésének debug-sora (nem hiba, nem megy a PostHogba). */
+export const REQUEST_ERROR_IGNORED_LOG_MSG = 'request_error_ignored'
+
 /** A PostHog-esemény neve: a hibakövetés ezt dolgozza fel. */
 export const POSTHOG_EXCEPTION_EVENT = '$exception'
 
@@ -182,6 +185,32 @@ function logStack(stack: string | undefined): string | undefined {
 }
 
 /**
+ * A Next vezérlési jelzéseinek digest-előtagjai. Ezeket a Next maga dobja és
+ * maga kezeli (a kérés rendben kiszolgálódik), de egyes utakon (pl. a
+ * `force-dynamic` route statikus renderének megszakítása revalidate közben) az
+ * `onRequestError` is megkapja őket. Ezek nem hibák, ezért sem error szintű
+ * naplósor, sem `$exception` nem lesz belőlük.
+ * Forrás: next/dist/client/components (hooks-server-context, redirect-error,
+ * http-access-fallback) és shared/lib/lazy-dynamic/bailout-to-csr.
+ */
+const NEXT_CONTROL_FLOW_DIGESTS = [
+  'DYNAMIC_SERVER_USAGE',
+  'NEXT_REDIRECT',
+  'NEXT_HTTP_ERROR_FALLBACK',
+  'BAILOUT_TO_CLIENT_SIDE_RENDERING',
+] as const
+
+/**
+ * A digest vezérlési kódja, ha Next-jelzés. Csak a kódot adja vissza: a
+ * `NEXT_REDIRECT;replace;<cél-URL>;307;` digestben a cél-URL query-je is ott
+ * van, az nem mehet a naplóba.
+ */
+function nextControlFlowCode(digest: string | undefined): string | undefined {
+  const code = digest?.split(';')[0]
+  return NEXT_CONTROL_FLOW_DIGESTS.find((known) => known === code)
+}
+
+/**
  * Fojtási kulcs: metódus + route-minta + hibanév + számjegy-semleges üzenet.
  * A számjegyek cseréje miatt az azonosítót hordozó üzenetek (pl. „order 123”)
  * egy kulcsra esnek, a kulcsok száma így nem nő korlátlanul.
@@ -229,6 +258,18 @@ export function createRequestErrorReporter(
       const facts = describeError(error)
       const method = request.method
       const path = pathWithoutQuery(request.path)
+
+      const controlFlowCode = nextControlFlowCode(facts.digest)
+      if (controlFlowCode) {
+        log.debug(REQUEST_ERROR_IGNORED_LOG_MSG, {
+          method,
+          path,
+          routePath: context.routePath,
+          revalidateReason: context.revalidateReason,
+          digest: controlFlowCode,
+        })
+        return
+      }
 
       log.error(REQUEST_ERROR_LOG_MSG, {
         method,
