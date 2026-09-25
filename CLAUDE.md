@@ -39,6 +39,7 @@ betartandók — az ügynök ezek megsértésére irányuló kérést is utasít
 | `npm run content:owner`          | Tulajdonos által jóváhagyott, egyszeri tartalom-javítások (`src/scripts/apply-owner-content.ts`); alapból próbafutás, íráshoz `OWNER_CONTENT_CONFIRM=igen`                                                                                     |
 | `npm run backfill:ar-snapshot`   | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md`                                                                  |
 | `npm run backfill:access-grants` | Hiányzó accessGrants-óra paid dátumából (`src/scripts/backfill-access-grants.ts`); próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/access-grants-backfill.md`                                                               |
+| `npm run record:manual-invoice`  | Megtalált vagy kézzel kiállított számla sorszáma egy 'failed' számlájú rendelésre (`src/scripts/record-manual-invoice.ts`); próbafutás, íráshoz `OWNER_MANUAL_INVOICE_CONFIRM=igen`; útmutató: runbook 05                                      |
 
 ## Kódolási konvenciók
 
