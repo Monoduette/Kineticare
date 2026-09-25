@@ -68,6 +68,12 @@ export async function digestSentOn(payload: DigestClaimPayload, day: string): Pr
   return found.totalDocs > 0 || found.docs.length > 0
 }
 
+/** A napi nyom tartalma: a teendők száma és a levelet vivő szolgáltató neve. */
+export interface DigestClaimAfter {
+  readonly teendo: number
+  readonly provider: string
+}
+
 /**
  * A napi nyom beírása a sikeres küldés után. Nem dob (a `writeAuditLog`
  * best-effort); a visszatérési érték mondja meg, sikerült-e.
@@ -75,7 +81,7 @@ export async function digestSentOn(payload: DigestClaimPayload, day: string): Pr
 export async function recordDigestSent(
   payload: DigestClaimPayload,
   day: string,
-  after: { readonly teendo: number; readonly provider: string },
+  after: DigestClaimAfter,
 ): Promise<boolean> {
   return writeAuditLog({
     store: auditLogStore(payload as unknown as Payload),
@@ -173,8 +179,11 @@ export type DigestLockResult<T> =
  * ez az időkorlát nem vonatkozik a kapcsolatra. Ha a kapcsolat mégis
  * megszakad (Postgres-újraindulás, hálózat), a kivett kliens `error`
  * eseményét itt kezeljük: kezelő nélkül a Node `uncaughtException`-ként
- * vinné el a szerverfolyamatot (CLAUDE.md 7. tanulság). A megszakadt session
- * zárját a Postgres magától elengedi, a kapcsolatot a pool eldobja.
+ * vinné el a szerverfolyamatot (CLAUDE.md 7. tanulság). A kapcsolatot a pool
+ * eldobja, a zárat a Postgres a session végén engedi el: ha a szerver bontott
+ * (újraindulás, pg_terminate_backend), azonnal; ha a kapcsolat a kliens
+ * oldalán szakadt meg, csak amikor a szerver is észleli (TCP keepalive, lásd
+ * a `runDailyDigestIfDue` ismert réseit).
  *
  * Ha a zár foglalt, a `fn` nem fut, és `{ acquired: false }` a válasz. Ha a
  * pool nem oldható fel, a `withAdvisoryLock` szabálya érvényes: productionben
@@ -206,8 +215,10 @@ export async function withDigestTryLock<T>(
   const connection: { error?: Error } = {}
   const onError = (error: Error): void => {
     connection.error ??= error
+    // Csak azt mondjuk, amit a kliens tud: a zárat a Postgres a session végén
+    // engedi el, és ez kliensoldali szakadásnál később is lehet.
     log.warn(
-      'napi összesítő: a zár kapcsolata megszakadt; a Postgres a zárat a kapcsolattal együtt elengedte',
+      'napi összesítő: a zár kapcsolata megszakadt, a kapcsolatot eldobjuk; a zárat a Postgres a session végén engedi el',
       { lockKey, error: error.message },
     )
   }

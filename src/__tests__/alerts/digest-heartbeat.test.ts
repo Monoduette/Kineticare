@@ -152,7 +152,7 @@ function fakeLockPool(options: {
     },
   })
   const connect = vi.fn(async () => client)
-  return { pool: { connect }, released, connect }
+  return { pool: { connect }, released, connect, client }
 }
 
 describe('napi összesítő — időzítés', () => {
@@ -333,18 +333,56 @@ describe('napi összesítő — küldés', () => {
     expect(h.sendMail).toHaveBeenCalledTimes(1)
   })
 
-  it('Codex P2 (PR #305): újraindulás után a friss folyamat a napi nyom miatt nem küld még egy összesítőt', async () => {
+  it('Codex P2 (PR #305): egy sikeres összeállítás után a lekérdezési hiba várakozása elölről indul', async () => {
+    // Az első levél újrapróbálható hibával nem megy ki, így a nap nyitva marad.
+    const results: SendResult[] = [
+      { ok: false, provider: 'smtp', retryable: true, error: '421' },
+      { ok: true, provider: 'smtp' },
+    ]
+    const h = digestHarness({
+      orders: openOrders(MORNING),
+      send: async () => results.shift() ?? { ok: false, provider: 'smtp', retryable: true },
+    })
+    const count = h.memory.payload.count
+    const database = { down: true }
+    h.memory.payload.count = async (args) => {
+      if (database.down) {
+        throw new Error('adatbázis nem érhető el')
+      }
+      return count(args)
+    }
+
+    // 07:10 és 07:20: két egymást követő lekérdezési hiba (10, majd 20 perc várakozás).
+    await expect(runDailyDigestIfDue(h.deps(MORNING))).rejects.toThrow()
+    await expect(runDailyDigestIfDue(h.deps(MORNING + 10 * 60_000))).rejects.toThrow()
+    // 07:40: az adatbázis rendben, a levél újrapróbálható hibával nem megy ki.
+    database.down = false
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 30 * 60_000))).toBe('hiba')
+    // 07:45: újabb lekérdezési hiba. A sikeres összeállítás óta ez az első,
+    // ezért 10 perc a várakozás, nem a korábbi hibákkal felszorzott 40.
+    database.down = true
+    await expect(runDailyDigestIfDue(h.deps(MORNING + 35 * 60_000))).rejects.toThrow()
+    database.down = false
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 40 * 60_000))).toBe('nem-esedekes')
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 45 * 60_000))).toBe('elkuldve')
+    expect(h.sendMail).toHaveBeenCalledTimes(2)
+  })
+
+  it('Codex P2 (PR #305): újraindulás után a friss folyamat a napi nyom miatt nem küld még egy összesítőt, és aznapra le is zár', async () => {
     const h = digestHarness({ orders: openOrders(MORNING) })
     expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
     const countsBeforeRestart = h.memory.countCalls.length
 
     // Deploy 07:40-kor: új folyamat, üres folyamaton belüli állapottal.
-    expect(await runDailyDigestIfDue(h.deps(MORNING + 30 * 60_000, createDigestState()))).toBe(
-      'mar-elkuldve',
-    )
+    const restarted = createDigestState()
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 30 * 60_000, restarted))).toBe('mar-elkuldve')
     expect(h.sendMail).toHaveBeenCalledTimes(1)
     // A nyom miatt a friss folyamat újra sem számol.
     expect(h.memory.countCalls).toHaveLength(countsBeforeRestart)
+    // Aznapra lezár: a következő poll a nyomot sem kérdezi le újra.
+    const findsAfterRestart = h.memory.findCalls.length
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 35 * 60_000, restarted))).toBe('nem-esedekes')
+    expect(h.memory.findCalls).toHaveLength(findsAfterRestart)
     expect(h.memory.createCalls).toEqual([
       expect.objectContaining({
         collection: 'audit-logs',
@@ -362,6 +400,43 @@ describe('napi összesítő — küldés', () => {
     // Másnap a nyom nem gátol.
     const nextMorning = MORNING + 24 * 60 * 60_000
     expect(await runDailyDigestIfDue(h.deps(nextMorning, createDigestState()))).toBe('elkuldve')
+  })
+
+  it('breaker (PR #305 rev2): ha a napi nyom írása a küldés után elbukik, a futó folyamat a következő futásain pótolja, így egy későbbi deploy nem küld második SMTP-összesítőt', async () => {
+    const h = digestHarness({
+      orders: openOrders(MORNING),
+      send: async () => ({ ok: true, provider: 'smtp' }),
+    })
+    // A nyom írása a küldés után és az első pótláskor is átmenetileg hibázik
+    // (pl. a pool 10 s-os connectionTimeoutja egy Postgres-újraindulás alatt).
+    const create = h.memory.payload.create
+    let transientFailures = 2
+    h.memory.payload.create = async (args) => {
+      if (args.collection === 'audit-logs' && transientFailures > 0) {
+        transientFailures -= 1
+        throw new Error('timeout exceeded when trying to connect')
+      }
+      return create(args)
+    }
+
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    // A folyamat tovább él, és 5 percenként pollol.
+    for (let minute = 5; minute <= 60; minute += 5) {
+      expect(await runDailyDigestIfDue(h.deps(MORNING + minute * 60_000))).toBe('nem-esedekes')
+    }
+    // 09:00: deploy, friss folyamat üres állapottal (SMTP-n nincs idempotencia).
+    const afterDeploy = await runDailyDigestIfDue(
+      h.deps(MORNING + 110 * 60_000, createDigestState()),
+    )
+
+    expect(h.sendMail).toHaveBeenCalledTimes(1)
+    expect(afterDeploy).toBe('mar-elkuldve')
+    // A sikeres pótlás után nincs újabb írás: a napra egy nyom van.
+    expect(h.memory.createCalls).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'daily-digest-sent', entityId: '2026-09-24' }),
+      }),
+    ])
   })
 
   it('breaker (PR #305): a noop-szolgáltató „küldése” nem ír napi nyomot, így a szolgáltató aznapi beállítása és a deploy után kimegy a levél', async () => {
@@ -438,6 +513,24 @@ describe('napi összesítő — küldés', () => {
     }
   })
 
+  it.each([
+    { eset: 'szabad zárnál küld', locked: true, kimenet: 'elkuldve' },
+    { eset: 'foglalt zárnál kimarad', locked: false, kimenet: 'folyamatban' },
+  ])(
+    'ép zár-kapcsolat ($eset): a pool hiba nélkül kapja vissza, és a saját error-kezelőnk lekerül róla',
+    async ({ locked, kimenet }) => {
+      const lock = fakeLockPool({ tryLock: async () => ({ rows: [{ locked }] }) })
+      const h = digestHarness({ orders: openOrders(MORNING), db: { pool: lock.pool } })
+
+      expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe(kimenet)
+      // Hiba nélküli release: a pool az ép kapcsolatot újrahasznosítja, nem bontja.
+      expect(lock.released).toEqual([undefined])
+      // A poolba visszatett kliensen nem marad a kezelőnk: újrahasználatkor nem
+      // halmozódik, és egy későbbi hívó kapcsolathibáját sem nyeli el.
+      expect(lock.client.listenerCount('error')).toBe(0)
+    },
+  )
+
   it('ha a zár elengedése a küldés után nem sikerül, a levél eredménye marad, és a zárat tartó kapcsolat nem kerül vissza a poolba', async () => {
     const lock = fakeLockPool({
       unlock: async () => {
@@ -455,6 +548,9 @@ describe('napi összesítő — küldés', () => {
   })
 
   it('ha a zár lezárása a küldés UTÁN dob, a kiment levél eredménye marad: nincs hamis riasztás és második levél', async () => {
+    // Védő teszt: éles úton a pg-pool `release`-e csak dupla elengedésnél dob,
+    // ezt a withDigestTryLock nem teszi. A runDailyDigestIfDue azon ágát őrzi,
+    // amely a küldés után a levél eredményét akkor is megtartja, ha a zár dob.
     const lock = fakeLockPool({
       release: () => {
         throw new Error('Release called on client which has already been released to the pool.')

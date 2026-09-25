@@ -16,8 +16,10 @@
  * idempotenciája, ezért a sikeres küldés után egy napi „elküldve” bejegyzés
  * kerül az audit-logs-ba (`src/lib/alerts/digest-claim.ts`). Küldés előtt ezt
  * olvassuk, így egy 07:00 utáni újraindulás vagy deploy sem küld második
- * összesítőt. A „megnézem, elküldöm, beírom” lépés napi kulcsú Postgres
- * advisory-zár alatt fut, így két átfedő példány közül csak az egyik küld.
+ * összesítőt. Ha a bejegyzés írása a küldés után elbukik, a futó folyamat a
+ * nap további futásain pótolja. A „megnézem, elküldöm, beírom” lépés napi
+ * kulcsú Postgres advisory-zár alatt fut, így két átfedő példány közül csak
+ * az egyik küld.
  * A zárra nem várunk: ha foglalt, a másik példány épp küld, és ez a kör
  * `folyamatban` kimenettel, riasztás nélkül kimarad. Nyom csak valódi
  * kézbesítés után kerül be: a noop-szolgáltató (nincs RESEND_API_KEY és
@@ -60,6 +62,7 @@ import {
   digestSentOn,
   recordDigestSent,
   withDigestTryLock,
+  type DigestClaimAfter,
   type DigestClaimPayload,
   type DigestLockResult,
 } from './digest-claim'
@@ -98,6 +101,11 @@ export interface DigestState {
   retryNotBeforeMs: number
   /** Aznap szóltunk-e már a hiányzó címzettről. */
   recipientWarned: boolean
+  /**
+   * A kiment levél napi nyoma, ha a küldés után nem íródott be: a nap további
+   * futásai pótolják (`retryPendingClaim`), és új napon a `startDay` törli.
+   */
+  pendingClaim: DigestClaimAfter | null
 }
 
 export function createDigestState(): DigestState {
@@ -108,6 +116,7 @@ export function createDigestState(): DigestState {
     assemblyFailures: 0,
     retryNotBeforeMs: 0,
     recipientWarned: false,
+    pendingClaim: null,
   }
 }
 
@@ -318,6 +327,26 @@ function claimPayload(deps: DigestDeps): DigestClaimPayload {
 }
 
 /**
+ * A kiment levél be nem írt napi nyomának pótlása (breaker, PR #305 rev2).
+ * Minden futás elején, az esedékesség vizsgálata előtt fut, mert a küldés után
+ * a nap már le van zárva. A nyom arra a napra kerül, amelyen a levél kiment,
+ * és csak azon a napon pótoljuk. Nem dob: a `writeAuditLog` best-effort, a
+ * sikertelen pótlást maga naplózza, és a következő futás újra próbálja.
+ */
+async function retryPendingClaim(deps: DigestDeps, state: DigestState): Promise<void> {
+  const pending = state.pendingClaim
+  const day = state.day
+  if (pending === null || day !== budapestDateString(new Date(deps.nowMs))) {
+    return
+  }
+  const claims = asDigestClaimPayload(deps.payload)
+  if (claims !== null && (await recordDigestSent(claims, day, pending))) {
+    state.pendingClaim = null
+    deps.logger.info('napi összesítő: a napi nyom utólag beíródott')
+  }
+}
+
+/**
  * Az összesítő, ha esedékes. A lekérdezési, a nyom-olvasási és a zár-hibát
  * a hívóra dobja (az order-poll riaszt, lásd poll-watch.ts), és a következő
  * próbát növekvő várakozás után engedi; a levélküldés hibája `hiba` vagy
@@ -327,6 +356,7 @@ function claimPayload(deps: DigestDeps): DigestClaimPayload {
 export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutcome> {
   const state = deps.state ?? processDigestState
   const log = deps.logger
+  await retryPendingClaim(deps, state)
   if (!isDigestDue(deps.nowMs, state)) {
     return 'nem-esedekes'
   }
@@ -399,9 +429,24 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   // session-szintű, tranzakció nélkül: a hosszú SMTP-küldést az
   // idle_in_transaction_session_timeout nem szakítja meg, és a zár
   // kapcsolatának hibája csak figyelmeztetés, nem uncaughtException.
-  // (Ismert rés: ha a zár kapcsolata a küldés közben mégis megszakad, pl.
-  // Postgres-újraindulás, a Postgres elengedi a zárat, és egy közben induló
-  // példány a nyom beírása előtt küldhet még egyet.)
+  //
+  // Ismert rések. Az 1–3. csak SMTP-n küldhet második levelet, a Resend
+  // idempotenciakulcsa ezt kivédi:
+  //  1. Ha a folyamat a küldés és a nyom beírása között leáll, nyom nem lesz,
+  //     és egy később induló példány aznap még egyszer küldhet.
+  //  2. Ha a nyom írása a küldés után elbukik, ez a folyamat a következő
+  //     futásán pótolja (`retryPendingClaim`). Addig, jellemzően 5 percig,
+  //     egy közben induló példány még egyszer küldhet.
+  //  3. Ha a zár kapcsolata a küldés közben megszakad (pl.
+  //     Postgres-újraindulás), a zár felszabadul, és egy közben induló
+  //     példány a nyom beírása előtt küldhet még egyet.
+  //  4. Ha a zárat tartó kliens FIN nélkül tűnik el (hálózati szakadás,
+  //     gépleállás), a Postgres a session zárját csak akkor engedi el, amikor
+  //     a szerver TCP keepalive-ja észleli a halott kapcsolatot. Ez a Linux
+  //     alapértékeivel kb. két óra, ha a szerveren a tcp_keepalives_* nincs
+  //     beállítva. Addig minden példány riasztás nélkül `folyamatban`-t kap:
+  //     a levél késik, és ha a küldés késő este volt, aznapra el is maradhat.
+  //
   // Ha a zár a küldés UTÁN hibázik, a küldés eredménye itt marad meg.
   const attempt: { result?: SendResult } = {}
   let locked: DigestLockResult<boolean> = { acquired: false }
@@ -422,13 +467,15 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
           log.warn(
             'napi összesítő: nincs levélszolgáltató beállítva (noop), a levél nem ment ki; a napi nyom nem íródik be',
           )
-        } else if (
-          result.ok &&
-          !(await recordDigestSent(claims, today, { teendo: total, provider: result.provider }))
-        ) {
-          log.warn(
-            'napi összesítő: a levél kiment, de a napi nyom nem íródott be; újraindulás után ma még egyszer kimehet',
-          )
+        } else if (result.ok) {
+          const claim: DigestClaimAfter = { teendo: total, provider: result.provider }
+          if (!(await recordDigestSent(claims, today, claim))) {
+            // A levél kiment: a nyomot a következő futások pótolják.
+            state.pendingClaim = claim
+            log.warn(
+              'napi összesítő: a levél kiment, de a napi nyom nem íródott be; a következő futás pótolja, addig egy újonnan induló példány ma még egyszer elküldheti',
+            )
+          }
         }
         return false
       },
