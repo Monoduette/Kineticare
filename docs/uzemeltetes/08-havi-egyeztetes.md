@@ -166,7 +166,9 @@ kétféle lehet:
 - az ugyanilyen sorszámú, lezárt (`committed`) visszatérítési szándék.
 
 A két óránál frissebb visszatérítés nem jelenik meg, mert a helyesbítő még
-készülhet, kivéve ha a legutóbbi kísérlet már sikertelen. A régi,
+készülhet, kivéve ha a legutóbbi kísérlet már sikertelen. Az a
+visszatérítés, amelynek az időpontja hiányzik vagy olvashatatlan, mindig
+megjelenik. A régi,
 visszatérítési szándék nélküli visszatérítéseknek csak a legutóbbi helyesbítője
 igazolt, a korábbiakat a Számlázz.hu-ban kell megkeresni a
 `KH-…-HELYESBITO-<sorszám>` külső azonosító alapján. Ha ott megvan, nincs
@@ -185,7 +187,7 @@ WHERE o.invoice_status = 'issued'
   AND jsonb_typeof(r.bejegyzes) = 'object'
   AND (r.bejegyzes ->> 'type' = 'partial'
        OR (r.bejegyzes ->> 'type' = 'full' AND r.sorszam > 1))
-  AND NOT (o.corrective_invoice_number ~ '\S' AND o.corrective_invoice_seq = r.sorszam)
+  AND NOT coalesce(o.corrective_invoice_number ~ '\S' AND o.corrective_invoice_seq = r.sorszam, false)
   AND NOT EXISTS (
     SELECT 1 FROM refund_intents ri
     WHERE ri.order_id = o.id AND ri.state = 'committed' AND ri.refund_sequence = r.sorszam
@@ -193,6 +195,7 @@ WHERE o.invoice_status = 'issued'
   AND CASE
         WHEN o.corrective_invoice_status = 'failed' THEN true
         WHEN jsonb_typeof(r.bejegyzes -> 'refundedAt') IS DISTINCT FROM 'string'
+          OR r.bejegyzes ->> 'refundedAt' !~ '^\d{4}-\d{2}-\d{2}'
           OR NOT pg_input_is_valid(r.bejegyzes ->> 'refundedAt', 'timestamptz') THEN true
         ELSE (r.bejegyzes ->> 'refundedAt')::timestamptz < now() - interval '2 hours'
       END
@@ -204,12 +207,11 @@ A `pg_input_is_valid` PostgreSQL 16-tól létezik; az éles adatbázis ennél
 
 **D) Elakadt visszatérítési szándék:**
 
-Lezárt a `committed` szándék, és az a `provider_failed`, amelyről igazolt, hogy
-a Barionnál nem történt visszautalás (ki van töltve a
-`reconciliation_checked_at` és a `reconciliation_reference`). Ez ugyanaz,
-amit az Irányítópult az elakadt visszatérítéseknél kihagy. Ilyen igazolás
-nélküli `provider_failed` sor rendesen nem létezhet; ha mégis megjelenik,
-adathiba, szólj a fejlesztőnek.
+A lista kihagyja a lezárt (`committed`) szándékot és azt a `provider_failed`
+szándékot, amelyről igazolt, hogy a Barionnál nem történt visszautalás (ki van
+töltve a `reconciliation_checked_at` és a `reconciliation_reference`). Az
+Irányítópult minden `provider_failed` szándékot kihagy; ez a lekérdezés az
+igazolás nélkülit megmutatja, mert az adathiba: szólj a fejlesztőnek.
 
 ```sql
 SELECT ri.id, o.order_number, ri.state, ri.refund_sequence, ri.requested_amount_huf,
@@ -217,9 +219,9 @@ SELECT ri.id, o.order_number, ri.state, ri.refund_sequence, ri.requested_amount_
 FROM refund_intents ri
 JOIN orders o ON o.id = ri.order_id
 WHERE ri.state <> 'committed'
-  AND NOT (ri.state = 'provider_failed'
-           AND ri.reconciliation_checked_at IS NOT NULL
-           AND ri.reconciliation_reference <> '')
+  AND NOT coalesce(ri.state = 'provider_failed'
+                    AND ri.reconciliation_checked_at IS NOT NULL
+                    AND ri.reconciliation_reference <> '', false)
   AND ri.created_at < now() - interval '15 minutes'
 ORDER BY ri.created_at;
 ```

@@ -369,4 +369,48 @@ describe('order-poll utáni őrfeladatok', () => {
     const alert = entries.find((entry) => entry.level === 'error')
     expect(alert?.context).toMatchObject({ alert: true, alertCode: 'napi-osszesito-hiba' })
   })
+
+  it('a poll az áfakulcsot továbbadja az összesítőnek: AAM mellett az AAM-sor a levélben van, nélküle nincs', async () => {
+    // Éles út: order-poll → afterOrderPoll → runDailyDigestIfDue. Ha a vatMode
+    // útközben elveszne, a 70%-os keret-figyelmeztetés némán kimaradna.
+    const invoiced = [
+      {
+        id: 10,
+        status: 'paid',
+        invoiceStatus: 'issued',
+        invoiceCompletionDate: '2026-04-01',
+        totalHufSnapshot: 14_500_000,
+        createdAt: '2026-04-01T10:00:00.000Z',
+        updatedAt: '2026-04-01T10:00:00.000Z',
+      },
+    ]
+    const futtat = async (vatMode: string | undefined) => {
+      const { payload } = createMemoryPayload({
+        orders: invoiced,
+        'refund-intents': [],
+        'webhook-events': [],
+      })
+      const mails: SendMailInput[] = []
+      await afterOrderPoll({
+        payload: payload as never,
+        logger: recordingLogger([]),
+        nowMs: MORNING,
+        sendMail: async (input: SendMailInput): Promise<SendResult> => {
+          mails.push(input)
+          return { ok: true, provider: 'resend', id: 'd1' }
+        },
+        recipients: () => ['tulajdonos@example.com'],
+        serverUrl: 'https://kineticare.hu',
+        heartbeatUrl: undefined,
+        digestState: createDigestState(),
+        ...(vatMode !== undefined ? { vatMode } : {}),
+      })
+      return mails
+    }
+
+    const aam = await futtat('AAM')
+    expect(aam).toHaveLength(1)
+    expect(aam[0]?.text).toContain('Alanyi adómentes keret, 2026:')
+    expect(await futtat(undefined)).toHaveLength(0)
+  })
 })

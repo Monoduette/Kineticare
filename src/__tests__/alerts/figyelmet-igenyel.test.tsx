@@ -181,6 +181,36 @@ describe('FigyelmetIgenyel', () => {
     ).toBe(false)
   })
 
+  it.each(['AAM', ' AAM\n'])(
+    'éles út: a Gyakori teendők panel (vatMode nélkül) SZAMLAZZ_AFAKULCS=%j mellett megmutatja az AAM-sort',
+    async (env) => {
+      // Az Irányítópult nem ad át vatMode-ot: a blokk a környezetből olvas.
+      // Ha ez a visszaesés elveszne, a tulajdonos 70/90%-os keret-figyelmeztetése
+      // némán eltűnne élesben.
+      vi.stubEnv('SZAMLAZZ_AFAKULCS', env)
+      const { payload } = payloadWith({
+        orders: [
+          {
+            id: 31,
+            status: 'paid',
+            invoiceStatus: 'issued',
+            invoiceCompletionDate: '2026-04-01',
+            totalHufSnapshot: 14_500_000,
+            createdAt: '2026-04-01T10:00:00.000Z',
+            updatedAt: '2026-04-01T10:00:00.000Z',
+          },
+        ],
+        'refund-intents': [],
+        'webhook-events': [],
+      })
+      const html = await htmlje(
+        GyakoriTeendok({ payload: payload as never, permissions: {}, user: OWNER }),
+      )
+      expect(html).toContain('Alanyi adómentes keret, 2026:')
+      expect(html).toContain('(72%)')
+    },
+  )
+
   it('a lekérdezés hibájánál magyar magyarázat áll, az oldal nem dől el', async () => {
     const payload = {
       count: async () => {
