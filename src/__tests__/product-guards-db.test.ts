@@ -159,28 +159,38 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
    */
   type UnpublishFlag = { unpublishAllLocales?: boolean | 'true' }
 
-  /** A mentés eredménye: 'OK', vagy a Payload ValidationError mezőhibái. */
-  async function save(
-    id: number,
-    user: Doc,
-    data: Record<string, unknown>,
-    extra: UnpublishFlag = {},
-  ): Promise<'OK' | ErrorEntry[]> {
+  /**
+   * Egy mentés vagy verzió-visszaállítás kimenete: 'OK', vagy a Payload
+   * ValidationError mezőhibái. Más hibát továbbdob.
+   */
+  async function validationOutcome(run: Promise<unknown>): Promise<'OK' | ErrorEntry[]> {
     try {
-      await payload.update({
-        collection: 'products',
-        id,
-        data,
-        overrideAccess: false,
-        user: asUser(user),
-        ...(extra as { unpublishAllLocales?: boolean }),
-      })
+      await run
       return 'OK'
     } catch (error) {
       const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
       if (!Array.isArray(errors)) throw error
       return errors.map(({ path, message }) => ({ path, message }))
     }
+  }
+
+  /** A mentés eredménye: 'OK', vagy a Payload ValidationError mezőhibái. */
+  function save(
+    id: number,
+    user: Doc,
+    data: Record<string, unknown>,
+    extra: UnpublishFlag = {},
+  ): Promise<'OK' | ErrorEntry[]> {
+    return validationOutcome(
+      payload.update({
+        collection: 'products',
+        id,
+        data,
+        overrideAccess: false,
+        user: asUser(user),
+        ...(extra as { unpublishAllLocales?: boolean }),
+      }),
+    )
   }
 
   /**
@@ -193,9 +203,9 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     id: number,
     user: Doc,
     data: Record<string, unknown>,
-    options: UnpublishFlag & { trashed?: boolean } = {},
+    options: UnpublishFlag & { trashed?: boolean; context?: Record<string, unknown> } = {},
   ): Promise<'OK' | string[]> {
-    const { trashed = false, ...flag } = options
+    const { trashed = false, context, ...flag } = options
     const result = await payload.update({
       collection: 'products',
       where: trashed
@@ -205,6 +215,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       trash: trashed,
       overrideAccess: false,
       user: asUser(user),
+      ...(context === undefined ? {} : { context }),
       ...(flag as { unpublishAllLocales?: boolean }),
     })
     const errors = result.errors.map((entry) => String(entry.message))
@@ -257,13 +268,74 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })
   }
 
-  async function createUser(role: 'owner' | 'staff'): Promise<Doc> {
+  /** A `db.updateOne` argumentuma: a kurzus fő sorának írása. */
+  type UpdateOneArgs = Parameters<Payload['db']['updateOne']>[0]
+
+  /** A fő sor írása előtt feltartott mentés (holdMainRowWrite). */
+  interface HeldWrite {
+    /** A feltartott mentés kapcsolatának azonosítója (pg_backend_pid), amint az írásig ér. */
+    pid: Promise<number>
+    /** Továbbengedi a feltartott írást. */
+    release: () => void
+    /** Visszaállítja az eredeti `db.updateOne`-t. */
+    restore: () => void
+  }
+
+  /**
+   * Az első, `holds`-nak megfelelő kurzus-mentést a fő sor írása (a Payload
+   * `db.updateOne`-ja) előtt feltartja, amíg a teszt el nem engedi. A mentés
+   * ekkor már túl van a kollekció beforeChange hookjain: a sorzárat
+   * (productUpdateLocksRow) tartja, és a tranzakciója nyitva van, így a mögé
+   * érkező mentés csak erre a zárra várhat. A többi kurzus-írás előtt a
+   * `beforeOtherWrite` fut. A spy csak a sorrendet állítja be, az írást a
+   * valódi `updateOne` végzi.
+   */
+  function holdMainRowWrite(
+    holds: (args: UpdateOneArgs) => boolean,
+    beforeOtherWrite: (args: UpdateOneArgs) => Promise<void> = async () => undefined,
+  ): HeldWrite {
+    const adapter = payload.db as unknown as SqlAdapter
+    const updateOne = payload.db.updateOne
+    let release: () => void = () => undefined
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let reportPid: (pid: number) => void = () => undefined
+    const pid = new Promise<number>((resolve) => {
+      reportPid = resolve
+    })
+    let held = false
+    const spy = vi.spyOn(payload.db, 'updateOne').mockImplementation(async (args) => {
+      if (args.collection === 'products' && !held && holds(args)) {
+        held = true
+        const session = adapter.sessions[String(await args.req?.transactionID)]
+        const { rows } = await adapter.execute({
+          db: session?.db,
+          sql: sql`SELECT pg_backend_pid() AS pid`,
+        })
+        reportPid(Number(rows[0]?.pid))
+        await released
+      } else if (args.collection === 'products') {
+        await beforeOtherWrite(args)
+      }
+      return updateOne.call(payload.db, args)
+    })
+    return { pid, release, restore: () => spy.mockRestore() }
+  }
+
+  const userNames = {
+    owner: 'Teszt Tulajdonos',
+    staff: 'Teszt Munkatárs',
+    customer: 'Teszt Vásárló',
+  } as const
+
+  async function createUser(role: keyof typeof userNames): Promise<Doc> {
     const user = (await payload.create({
       collection: 'users',
       data: {
         email: `db-guard-${role}-${stamp}@example.test`,
         password: `Helyi-teszt-${stamp}-${role}`,
-        name: role === 'owner' ? 'Teszt Tulajdonos' : 'Teszt Munkatárs',
+        name: userNames[role],
         role,
       },
       overrideAccess: true,
@@ -789,28 +861,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     const pg = await import('pg')
     const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
     await observer.connect()
-    const adapter = payload.db as unknown as SqlAdapter
-    const updateOne = payload.db.updateOne
-    let releaseRestore: () => void = () => undefined
-    const restoreMayWrite = new Promise<void>((resolve) => {
-      releaseRestore = resolve
-    })
-    let reportRestorePid: (pid: number) => void = () => undefined
-    const restorePid = new Promise<number>((resolve) => {
-      reportRestorePid = resolve
-    })
-    const spy = vi.spyOn(payload.db, 'updateOne').mockImplementation(async (args) => {
-      if (args.collection === 'products' && args.req?.context?.isRestoringVersion === true) {
-        const session = adapter.sessions[String(await args.req.transactionID)]
-        const { rows } = await adapter.execute({
-          db: session?.db,
-          sql: sql`SELECT pg_backend_pid() AS pid`,
-        })
-        reportRestorePid(Number(rows[0]?.pid))
-        await restoreMayWrite
-      }
-      return updateOne.call(payload.db, args)
-    })
+    const held = holdMainRowWrite((args) => args.req?.context?.isRestoringVersion === true)
     let restore: Promise<string> | undefined
     let unpublish: Promise<'OK' | ErrorEntry[] | string> | undefined
     try {
@@ -823,7 +874,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         (error: unknown) => String(error),
       )
       const holderPid = await Promise.race([
-        restorePid,
+        held.pid,
         restore.then((outcome) => {
           throw new Error(`A visszaállítás a fő sor írása előtt véget ért: ${outcome}`)
         }),
@@ -841,20 +892,24 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         'a tulajdonos visszavonása nem várta meg a visszaállítás sorzárját',
       ).toBe(true)
 
-      releaseRestore()
+      held.release()
       expect(await restore).toBe('OK')
       expect(await unpublish).toBe('OK')
       const row = await mainRow(id)
+      // A visszavonás alapja a zár előtt a tulajdonos piszkozata (kivett pipa)
+      // volt; a zár után a tulajdonosi mező a visszaállítás commitolt
+      // verziójából frissül (bent a pipa), ahogy a két mentés egymás után is
+      // adná (codex4 rev1, productUpdateLocksRow). Ingyenes, élő sor így sincs.
       expect({ _status: row._status, priceInHUFEnabled: row.priceInHUFEnabled }).toEqual({
         _status: 'draft',
-        priceInHUFEnabled: false,
+        priceInHUFEnabled: true,
       })
       expect((await claimAsStranger(id, 'race-reverse')).status).toBe('course-not-available')
     } finally {
-      releaseRestore()
+      held.release()
       await restore
       await unpublish
-      spy.mockRestore()
+      held.restore()
       await observer.end()
     }
   }, 120_000)
@@ -1467,19 +1522,96 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     expect((await mainRow(id))._status).toBe('published')
   }, 120_000)
 
-  /** A párhuzamos ár-mentések versenyében az egyes kérések jelölője (`req.context`). */
+  /** A párhuzamos mentések versenyében az egyes kérések jelölője (`req.context`). */
   const RACE_CONTEXT_KEY = 'arOrVerseny'
 
-  /** Egy mentés vagy verzió-visszaállítás kimenete, ahogy a `save` adja. */
-  async function validationOutcome(run: Promise<unknown>): Promise<'OK' | ErrorEntry[]> {
+  /** Egy versenyző mentés kimenete (a tömeges mentésé a hibaszövegek listája). */
+  type SaveOutcome = 'OK' | ErrorEntry[] | string[]
+
+  /** A versenyben álló kérés; a jelölőt a kérés `context`-jébe teszi. */
+  type RaceRequest = (context: Record<string, unknown>) => Promise<SaveOutcome>
+
+  /**
+   * Két egymást átfedő mentés ugyanazon a kurzuson. Az első a fő sor írása
+   * előtt áll (holdMainRowWrite), a sorzárat tartva; a második ekkor indul,
+   * így a Payload a mentés alapját (originalDoc) az első commitja előtt
+   * olvassa. A második kérést a fő sor írásánál is visszatartjuk az első
+   * commitjáig: zár nélkül így áll elő a veszélyes sorrend (a második commitol
+   * később). A `secondWaited` igaz, ha a második a zár mögött várt, mielőtt
+   * lefutott vagy az írásig ért.
+   */
+  async function race(
+    first: RaceRequest,
+    second: RaceRequest,
+  ): Promise<{ first: SaveOutcome; second: SaveOutcome | string; secondWaited: boolean }> {
+    const pg = await import('pg')
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await observer.connect()
+    let firstOutcome: Promise<SaveOutcome> | undefined
+    let secondOutcome: Promise<SaveOutcome | string> | undefined
+    let secondAtWrite = false
+    const held = holdMainRowWrite(
+      (args) => args.req?.context?.[RACE_CONTEXT_KEY] === 'elso',
+      async (args) => {
+        if (args.req?.context?.[RACE_CONTEXT_KEY] !== 'masodik') return
+        secondAtWrite = true
+        await firstOutcome?.catch(() => undefined)
+      },
+    )
     try {
-      await run
-      return 'OK'
-    } catch (error) {
-      const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
-      if (!Array.isArray(errors)) throw error
-      return errors.map(({ path, message }) => ({ path, message }))
+      const running = first({ [RACE_CONTEXT_KEY]: 'elso' })
+      firstOutcome = running
+      const holderPid = await Promise.race([
+        held.pid,
+        running.then((outcome) => {
+          throw new Error(
+            `Az első mentés a fő sor írása előtt véget ért: ${JSON.stringify(outcome)}`,
+          )
+        }),
+      ])
+      let secondSettled = false
+      const waiting = second({ [RACE_CONTEXT_KEY]: 'masodik' }).then(
+        (outcome) => outcome,
+        (error: unknown) => String(error),
+      )
+      secondOutcome = waiting
+      void waiting.then(() => {
+        secondSettled = true
+      })
+      const secondWaited = await untilWaitersBehind(
+        observer,
+        holderPid,
+        1,
+        () => secondAtWrite || secondSettled,
+      )
+      held.release()
+      return { first: await running, second: await waiting, secondWaited }
+    } finally {
+      held.release()
+      await firstOutcome?.catch(() => undefined)
+      await secondOutcome
+      held.restore()
+      await observer.end()
     }
+  }
+
+  /** A tulajdonos Közzététel gombja (Local API). */
+  function ownerPublishes(
+    id: number,
+    data: Record<string, unknown>,
+    extraContext: Record<string, unknown> = {},
+  ): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { ...data, _status: 'published' },
+          overrideAccess: false,
+          user: asUser(owner),
+          context: { ...extraContext, ...context },
+        }),
+      )
   }
 
   /**
@@ -1493,41 +1625,25 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
    * (productUpdateLocksRow) a validálás előtt, a kérés tranzakciójában
    * fogja meg a második kérést, így az a már commitolt 200 000 Ft-hoz mér.
    *
-   * A második kérést a fő sor írásánál is visszatartjuk az első commitjáig:
-   * zár nélkül így áll elő a Codex sorrendje (a második commitol később).
-   * Zárral a második odáig el sem jut. Minden sor egy írási út, amelyen az
-   * ár-őr fut: a tulajdonos mentése, a visszavont kurzus újbóli közzététele
-   * (a mérce ott a napló pillanatképe), a tulajdonos verzió-visszaállítása
-   * (külön Payload-művelet, restoreVersion.js) és a munkatárs közzététele (az
-   * ő ár-értéke a zár előtt olvasott, legutóbbi verzióból jön).
-   *
-   * Nem fedi: ha a tulajdonos az árat a duplájánál kevésbé emeli (például
-   * 150 000 Ft-ra), a munkatárs párhuzamos közzététele a zár előtt olvasott
-   * 79 500 Ft-ot visszaírja (mérve). Ott a mérce friss, az érték elavult; az
-   * ár-őr szabálya (a felénél nagyobb csökkenés) ezt nem tiltja.
+   * Minden sor egy írási út, amelyen a második kérés maga ír árat, és azt az
+   * ár-őr méri: a tulajdonos mentése, a visszavont kurzus újbóli közzététele
+   * (a mérce ott a napló pillanatképe) és a tulajdonos verzió-visszaállítása
+   * (külön Payload-művelet, restoreVersion.js). Ahol a második kérés az árat
+   * nem írja (a munkatárs közzététele, autosave-je és visszavonása, a
+   * tulajdonos Visszavonás gombja, a tömeges közzététel), ott a zár előtt
+   * olvasott érték volt elavult, a mérce nem; azt a lenti, „elavult
+   * visszaírás” táblázat méri, minden tulajdonosi mezőre.
    */
   it.each<{
     path: string
-    setup: (id: number) => Promise<void>
     initialPrice?: number
-    second: (id: number, context: Record<string, unknown>) => Promise<'OK' | ErrorEntry[]>
-    message: string
+    setup: (id: number) => Promise<void>
+    second: (id: number) => RaceRequest
   }>([
     {
       path: 'a tulajdonos mentése',
       setup: async () => undefined,
-      second: (id, context) =>
-        validationOutcome(
-          payload.update({
-            collection: 'products',
-            id,
-            data: { priceInHUF: 70_000, _status: 'published' },
-            overrideAccess: false,
-            user: asUser(owner),
-            context,
-          }),
-        ),
-      message: priceDropMessage('rendes', 70_000, 200_000),
+      second: (id) => ownerPublishes(id, { priceInHUF: 70_000 }),
     },
     {
       path: 'a visszavont kurzus újbóli közzététele',
@@ -1536,18 +1652,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
           'OK',
         )
       },
-      second: (id, context) =>
-        validationOutcome(
-          payload.update({
-            collection: 'products',
-            id,
-            data: { priceInHUF: 70_000, _status: 'published' },
-            overrideAccess: false,
-            user: asUser(owner),
-            context,
-          }),
-        ),
-      message: priceDropMessage('rendes', 70_000, 200_000),
+      second: (id) => ownerPublishes(id, { priceInHUF: 70_000 }),
     },
     {
       path: 'a tulajdonos verzió-visszaállítása',
@@ -1555,7 +1660,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       setup: async (id) => {
         expect(await save(id, owner, { priceInHUF: 79_500, _status: 'published' })).toBe('OK')
       },
-      second: async (id, context) =>
+      second: (id) => async (context) =>
         validationOutcome(
           payload.restoreVersion({
             collection: 'products',
@@ -1566,110 +1671,293 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
             context,
           }),
         ),
-      message: priceDropMessage('rendes', 70_000, 200_000),
+    },
+  ])(
+    'PR #305 (Codex P2): párhuzamos 200 000 Ft-os közzététel mellett $path a commitolt 200 000 Ft-hoz mér',
+    async ({ path, initialPrice, setup, second }) => {
+      const id = await createPublished(`codex-p2 ${path}`, {
+        priceInHUF: initialPrice ?? 79_500,
+      })
+      await setup(id)
+      const result = await race(ownerPublishes(id, { priceInHUF: 200_000 }), second(id))
+      expect(result.first).toBe('OK')
+      // A várakozás bizonyítéka az üzenet: a commitolt 200 000 Ft-ot a második
+      // kérés csak a zár mögött olvashatta. A `secondWaited` ezért nincs
+      // állítva: zár nélkül az ellenpróba azon bukna, nem az elmaradt elutasításon.
+      expect(result.second).toContainEqual({
+        path: 'priceInHUF',
+        message: priceDropMessage('rendes', 70_000, 200_000),
+      })
+      const row = await mainRow(id)
+      expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+        _status: 'published',
+        priceInHUF: 200_000,
+      })
+    },
+    120_000,
+  )
+
+  /** A munkatárs elírás-javítása és közzététele (a tulajdonosi mezőket nem írhatja). */
+  function staffFixesTypo(id: number): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { shortDescription: 'Elírás javítva.', _status: 'published' },
+          overrideAccess: false,
+          user: asUser(staff),
+          context,
+        }),
+      )
+  }
+
+  /** Az admin Visszavonás gombja: `?unpublishAllLocales=true`, `{ _status: 'draft' }`. */
+  function unpublishes(id: number, user: Doc): RaceRequest {
+    return (context) =>
+      validationOutcome(
+        payload.update({
+          collection: 'products',
+          id,
+          data: { _status: 'draft' },
+          unpublishAllLocales: true,
+          overrideAccess: false,
+          user: asUser(user),
+          context,
+        }),
+      )
+  }
+
+  /**
+   * PR #305 (codex4 rev1, breaker BRK-A/B/C/E/F): a zár mögött várakozó mentés
+   * nem írhatja vissza a tulajdonos közben commitolt döntését. A Payload a
+   * mentés alapját a zár előtt olvassa, és a kérésből hiányzó, valamint a
+   * munkatárs által nem írható tulajdonosi mezőket ebből tölti. Mérve
+   * 7de84d1-en (a zár már megvolt, a frissítés még nem): a munkatárs
+   * párhuzamos közzététele visszaírta a régi árat (emelésnél és csökkentésnél
+   * is), a fizetős állapotot, a közzétett megjelenést és a bekapcsolt akciót; a
+   * munkatárs autosave-je az elavult árat a legutóbbi verzióba tette, és a
+   * később, verseny nélkül közzétett változat élesítette; a munkatárs és a
+   * tulajdonos (másik lapon) visszavonása az elavult árat írta a legutóbbi
+   * verzióba, és az újbóli közzététel élesítette; a `draft` nélküli tömeges
+   * közzététel közvetlenül élesítette. Az ár-őr ebből csak a felénél nagyobb
+   * csökkenést látja.
+   *
+   * Minden soron az első kérés a tulajdonos közzététele, a második a zárra
+   * vár, mindkettő sikeres, és a végén a tulajdonos döntése él, ahogy a két
+   * mentés egymás utáni futtatása is adná (productUpdateLocksRow).
+   */
+  it.each<{
+    tag: string
+    /** A zár mögött várakozó, második kérés. */
+    who: string
+    /** A tulajdonos közben commitolt döntése (az első kérés). */
+    decision: string
+    initial?: Record<string, unknown>
+    ownerData: Record<string, unknown>
+    ownerContext?: Record<string, unknown>
+    second: (id: number) => RaceRequest
+    afterwards?: (id: number) => Promise<void>
+    expected: Record<string, unknown>
+  }>([
+    {
+      tag: 'BRK-A1',
+      who: 'munkatárs közzététele',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: staffFixesTypo,
+      expected: { priceInHUF: 150_000 },
     },
     {
-      path: 'a munkatárs közzététele',
-      setup: async () => undefined,
-      second: (id, context) =>
+      tag: 'BRK-A2',
+      who: 'munkatárs közzététele',
+      decision: '150 000 Ft-ra csökkentését',
+      initial: { priceInHUF: 200_000 },
+      ownerData: { priceInHUF: 150_000 },
+      second: staffFixesTypo,
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-A3',
+      who: 'munkatárs közzététele',
+      decision: 'megerősített ingyenessé tételét',
+      ownerData: { priceInHUFEnabled: false },
+      ownerContext: { [PRODUCT_CONFIRMATIONS_KEY]: { freeCourse: true } },
+      second: staffFixesTypo,
+      expected: { priceInHUFEnabled: false },
+    },
+    {
+      tag: 'BRK-A4',
+      who: 'munkatárs közzététele',
+      decision: 'archiválását',
+      ownerData: { status: 'archived' },
+      second: staffFixesTypo,
+      expected: { status: 'archived' },
+    },
+    {
+      tag: 'BRK-A5',
+      who: 'munkatárs közzététele',
+      decision: 'akció-kikapcsolását',
+      initial: { promoEnabled: true, promoPriceHuf: 39_500, promoEnd: '2099-12-31T12:00:00.000Z' },
+      ownerData: { promoEnabled: false },
+      second: staffFixesTypo,
+      expected: { promoEnabled: false },
+    },
+    {
+      tag: 'BRK-B',
+      who: 'munkatárs autosave-je',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => (context) =>
         validationOutcome(
           payload.update({
             collection: 'products',
             id,
-            data: { _status: 'published' },
+            data: { shortDescription: 'Gépel…', _status: 'draft' },
+            draft: true,
+            autosave: true,
             overrideAccess: false,
             user: asUser(staff),
             context,
           }),
         ),
-      message: OWNER_ONLY_CHANGE_MESSAGE,
+      afterwards: async (id) => {
+        expect(await save(id, staff, { shortDescription: 'Kész.', _status: 'published' })).toBe(
+          'OK',
+        )
+      },
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-C',
+      who: 'munkatárs visszavonása',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => unpublishes(id, staff),
+      afterwards: async (id) => {
+        expect(await save(id, staff, { _status: 'published' })).toBe('OK')
+      },
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-E',
+      who: 'tulajdonos Visszavonása másik lapon',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => unpublishes(id, owner),
+      afterwards: async (id) => {
+        // Az admin űrlapja a legutóbbi verziót tölti be; a tulajdonos ezt teszi közzé.
+        const form = (await payload.findByID({
+          collection: 'products',
+          id,
+          draft: true,
+          depth: 0,
+          overrideAccess: true,
+        })) as unknown as Doc
+        expect(await save(id, owner, { priceInHUF: form.priceInHUF, _status: 'published' })).toBe(
+          'OK',
+        )
+      },
+      expected: { priceInHUF: 150_000 },
+    },
+    {
+      tag: 'BRK-F',
+      who: 'draft nélküli tömeges közzététel',
+      decision: '150 000 Ft-os áremelését',
+      ownerData: { priceInHUF: 150_000 },
+      second: (id) => (context) => saveWhere(id, owner, { _status: 'published' }, { context }),
+      expected: { priceInHUF: 150_000 },
     },
   ])(
-    'PR #305 (Codex P2): párhuzamos 200 000 Ft-os közzététel mellett $path a commitolt 200 000 Ft-hoz mér',
-    async ({ path, setup, initialPrice, second, message }) => {
-      const pg = await import('pg')
-      const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
-      await observer.connect()
-      const adapter = payload.db as unknown as SqlAdapter
-      const updateOne = payload.db.updateOne
-      let releaseFirst: () => void = () => undefined
-      const firstMayWrite = new Promise<void>((resolve) => {
-        releaseFirst = resolve
+    'PR #305 (codex4 rev1, $tag): a párhuzamos $who nem írja vissza a tulajdonos $decision',
+    async ({ tag, initial, ownerData, ownerContext, second, afterwards, expected }) => {
+      const id = await createPublished(`elavult ${tag}`, initial)
+      const result = await race(ownerPublishes(id, ownerData, ownerContext), second(id))
+      expect(result).toEqual({ first: 'OK', second: 'OK', secondWaited: true })
+      await afterwards?.(id)
+      const row = await mainRow(id)
+      const fields = ['_status', ...Object.keys(expected)]
+      expect(Object.fromEntries(fields.map((field) => [field, row[field]]))).toEqual({
+        _status: 'published',
+        ...expected,
       })
-      let reportFirstPid: (pid: number) => void = () => undefined
-      const firstPid = new Promise<number>((resolve) => {
-        reportFirstPid = resolve
-      })
-      let firstHeld = false
-      let secondAtWrite = false
-      let first: Promise<'OK' | ErrorEntry[]> | undefined
-      let secondOutcome: Promise<'OK' | ErrorEntry[] | string> | undefined
-      const spy = vi.spyOn(payload.db, 'updateOne').mockImplementation(async (args) => {
-        const role = args.collection === 'products' ? args.req?.context?.[RACE_CONTEXT_KEY] : null
-        if (role === 'elso' && !firstHeld) {
-          firstHeld = true
-          const session = adapter.sessions[String(await args.req?.transactionID)]
-          const { rows } = await adapter.execute({
-            db: session?.db,
-            sql: sql`SELECT pg_backend_pid() AS pid`,
-          })
-          reportFirstPid(Number(rows[0]?.pid))
-          await firstMayWrite
-        } else if (role === 'masodik') {
-          secondAtWrite = true
-          await first?.catch(() => undefined)
-        }
-        return updateOne.call(payload.db, args)
-      })
-      try {
-        const id = await createPublished(`codex-p2 ${path}`, {
-          priceInHUF: initialPrice ?? 79_500,
-        })
-        await setup(id)
-
-        first = validationOutcome(
-          payload.update({
-            collection: 'products',
-            id,
-            data: { priceInHUF: 200_000, _status: 'published' },
-            overrideAccess: false,
-            user: asUser(owner),
-            context: { [RACE_CONTEXT_KEY]: 'elso' },
-          }),
-        )
-        const holderPid = await Promise.race([
-          firstPid,
-          first.then((outcome) => {
-            throw new Error(`Az első mentés a fő sor írása előtt véget ért: ${String(outcome)}`)
-          }),
-        ])
-        let secondSettled = false
-        secondOutcome = second(id, { [RACE_CONTEXT_KEY]: 'masodik' }).then(
-          (outcome) => outcome,
-          (error: unknown) => String(error),
-        )
-        void secondOutcome.then(() => {
-          secondSettled = true
-        })
-        await untilWaitersBehind(observer, holderPid, 1, () => secondAtWrite || secondSettled)
-        releaseFirst()
-
-        expect(await first).toBe('OK')
-        expect(await secondOutcome).toContainEqual({ path: 'priceInHUF', message })
-        const row = await mainRow(id)
-        expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
-          _status: 'published',
-          priceInHUF: 200_000,
-        })
-      } finally {
-        releaseFirst()
-        await first?.catch(() => undefined)
-        await secondOutcome
-        spy.mockRestore()
-        await observer.end()
-      }
     },
     120_000,
+  )
+
+  /**
+   * Kontroll (codex4 rev1): verseny nélkül a frissítés semmit nem változtat,
+   * mert ugyanonnan olvas, ahonnan a Payload a mentés alapját
+   * (productUpdateRemembersSource). A `draft` nélküli tömeges mentés a fő
+   * sorból dolgozik, így a tulajdonos függő, 150 000 Ft-os piszkozata nem kerül
+   * a közzétett sorba. Ha a frissítés mindig a legutóbbi verzióból olvasna, a
+   * munkatárs tömeges közzététele ezt a meg nem erősített árat a fő sor többi
+   * értéke mellé keverné.
+   */
+  it('kontroll (codex4 rev1): verseny nélkül a munkatárs `draft` nélküli tömeges közzététele a fő sort viszi tovább, a tulajdonos függő piszkozatának árát nem', async () => {
+    const id = await createPublished('bulk-main-row')
+    await autosave(id, owner, { priceInHUF: 150_000 })
+    expect(await saveWhere(id, staff, { _status: 'published' })).toBe('OK')
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'published',
+      priceInHUF: 79_500,
+    })
+  }, 120_000)
+
+  /**
+   * Kontroll (codex4 rev1, breaker BRK-D): a sorzár és a friss olvasás a
+   * jogosultság ellenőrzése után jön (a Payload a beforeOperation hookok után,
+   * a mentés alapjának olvasása előtt ellenőriz). Az anonim látogató és a
+   * vásárló mentése akkor is azonnal Forbidden, ha a kurzus sorát egy másik
+   * tranzakció zárolja: nem áll be a zár mögé, így a várakozással kapcsolatot
+   * sem foglal.
+   */
+  it.each<{ role: string; customer: boolean }>([
+    { role: 'az anonim látogató', customer: false },
+    { role: 'a vásárló', customer: true },
+  ])(
+    'kontroll (codex4 rev1, BRK-D): $role mentése a lezárt kurzuson a zárra várás nélkül Forbidden',
+    async ({ customer }) => {
+      const id = await createPublished(`forbidden ${customer ? 'customer' : 'anonymous'}`)
+      const user = customer ? await createUser('customer') : undefined
+      if (user !== undefined) expect(user.role).toBe('customer')
+      const pg = await import('pg')
+      const holder = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+      const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+      await holder.connect()
+      await observer.connect()
+      try {
+        const holderPid = await backendPid(holder)
+        await holder.query('BEGIN')
+        await holder.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id])
+        let done = false
+        const outcome = payload
+          .update({
+            collection: 'products',
+            id,
+            data: { priceInHUF: 10, _status: 'published' },
+            overrideAccess: false,
+            ...(user === undefined ? {} : { user: asUser(user) }),
+          })
+          .then(
+            () => 'OK',
+            (error: unknown) => (error as { name?: string }).name ?? String(error),
+          )
+          .finally(() => {
+            done = true
+          })
+        const waited = await untilWaitersBehind(observer, holderPid, 1, () => done)
+        await holder.query('ROLLBACK')
+        expect({ outcome: await outcome, waited }).toEqual({ outcome: 'Forbidden', waited: false })
+      } finally {
+        await holder.query('ROLLBACK').catch(() => undefined)
+        await holder.end()
+        await observer.end()
+      }
+      expect((await mainRow(id)).priceInHUF).toBe(79_500)
+    },
+    60_000,
   )
 
   /**

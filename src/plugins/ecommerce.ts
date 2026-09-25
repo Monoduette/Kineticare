@@ -3,6 +3,7 @@ import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
 import { BlocksFeature, lexicalEditor } from '@payloadcms/richtext-lexical'
 import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/types'
 import type { JSONSchema4 } from 'json-schema'
+import { getLatestCollectionVersion } from 'payload'
 import type {
   CheckboxFieldValidation,
   CollectionBeforeChangeHook,
@@ -13,6 +14,7 @@ import type {
   FieldAccess,
   NumberFieldSingleValidation,
   PayloadRequest,
+  SanitizedCollectionConfig,
 } from 'payload'
 
 import {
@@ -1738,8 +1740,40 @@ async function lockProductRow(req: PayloadRequest, id: number | string): Promise
  * Kérés-tranzakció nélkül a zár nem tartana a mentésig: ilyenkor a mentés zár
  * nélkül megy tovább (a korábbi viselkedés), a napló-lánc ellenőrzése a
  * naplózott párhuzamos írást így is felismeri.
+ *
+ * PR #305 (fix-pr305-codex4 rev1, breaker): a zár a mércét teszi frissé, az
+ * írt értéket nem. A Payload a mentés alapját (originalDoc) a hookok előtt,
+ * zár nélkül olvassa, és a mező-szintű beforeValidate a kérésből hiányzó,
+ * valamint a munkatárs által nem írható mezőket ebből tölti (payload/dist/
+ * fields/hooks/beforeValidate/promise.js, getFallbackValue). Ha közben egy
+ * párhuzamos mentés commitol, a zár mögött várakozó kérés ezt az elavult
+ * értéket írja vissza. Mérve valódi Payload + Postgres mellett: a munkatárs
+ * elírás-javítása a tulajdonos 150 000 Ft-os áremelését 79 500 Ft-ra, az
+ * archiválását közzétettre, a kikapcsolt akcióját bekapcsoltra, az
+ * ingyenessé tételét fizetősre fordította vissza; a munkatárs autosave-je és
+ * visszavonása, a tulajdonos másik lapon futó Visszavonás gombja és a
+ * tömeges közzététel ugyanígy. Az ár-őr ebből csak a felénél nagyobb
+ * csökkenést látja, a többi mezőt semmi nem védi.
+ *
+ * Ezért a zár megszerzése után a tulajdonosi mezők (ownerOnlyFieldNames)
+ * közül azt, amelyet a kérés nem változtatott meg a zár előtt olvasott
+ * alaphoz képest, a commitolt értékre cseréljük: az eredmény ugyanaz, mintha
+ * a két mentés egymás után futott volna. A friss értéket ugyanonnan és
+ * ugyanabban a tranzakcióban olvassuk, ahonnan a Payload az alapot vette
+ * (productUpdateRemembersSource); READ COMMITTED mellett ez a zárat tartó
+ * mentés commitja utáni állapot. A kérés saját, az alaptól eltérő értéke
+ * marad, annak mércéje az ár-őr. A tulajdonos teljes űrlapja minden mezőt
+ * elküld; ha a zár előtti értéket küldi vissza, azt is érintetlennek vesszük
+ * (a kettő a kérésből nem különböztethető meg), így a párhuzamosan commitolt
+ * döntés ott is megmarad. A verzió-visszaállítás kimarad: ott a visszaállított
+ * verzió értéke a kérés szándéka, a munkatársnál pedig a Payload a
+ * tulajdonosi mezőket nem is írja (lásd restoreVersionByNonOwnerStaysDraft).
+ * A nem tulajdonosi mezők (például a leírás) elavult visszaírása ugyanígy
+ * megtörténhet; az nem ár- vagy láthatósági döntés, és az admin felületen két
+ * felhasználó között a Payload dokumentum-zárja a legtöbb átfedést kizárja.
  */
 export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
+  collection,
   data,
   operation,
   originalDoc,
@@ -1752,8 +1786,148 @@ export const productUpdateLocksRow: CollectionBeforeChangeHook = async ({
     logger.warn('kurzus mentése: a fő sor nem zárolható (nincs kérés-tranzakció)', {
       productId: String(id),
     })
+    return data
   }
-  return data
+  if (
+    req.context?.isRestoringVersion === true ||
+    !isPlainRecord(data) ||
+    !isPlainRecord(originalDoc)
+  ) {
+    return data
+  }
+  const committed = await readCommittedUpdateSource(req, collection, id)
+  if (committed === undefined) return data
+  const refreshed: string[] = []
+  let result = data
+  for (const name of ownerOnlyFieldNames(collection)) {
+    if (!(name in committed)) continue
+    const requested = JSON.stringify(data[name])
+    if (
+      requested !== JSON.stringify(originalDoc[name]) ||
+      requested === JSON.stringify(committed[name])
+    ) {
+      continue
+    }
+    if (result === data) result = { ...data }
+    result[name] = committed[name]
+    refreshed.push(name)
+  }
+  if (refreshed.length > 0) {
+    logger.info('kurzus mentése: a közben commitolt tulajdonosi értékek maradnak', {
+      productId: String(id),
+      fields: refreshed,
+    })
+  }
+  return result
+}
+
+/**
+ * Honnan olvasta a Payload a mentés alapját (originalDoc):
+ * - `latestVersion`: az azonosítós mentés (updateByID.js,
+ *   getLatestCollectionVersion) és a piszkozat- vagy lomtár-alakú tömeges
+ *   mentés (update.js, queryDrafts);
+ * - `mainRow`: a többi tömeges mentés (update.js, payload.db.find), például az
+ *   admin tömeges Visszavonása.
+ */
+type ProductUpdateSource = 'latestVersion' | 'mainRow'
+
+const productUpdateSources = new WeakMap<object, ProductUpdateSource>()
+
+/**
+ * A productUpdateLocksRow a friss értéket ugyanonnan olvassa, ahonnan a
+ * Payload az alapot vette. Más forrásból a tömeges mentés verseny nélkül is
+ * a tulajdonos függő piszkozatának tulajdonosi mezőit keverné a fő sor többi
+ * értéke mellé. A beforeChange hook a műveletet nem kapja meg, ezért a
+ * forrást a művelet elején a kéréshez kötjük. Egy kérés egyszerre egy
+ * kurzus-műveletet futtat; a tömeges mentés minden dokumentuma ugyanazt a
+ * forrást használja. A feltételek a Payload 3.88 update.js-éi: `draft`
+ * mellett vagy lomtárba helyezésnél (kitöltött `deletedAt`) a legutóbbi
+ * verzió, különben a fő sor.
+ */
+export const productUpdateRemembersSource: CollectionBeforeOperationHook = ({
+  args,
+  operation,
+  req,
+}) => {
+  const operationArgs: unknown = args
+  if (operation !== 'update' || !isPlainRecord(operationArgs)) {
+    return args
+  }
+  const byID = operationArgs.id !== undefined && operationArgs.id !== null
+  const rawData = operationArgs.data
+  const trashing =
+    isPlainRecord(rawData) && rawData.deletedAt !== undefined && rawData.deletedAt !== null
+  productUpdateSources.set(
+    req,
+    byID || Boolean(operationArgs.draft) || trashing ? 'latestVersion' : 'mainRow',
+  )
+  return args
+}
+
+/**
+ * A mentés alapjának commitolt állapota a kérés tranzakciójában, a sorzár
+ * mögött (lásd productUpdateRemembersSource). `undefined`, ha a kurzus közben
+ * eltűnt. Az olvasási hiba nem nyelhető el: a megszakadt tranzakcióban a
+ * mentés úgysem folytatható, és elavult értéket sem írhat.
+ */
+async function readCommittedUpdateSource(
+  req: PayloadRequest,
+  collection: SanitizedCollectionConfig,
+  id: number | string,
+): Promise<Record<string, unknown> | undefined> {
+  const query = { collection: collection.slug, req, where: { id: { equals: id } } }
+  const doc: unknown =
+    productUpdateSources.get(req) === 'mainRow'
+      ? await req.payload.db.findOne(query)
+      : await getLatestCollectionVersion({
+          id,
+          config: collection,
+          payload: req.payload,
+          query,
+          req,
+        })
+  return isPlainRecord(doc) ? doc : undefined
+}
+
+const ownerOnlyFieldNamesByCollection = new WeakMap<object, readonly string[]>()
+
+/**
+ * A kurzus tulajdonosi mezői: amelyeknek az írását az isOwnerFieldAccess védi
+ * (T-011: ár, „Fizetős kurzus”, akció, hozzáférés hossza, rejtett kurzus,
+ * megjelenés a weboldalon). A mezőfából számoljuk, hogy egy új tulajdonosi
+ * mező se maradhasson ki. Csak a mentés adatának legfelső szintjén álló mezők
+ * számítanak: a név nélküli csoport, sor, összecsukható rész és fül nem
+ * nyit új szintet, a nevesített igen.
+ */
+function ownerOnlyFieldNames(collection: SanitizedCollectionConfig): readonly string[] {
+  const cached = ownerOnlyFieldNamesByCollection.get(collection)
+  if (cached !== undefined) return cached
+  const names = topLevelOwnerOnlyFieldNames(collection.fields)
+  ownerOnlyFieldNamesByCollection.set(collection, names)
+  return names
+}
+
+function topLevelOwnerOnlyFieldNames(fields: readonly Field[]): string[] {
+  const names: string[] = []
+  for (const field of fields) {
+    if (field.type === 'tabs') {
+      for (const tab of field.tabs) {
+        if (!('name' in tab) || typeof tab.name !== 'string' || tab.name.length === 0) {
+          names.push(...topLevelOwnerOnlyFieldNames(tab.fields))
+        }
+      }
+      continue
+    }
+    const named = namedField(field)
+    if (named !== null && named.name.length > 0) {
+      if (named.access?.update === isOwnerFieldAccess) names.push(named.name)
+      continue
+    }
+    if ('fields' in field && Array.isArray(field.fields)) {
+      names.push(...topLevelOwnerOnlyFieldNames(field.fields as Field[]))
+    }
+  }
+  return names
 }
 
 /**
@@ -1880,6 +2054,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     beforeOperation: [
       ...(defaultCollection.hooks?.beforeOperation ?? []),
       unpublishAndRestoreWritesStayDraft,
+      // A végén: a mentés végleges argumentumaiból dönt (productUpdateLocksRow).
+      productUpdateRemembersSource,
     ],
     beforeChange: [
       trashWritesStayDraft,
