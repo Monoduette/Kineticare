@@ -594,6 +594,53 @@ async function correctiveRetryQueueable(
   return !(await readReceipt(payload, intent, REFUND_INVOICE_RETRY_QUEUED_ACTION))
 }
 
+/** A helyesbítő keresés-átvétel jobjának taskja (jobs/tasks/corrective-invoice-issue.ts). */
+const CORRECTIVE_JOB_TASK = 'corrective-invoice-issue'
+
+/**
+ * Ennyi idő után számít elhaltnak a futóként (`processing`) jelölt
+ * helyesbítő-job. Egy futás a Számlázz.hu-hívásokra a zárban legfeljebb 45
+ * másodpercet használ (LOCKED_SECTION_HTTP_BUDGET_MS, szamlazz/lock-budget.ts),
+ * a zárra várás és a lezárás írásai ennél rövidebbek. A futás közben elhalt
+ * folyamat (deploy, összeomlás) sorát a Payload 3.88 nem engedi el: a sor
+ * `processing` marad, de a job már nem fut tovább.
+ */
+export const CORRECTIVE_JOB_STALE_AFTER_MS = 15 * 60 * 1000
+
+/**
+ * Él-e még a helyesbítő sorba állított jobja ehhez a visszatérítéshez: vár a
+ * következő futására, vagy éppen fut. A Payload a hibára futott jobot a
+ * `retries` erejéig futtatja újra, utána `hasError`-ral zárja, a lefutott job
+ * pedig `completedAt`-et kap. A jobot semmi nem állítja újra sorba, ezért a
+ * panel csak élő job mellett ígérhet háttérbeli újrapróbálást (hibavadász C,
+ * PR #307).
+ */
+async function correctiveJobAlive(
+  payload: Payload,
+  orderId: number,
+  refundSeq: number,
+  nowMs: number,
+): Promise<boolean> {
+  const jobs = await payload.find({
+    collection: 'payload-jobs',
+    where: {
+      and: [{ taskSlug: { equals: CORRECTIVE_JOB_TASK } }, { completedAt: { exists: false } }],
+    },
+    depth: 0,
+    pagination: false,
+    overrideAccess: true,
+  })
+  return jobs.docs.some((job) => {
+    const input = job.input
+    if (job.taskSlug !== CORRECTIVE_JOB_TASK || job.completedAt || job.hasError === true)
+      return false
+    if (!isRecord(input) || input.orderId !== orderId || input.refundSeq !== refundSeq) return false
+    if (!job.processing) return true
+    const since = Date.parse(job.updatedAt)
+    return Number.isFinite(since) && nowMs - since < CORRECTIVE_JOB_STALE_AFTER_MS
+  })
+}
+
 /** A bizonylat elakadásának mondata: mi történt, újrapróbálja-e a rendszer, mi a teendő (a-refund-4). */
 async function invoiceBlockedSentence(
   payload: Payload,
@@ -651,19 +698,31 @@ async function invoiceBlockedSentence(
   // háttérbeli ellenőrzés tehát véget ért; ígérni már nem szabad.
   if (retryQueued && guardRefused)
     return 'A helyesbítő számla nem készült el. A rendszer a háttérben megnézte a Számlázz.hu-ban, de ehhez a visszatérítéshez nem talált helyesbítő számlát, és nem küldi be újra. Jelezd az üzemeltetőnek a rendelésszámmal együtt.'
-  // A job ideje lejárt (leállt, vagy a workerek nem futnak), és beküldés sem
-  // indulhat már: a kérés csak igénylés után mehetett ki, az ismételt
-  // beküldést pedig az őr a határidő után nem engedi. Folyamatban lévő
-  // beküldés ('pending') mellett nem kér kézi kiállítást.
+  // Háttérbeli újrapróbálást csak élő job mellett ígérünk (hibavadász C, PR
+  // #307). A job legfeljebb négyszer fut, és a végleges hiba, a kimerülés vagy
+  // a futás közbeni összeomlás után semmi nem állítja újra sorba.
+  const jobAlive =
+    retryQueued !== null &&
+    (await correctiveJobAlive(payload, order.id, intent.refundSequence, now.getTime()))
+  // A határidő után igénylés mellett beküldés már nem indulhat: a kérés csak
+  // igénylés után mehetett ki, az ismételt beküldést pedig az őr a határidő
+  // után nem engedi. Egy még élő job legfeljebb átveheti a bizonylatot. Az
+  // egyetlen kivétel az éppen futó beküldés ('pending' élő job mellett): addig
+  // nem kér kézi kiállítást. Elhalt job mellett a 'pending' már nem változik.
   if (
     retryQueued &&
     started &&
-    order.correctiveInvoiceStatus !== 'pending' &&
-    isCorrectiveRetryExpired(retryQueued, now.getTime())
+    isCorrectiveRetryExpired(retryQueued, now.getTime()) &&
+    !(order.correctiveInvoiceStatus === 'pending' && jobAlive)
   )
     return `A helyesbítő számla nem készült el biztosan, és a háttérbeli ellenőrzés sem járt sikerrel.${detail} ${search}. Ha készült, jelezd az üzemeltetőnek a számával együtt. Ha nem, állítsd ki kézzel (05-ös útmutató, 4. pont), és jelezd az üzemeltetőnek a rendelésszámmal együtt.`
-  if (retryQueued)
+  if (jobAlive)
     return `A helyesbítő számla kiállítása nem fejeződött be.${detail} A rendszer a háttérben újra megpróbálja: előbb megnézi a Számlázz.hu-ban, elkészült-e, és ha a helyesbítő megvan vagy elkészül, a visszatérítés feldolgozását is magától befejezi. Ne állíts ki kézzel helyesbítőt, amíg ez az üzenet látszik. Ha egy nap múlva is ezt látod, jelezd az üzemeltetőnek a rendelésszámmal együtt.`
+  // A job véget ért, igénylés nélkül: a Számlázz.hu-nak nem ment kérés, és a
+  // folytatás gombja az első beküldést próbálja újra (invoice()). Kézi
+  // kiállítás mellett ez második helyesbítőt adna, ezért azt nem kérjük.
+  if (retryQueued && !started && order.correctiveInvoiceStatus !== 'failed')
+    return `A helyesbítő számla nem készült el, és a háttérbeli újrapróbálás véget ért. A Számlázz.hu-nak nem ment kérés.${detail} Próbáld újra a ${RECOVER} gombbal. Ha így sem sikerül, jelezd az üzemeltetőnek a rendelésszámmal együtt. Kézzel ne állíts ki helyesbítőt, mert a gomb megnyomásakor a rendszer is kiállítja, és akkor kettő lenne belőle.`
   // Az igénylés rögzült, a kérés elmehetett, a kimenet ismeretlen: a végleges
   // „nem készült el” csak igénylés nélkül igaz (a stornó ága mintájára).
   if (started && !guardRefused)

@@ -94,7 +94,13 @@ vissza. Ezért először:
 Amíg a rendelés Visszatérítés paneljén az áll, hogy a rendszer a háttérben
 keresi a helyesbítőt a Számlázz.hu-ban („Ne állíts ki kézzel helyesbítőt, amíg
 ez az üzenet látszik.”), ne állítsd ki kézzel: a rendszer maga pótolja, és a
-kézi mellé egy második helyesbítő készülne.
+kézi mellé egy második helyesbítő készülne. Ez a mondat csak addig látszik,
+amíg a háttérbeli job él (legfeljebb négy futás, ötpercenként).
+
+Ha a panel azt írja, hogy a háttérbeli újrapróbálás véget ért, és a
+Számlázz.hu-nak nem ment kérés, akkor se állítsd ki kézzel: a „Feldolgozás
+folytatása” gomb újra megpróbálja, és kézi kiállítás mellett kettő lenne.
+Ha a gomb sem segít, szólj az üzemeltetőnek a rendelésszámmal együtt.
 
 A panel két esetben kér kézi rendezést: ha azt írja, hogy a rendszer nem
 talált helyesbítőt, és nem küldi be újra, vagy hogy a helyesbítő „nem készült

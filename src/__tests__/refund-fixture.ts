@@ -222,6 +222,11 @@ export function fixture(orderInput?: Order) {
     orderNoop: false,
     userNoop: false,
   }
+  /**
+   * A helyesbítő-jobok sorainak későbbi állapota (sorszám → mezők): lefutott,
+   * kimerült vagy futás közben elhalt job. A sor maga a sorba állításból jön.
+   */
+  const jobUpdates = new Map<number, Record<string, unknown>>()
   const payload = {
     auth: vi.fn(async () => ({ user: { id: 1, role: 'owner' } })),
     find: vi.fn(
@@ -229,6 +234,27 @@ export function fixture(orderInput?: Order) {
         collection: string
         where?: { and?: Array<Record<string, { equals?: unknown }>> }
       }) => {
+        if (args.collection === 'payload-jobs') {
+          // A valódi queueCorrectiveInvoiceJob a sikeres sorba állításkor
+          // futtatható payload-jobs sort hoz létre (szamlazz/queue.ts).
+          const docs = documents.queue.mock.calls.flatMap((call, index) => {
+            const settled = documents.queue.mock.settledResults[index]
+            if (settled?.type !== 'fulfilled' || settled.value !== true) return []
+            return [
+              {
+                id: index + 1,
+                taskSlug: 'corrective-invoice-issue',
+                input: { orderId: call[1], refundSeq: call[2] },
+                processing: false,
+                hasError: false,
+                completedAt: null,
+                updatedAt: '2026-09-05T10:00:00.000Z',
+                ...jobUpdates.get(index + 1),
+              },
+            ]
+          })
+          return { docs: structuredClone(docs), totalDocs: docs.length, hasNextPage: false }
+        }
         if (args.collection === 'refund-intents') {
           const docs = (store.history.get(payload) ?? []).filter((intent) =>
             (args.where?.and ?? []).every((condition) =>
@@ -443,6 +469,7 @@ export function fixture(orderInput?: Order) {
     audits,
     barionRefunds,
     failures,
+    jobUpdates,
     payload,
     options,
     regrant: () => {

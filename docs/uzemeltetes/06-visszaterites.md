@@ -126,7 +126,8 @@ nem tudni biztosan, hogy a Barion végrehajtotta-e.
    futott, és a rendszer a háttérben keresi a Számlázz.hu-ban, a pénz már
    visszament, és új visszatérítés nem kell. A panel mondata: „Ne állíts ki
    kézzel helyesbítőt, amíg ez az üzenet látszik.” Várj, amíg a panel
-   továbblép; ha riasztás jön (`helyesbito-nem-kuldheto-be-ujra` vagy
+   továbblép: amint a háttérbeli job véget ér, a panel a következő lépést írja.
+   Ha riasztás jön (`helyesbito-nem-kuldheto-be-ujra` vagy
    `helyesbito-ujraprobalas-kimerult`), akkor [05](05-szamla-storno-helyesbito-kezi.md) 4. pont.
 5. A visszatérítési szándékokat a Rendszer → **Visszatérítési szándékok**
    listán látod (csak a tulajdonos). Az állapotok:

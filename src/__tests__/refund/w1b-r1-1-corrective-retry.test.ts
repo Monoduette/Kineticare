@@ -176,6 +176,11 @@ describe('W1B-1 és W1B-2: a sorba állított job határideje a panelen', () => 
   it('ha éppen beküldés fut (pending), a határidő után sem kér kézi kiállítást', async () => {
     const f = await queuedAtT0()
     Object.assign(f.order, { correctiveInvoiceStatus: 'pending' })
+    // A job most fut: a Payload a futás elején jelöli a sort.
+    f.jobUpdates.set(1, {
+      processing: true,
+      updatedAt: new Date(T0 + 3 * CORRECTIVE_RETRY_ESCALATION_MS - 60_000).toISOString(),
+    })
 
     const status = await statusAt(f, 3 * CORRECTIVE_RETRY_ESCALATION_MS)
 
@@ -183,9 +188,25 @@ describe('W1B-1 és W1B-2: a sorba állított job határideje a panelen', () => 
     expect(status.message).not.toContain('állítsd ki kézzel')
   })
 
-  // Igénylés nélkül a Számlázz.hu-nak még semmi nem ment ki, de a job később
-  // elvégezheti az első beküldést: kézi kiállítás mellett dupla helyesbítő lenne.
-  it('igénylés nélküli sorba állításnál a határidő után sem kér kézi kiállítást (a job még beküldhet)', async () => {
+  // Hibavadász C (PR #307): a beküldés közben leállt folyamat sorát a Payload
+  // nem engedi el, a 'pending' pedig már nem változik. A panel eddig örökre
+  // háttérbeli újrapróbálást ígért és tiltotta a kézi kiállítást.
+  it('a beküldés közben elhalt job mellett (pending, régóta processing) a határidő után a kereséssel kezdődő kézi rendezést kéri', async () => {
+    const f = await queuedAtT0()
+    Object.assign(f.order, { correctiveInvoiceStatus: 'pending' })
+    f.jobUpdates.set(1, { processing: true, updatedAt: new Date(T0).toISOString() })
+
+    const status = await statusAt(f, 3 * CORRECTIVE_RETRY_ESCALATION_MS)
+
+    expect(status.message).not.toContain(DO_NOT_ISSUE)
+    expect(status.message).toContain(
+      'Nézd meg a Számlázz.hu-fiókodban, készült-e helyesbítő a(z) SYNTHETIC-RECOVERY-11-HELYESBITO-1 rendelésszámmal.',
+    )
+    expect(status.message).toContain('Ha nem, állítsd ki kézzel (05-ös útmutató, 4. pont)')
+  })
+
+  /** Az igénylés előtti átmeneti hiba (Számlázz.hu-kimaradás) a jobot T0-kor sorba állítja. */
+  async function queuedBeforeClaimAtT0() {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(T0)
     const f = fixture()
@@ -200,15 +221,68 @@ describe('W1B-1 és W1B-2: a sorba állított job határideje a panelen', () => 
     await expect(f.start({ amountHuf: 5000 })).rejects.toMatchObject({ status: 503 })
     expect(queuedReceipts(f)).toHaveLength(1)
     vi.useRealTimers()
+    return f
+  }
 
-    const click = await recoverRefundOrder({
-      ...f.options,
-      now: new Date(T0 + 3 * CORRECTIVE_RETRY_ESCALATION_MS),
-    })
+  const clickAt = (f: Fixture, elapsedMs: number) =>
+    recoverRefundOrder({ ...f.options, now: new Date(T0 + elapsedMs) })
+
+  // Igénylés nélkül a Számlázz.hu-nak még semmi nem ment ki, de a job később
+  // elvégezheti az első beküldést: kézi kiállítás mellett dupla helyesbítő lenne.
+  it('igénylés nélküli sorba állításnál a határidő után sem kér kézi kiállítást (a job még beküldhet)', async () => {
+    const f = await queuedBeforeClaimAtT0()
+
+    const click = await clickAt(f, 3 * CORRECTIVE_RETRY_ESCALATION_MS)
 
     expect(click.recoveryStatus).toBe('manual_review')
     expect(click.message).toContain(DO_NOT_ISSUE)
     expect(click.message).not.toContain('állítsd ki kézzel')
+  })
+
+  // Hibavadász C (PR #307): a job legfeljebb négyszer fut, utána semmi nem
+  // állítja újra sorba. A panel eddig ilyenkor is háttérbeli újrapróbálást
+  // ígért, holott csak a folytatás gombja próbálhatja újra az első beküldést.
+  it.each([
+    ['mind a négy futását elhasználta', { hasError: true, totalTried: 4 }],
+    ['futás közben elhalt', { processing: true, updatedAt: new Date(T0).toISOString() }],
+  ])(
+    'igénylés nélkül, ha a job %s, nem ígér háttérbeli újrapróbálást, hanem a gombot ajánlja',
+    async (_eset, jobState) => {
+      const f = await queuedBeforeClaimAtT0()
+      f.jobUpdates.set(1, jobState)
+
+      const click = await clickAt(f, 3 * CORRECTIVE_RETRY_ESCALATION_MS)
+
+      expect(click.message).not.toContain('A rendszer a háttérben újra megpróbálja')
+      expect(click.message).toContain(
+        'A helyesbítő számla nem készült el, és a háttérbeli újrapróbálás véget ért. A Számlázz.hu-nak nem ment kérés.',
+      )
+      expect(click.message).toContain('Próbáld újra a „Feldolgozás folytatása” gombbal.')
+      expect(click.message).not.toContain('állítsd ki kézzel')
+    },
+  )
+
+  // Hibavadász C (PR #307): a job igénylés előtt véglegesen elutasított (az
+  // eredeti számla áfakulcsa eltér), és lezárult. A panel eddig ugyanabban az
+  // üzenetben mondta, hogy kézi rendezés kell, és hogy ne állítsd ki kézzel.
+  it('a job végleges elutasítása után nem ígér háttérbeli újrapróbálást', async () => {
+    const f = await queuedBeforeClaimAtT0()
+    const refusal =
+      'a helyesbítő nem állítható ki biztonságosan: az eredeti számla áfakulcsa (27) nem egyezik a beállított AAM kulccsal. ' +
+      'A helyesbítőnek az eredeti számla áfakulcsát kell hordoznia; a rendszer nem találgat, kézi rendezés kell.'
+    Object.assign(f.order, {
+      correctiveInvoiceStatus: 'failed',
+      correctiveInvoiceLastError: refusal,
+    })
+    f.jobUpdates.set(1, { completedAt: new Date(T0 + 10 * 60 * 1000).toISOString() })
+    documents.corrective.mockImplementation(async () => ({ outcome: 'failed', reason: refusal }))
+
+    const click = await clickAt(f, 30 * 24 * 60 * 60 * 1000)
+
+    expect(click.message).not.toContain(DO_NOT_ISSUE)
+    expect(click.message).not.toContain('A rendszer a háttérben újra megpróbálja')
+    expect(click.message).toContain('kézi rendezés kell')
+    expect(click.message).toContain('a rendszer nem küldi be újra')
   })
 
   it('az idő nélküli (régi) sorba állítási jelzés nem jár le', async () => {
