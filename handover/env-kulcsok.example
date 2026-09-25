@@ -35,8 +35,15 @@ EMAIL_JOB_ARGS=
 IMPORT_CUSTOMERS_CSV_GZ_B64=
 # Levélküldő (RESEND_API_KEY vagy SMTP_HOST) mellett kötelező, különben boot-hiba.
 EMAIL_FROM=
-# `true` = a cron workerek futnak. Élesben hiánya warn, nem boot-hiba.
+# `true` = a cron workerek futnak. Az éles címen hiánya boot-hiba, kivéve ha
+# a JOB_WORKERS_OFF_CONFIRM nyugtázza; más éles futásban csak warn.
 ENABLE_JOB_WORKERS=
+# `igen` = a workerek tudatos kikapcsolása az éles címen (RIASZTÁS mellett
+# indul). A gyökér .env.example még nem jelöli (maintainer-teendő).
+JOB_WORKERS_OFF_CONFIRM=
+# `false` = a Barion Start négy 3DS-blokkja kimarad (vészkapcsoló); üresen
+# bekapcsolva. A gyökér .env.example még nem jelöli (maintainer-teendő).
+BARION_SEND_3DS=
 # `1` = seed:demo futhat. Éles Kineticare-en TILOS.
 DEMO_MODE=
 DEMO_COURSE_SKU=
