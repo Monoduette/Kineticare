@@ -3,18 +3,30 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CheckoutErrorRegion } from '../components/checkout/CheckoutForm'
-import type { CheckoutSubmitInput, CheckoutSubmitResult } from '../lib/checkout-submit'
+import type { CheckoutSubmitResult } from '../lib/checkout-submit'
 import {
   BILLING_TAX_NUMBER_ERROR,
   BILLING_TAX_NUMBER_EU_ERROR,
   validateBilling,
 } from '../lib/checkout/billing'
 import {
-  CHECKOUT_WAIVER_ERROR,
+  CHECKOUT_TERMS_ERROR,
+  CHECKOUT_TURNSTILE_FAILED_ERROR,
+  CHECKOUT_TURNSTILE_PENDING_ERROR,
+  WAIVER_LOSS_INPUT_ID,
+  WAIVER_LOSS_REQUIRED_ERROR,
+  WAIVER_START_INPUT_ID,
+  WAIVER_START_REQUIRED_ERROR,
+  TERMS_INPUT_ID,
   billingInputId,
+  checkoutErrorSummaryTitle,
+  guestInputId,
   CHECKOUT_ERROR_REGION_ID,
   createCheckoutSubmitHandler,
   type BillingFieldErrors,
+  type CheckoutCheckboxErrors,
+  type CheckoutErrorItem,
+  type CheckoutRequestBody,
   type CheckoutSubmissionContext,
   type GuestFieldErrors,
 } from '../lib/checkout/form-submission'
@@ -58,39 +70,54 @@ const TELJES_BILLING = {
 
 interface Naplo {
   errors: (string | null)[]
+  items: (readonly CheckoutErrorItem[])[]
   fieldErrors: BillingFieldErrors[]
   guestErrors: GuestFieldErrors[]
+  checkboxErrors: CheckoutCheckboxErrors[]
   submitting: boolean[]
   focused: (string | null)[]
-  kuldott: CheckoutSubmitInput[]
+  kuldott: CheckoutRequestBody[]
   atiranyitva: string[]
+  sikertelenUtan: number
 }
 
 function felepit(
   context: CheckoutSubmissionContext,
-  eredmeny: CheckoutSubmitResult = { ok: true, orderNumber: 'KH-2026-000001', gatewayUrl: 'https://fizetes.example/1' },
+  eredmeny: CheckoutSubmitResult | (() => Promise<CheckoutSubmitResult>) = {
+    ok: true,
+    orderNumber: 'KH-2026-000001',
+    gatewayUrl: 'https://fizetes.example/1',
+  },
 ): { futtat: () => Promise<void>; naplo: Naplo } {
   const naplo: Naplo = {
     errors: [],
+    items: [],
     fieldErrors: [],
     guestErrors: [],
+    checkboxErrors: [],
     submitting: [],
     focused: [],
     kuldott: [],
     atiranyitva: [],
+    sikertelenUtan: 0,
   }
   const futtat = createCheckoutSubmitHandler({
     readContext: () => context,
     setError: (message) => naplo.errors.push(message),
+    setErrorItems: (items) => naplo.items.push(items),
     setBillingErrors: (errors) => naplo.fieldErrors.push(errors),
     setGuestErrors: (errors) => naplo.guestErrors.push(errors),
+    setCheckboxErrors: (errors) => naplo.checkboxErrors.push(errors),
     setSubmitting: (value) => naplo.submitting.push(value),
     focusElement: (elementId) => naplo.focused.push(elementId),
     submit: async (body) => {
       naplo.kuldott.push(body)
-      return eredmeny
+      return typeof eredmeny === 'function' ? eredmeny() : eredmeny
     },
     redirect: (url) => naplo.atiranyitva.push(url),
+    afterFailedSubmit: () => {
+      naplo.sikertelenUtan += 1
+    },
   })
   return { futtat, naplo }
 }
@@ -124,7 +151,7 @@ describe('checkout beküldés-huzalozás', () => {
     expect(naplo.atiranyitva).toEqual(['https://fizetes.example/1'])
   })
 
-  it('hiányos számlázási adatnál NEM küld semmit, mezőhibát és fókuszt ad', async () => {
+  it('hiányos számlázási adatnál NEM küld semmit: mezőhiba, összefoglaló a mezősorrendben, fókusz az összefoglalón', async () => {
     const hianyos = { ...TELJES_BILLING, zip: '', city: '' }
     const { futtat, naplo } = felepit(alapContext(hianyos))
 
@@ -134,31 +161,86 @@ describe('checkout beküldés-huzalozás', () => {
     expect(naplo.atiranyitva).toEqual([])
     expect(naplo.fieldErrors).toHaveLength(1)
     expect(Object.keys(naplo.fieldErrors[0]).sort()).toEqual(['city', 'zip'])
-    // A fókusz a MEZŐSORREND szerinti ELSŐ hibás mezőre megy.
-    expect(naplo.focused).toEqual([billingInputId('zip')])
+    // Az összefoglaló linkjei a MEZŐSORREND szerint a hibás mezőkre mutatnak,
+    // a fókusz pedig az összefoglalóra kerül (GOV.UK Error summary).
+    expect(naplo.items.at(-1)?.map((item) => item.targetId)).toEqual([
+      billingInputId('zip'),
+      billingInputId('city'),
+    ])
+    expect(naplo.focused).toEqual([CHECKOUT_ERROR_REGION_ID])
     expect(naplo.submitting).toEqual([])
   })
 
-  it('hiányzó elállási nyilatkozatnál blokkol, és a hiányzó jelölőnégyzetre fókuszál', async () => {
+  /**
+   * a-ux-10 REGRESSZIÓ: korábban üres űrlapnál három nyomás kellett — előbb
+   * csak az elállási nyilatkozatot, aztán csak az ÁSZF-et, végül a mezőket
+   * kérte számon, és a jelölőnégyzetek hibája szöveg nélkül maradt. Most EGY
+   * nyomásra minden hiba egyszerre megjelenik, az űrlap sorrendjében, és a
+   * jelölőnégyzetek saját hibaüzenetet kapnak.
+   */
+  it('üres vendég-űrlapnál EGY nyomásra minden hibát felsorol, a jelölőnégyzetekét is', async () => {
+    const { futtat, naplo } = felepit({
+      ...alapContext({ name: '', zip: '', city: '', street: '', taxNumber: '' }),
+      waiverStartAccepted: false,
+      waiverLossAccepted: false,
+      termsAccepted: false,
+      guest: { email: '', name: '' },
+    })
+
+    await futtat()
+
+    expect(naplo.kuldott).toEqual([])
+    expect(naplo.items.at(-1)?.map((item) => item.targetId)).toEqual([
+      guestInputId('email'),
+      guestInputId('name'),
+      billingInputId('name'),
+      billingInputId('zip'),
+      billingInputId('city'),
+      billingInputId('street'),
+      WAIVER_START_INPUT_ID,
+      WAIVER_LOSS_INPUT_ID,
+      TERMS_INPUT_ID,
+    ])
+    expect(naplo.errors.at(-1)).toBe(checkoutErrorSummaryTitle(9))
+    expect(naplo.checkboxErrors.at(-1)).toEqual({
+      waiverStart: WAIVER_START_REQUIRED_ERROR,
+      waiverLoss: WAIVER_LOSS_REQUIRED_ERROR,
+      terms: CHECKOUT_TERMS_ERROR,
+    })
+    expect(Object.keys(naplo.guestErrors.at(-1) ?? {}).sort()).toEqual(['email', 'name'])
+    expect(naplo.focused).toEqual([CHECKOUT_ERROR_REGION_ID])
+  })
+
+  it('hiányzó elállási nyilatkozatnál blokkol, és a négyzet saját hibát kap', async () => {
     const { futtat, naplo } = felepit({ ...alapContext(), waiverLossAccepted: false })
 
     await futtat()
 
     expect(naplo.kuldott).toEqual([])
-    expect(naplo.errors).toContain(CHECKOUT_WAIVER_ERROR)
-    expect(naplo.focused).toHaveLength(1)
+    expect(naplo.checkboxErrors.at(-1)).toEqual({ waiverLoss: WAIVER_LOSS_REQUIRED_ERROR })
+    expect(naplo.items.at(-1)).toEqual([
+      { targetId: WAIVER_LOSS_INPUT_ID, message: WAIVER_LOSS_REQUIRED_ERROR },
+    ])
+    expect(naplo.focused).toEqual([CHECKOUT_ERROR_REGION_ID])
   })
 
-  it('sikeres beküldés törli a korábbi mezőhibákat és visszaengedi a gombot', async () => {
+  /**
+   * a-ux-15 REGRESSZIÓ: a sikeres indítás után a böngésző még a Barion felé
+   * navigál; ha a gomb közben visszaáll, egy második koppintás újabb POST-ot
+   * küld. A gomb ezért „Feldolgozás…"-ban marad.
+   */
+  it('sikeres átirányítás után a gomb folyamatban MARAD (nem enged második beküldést)', async () => {
     const { futtat, naplo } = felepit(alapContext())
 
     await futtat()
 
     expect(naplo.fieldErrors).toEqual([{}])
-    expect(naplo.submitting).toEqual([true, false])
+    expect(naplo.atiranyitva).toEqual(['https://fizetes.example/1'])
+    expect(naplo.submitting).toEqual([true])
+    expect(naplo.sikertelenUtan).toBe(0)
   })
 
-  it('szerverhiba esetén megjeleníti az üzenetet és NEM irányít át', async () => {
+  it('szerverhiba esetén megjeleníti az üzenetet, NEM irányít át, visszaengedi a gombot és új ellenőrzést kér', async () => {
     const { futtat, naplo } = felepit(alapContext(), {
       ok: false,
       message: 'A fizetés indítása nem sikerült.',
@@ -169,6 +251,17 @@ describe('checkout beküldés-huzalozás', () => {
     expect(naplo.atiranyitva).toEqual([])
     expect(naplo.errors).toContain('A fizetés indítása nem sikerült.')
     expect(naplo.submitting).toEqual([true, false])
+    expect(naplo.sikertelenUtan).toBe(1)
+  })
+
+  it('váratlan kivételnél sem ragad a gomb „Feldolgozás…"-ban', async () => {
+    const { futtat, naplo } = felepit(alapContext(), async () => {
+      throw new Error('váratlan')
+    })
+
+    await expect(futtat()).rejects.toThrow('váratlan')
+    expect(naplo.submitting).toEqual([true, false])
+    expect(naplo.sikertelenUtan).toBe(1)
   })
 
   it('szerverhibánál a HIBÁRA viszi a fókuszt (különben a hiba néma marad)', async () => {
@@ -204,6 +297,77 @@ describe('checkout beküldés-huzalozás', () => {
     await futtat()
 
     expect(naplo.focused).toEqual([])
+  })
+})
+
+/**
+ * a-checkout-9: a láthatatlan Turnstile tokenje a beküldés törzsében megy.
+ * Token nélkül a kliens NEM küld (a szerver úgyis 400-at adna), hanem
+ * megmondja, miért nem: még fut az ellenőrzés, vagy be sem töltődött.
+ */
+describe('checkout beküldés — Turnstile és céges vásárlás', () => {
+  it('kész tokennel a token a törzsben megy', async () => {
+    const { futtat, naplo } = felepit({
+      ...alapContext(),
+      turnstile: { required: true, token: 'DUMMY-TURNSTILE-TOKEN', failed: false },
+    })
+
+    await futtat()
+
+    expect(naplo.kuldott).toHaveLength(1)
+    expect(naplo.kuldott[0].turnstileToken).toBe('DUMMY-TURNSTILE-TOKEN')
+  })
+
+  it.each([
+    ['még fut', false, CHECKOUT_TURNSTILE_PENDING_ERROR],
+    ['nem töltődött be', true, CHECKOUT_TURNSTILE_FAILED_ERROR],
+  ])(
+    'token nélkül (%s) nem küld, és megmondja az okot a hibarégióban',
+    async (_nev, failed, uzenet) => {
+      const { futtat, naplo } = felepit({
+        ...alapContext(),
+        turnstile: { required: true, token: null, failed },
+      })
+
+      await futtat()
+
+      expect(naplo.kuldott).toEqual([])
+      expect(naplo.errors.at(-1)).toBe(uzenet)
+      expect(naplo.focused).toEqual([CHECKOUT_ERROR_REGION_ID])
+      expect(naplo.submitting).toEqual([])
+    },
+  )
+
+  it('kikapcsolt ellenőrzésnél (nincs site key) token nélkül is küld, és a törzsben nincs tokenmező', async () => {
+    const { futtat, naplo } = felepit({
+      ...alapContext(),
+      turnstile: { required: false, token: null, failed: false },
+    })
+
+    await futtat()
+
+    expect(naplo.kuldott).toHaveLength(1)
+    expect('turnstileToken' in naplo.kuldott[0]).toBe(false)
+  })
+
+  it('„Cégként vásárolok" mellett a jelölés a számlázási blokkban megy (billing.companyPurchase)', async () => {
+    const { futtat, naplo } = felepit({
+      ...alapContext({ ...TELJES_BILLING, taxNumber: '12345676-1-42' }),
+      companyPurchase: true,
+    })
+
+    await futtat()
+
+    expect(naplo.kuldott[0].billing.companyPurchase).toBe(true)
+    expect(naplo.kuldott[0].billing.taxNumber).toBe('12345676-1-42')
+  })
+
+  it('magánszemélynél a törzsben nincs companyPurchase mező', async () => {
+    const { futtat, naplo } = felepit(alapContext())
+
+    await futtat()
+
+    expect('companyPurchase' in naplo.kuldott[0].billing).toBe(false)
   })
 })
 

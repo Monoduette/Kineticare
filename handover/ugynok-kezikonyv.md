@@ -1318,6 +1318,7 @@ után. `CONSENT_MODE_DEFAULT` minden tároló `denied`; granted csak
 | `kurzus:videok-modulba`                 | `videok-modulba.ts`                      | **egyetlen** biztonságos átemelés                                                                                                                                                                                                                       |
 | `backfill:ar-snapshot`                  | `backfill-price-snapshot.ts`             | próba; írás `OWNER_BACKFILL_CONFIRM=igen`                                                                                                                                                                                                               |
 | `backfill:access-grants`                | `backfill-access-grants.ts`              | ugyanez                                                                                                                                                                                                                                                 |
+| `record:manual-invoice`                 | `record-manual-invoice.ts`               | próba; írás `OWNER_MANUAL_INVOICE_CONFIRM=igen`; a 'failed' számlájú rendelésre a megtalált vagy kézzel kiállított számla számát rögzíti (a K12 kapu utána nyit); `docs/uzemeltetes/05-szamla-storno-helyesbito-kezi.md`                                |
 | `content:owner`                         | `apply-owner-content.ts`                 | alapból próbafutás, írás `OWNER_CONTENT_CONFIRM=igen`; élesben a `content-job` Railway-szolgáltatás futtatja (`railway.content-job.json`). Doksik: `docs/owner-content-2026-09-19.md`, `docs/owner-content-2026-09-22.md`                               |
 | `email:migracio`                        | `send-migration-notice.ts`               | idempotens; `--force` újraküld                                                                                                                                                                                                                          |
 | `backup:db`                             | `backup-db.ts`                           | `docs/adatbazis-mentes.md`                                                                                                                                                                                                                              |
@@ -1376,9 +1377,16 @@ perjel nélkül. Erre épül CORS/CSRF, `metadataBase`, SEO.
 További boot-hibák: érvénytelen `SZAMLAZZ_AFAKULCS` (csak `27` vagy
 `AAM`); beállított levélküldő (`RESEND_API_KEY` vagy `SMTP_HOST`)
 mellett hiányzó vagy nem e-mail alakú `EMAIL_FROM`; élesben hiányzó
-`BARION_ENVIRONMENT`; élesben fél-lábas Turnstile-pár. Élesben csak
-warn: hiányzó `ENABLE_JOB_WORKERS=true`, mindkét Turnstile-kulcs
-hiánya.
+`BARION_ENVIRONMENT`; élesben fél-lábas Turnstile-pár. Az éles címen
+(`NEXT_PUBLIC_SERVER_URL` a kineticare.hu) boot-hiba a nem-`prod`
+Barion bekapcsolt számlázás (`SZAMLAZZ_AGENT_KEY`) mellett, és a
+hiányzó `ENABLE_JOB_WORKERS=true`, ha nincs mellette
+`JOB_WORKERS_OFF_CONFIRM=igen` nyugtázás. Induláskori RIASZTÁS (az app
+elindul): `SZAMLAZZ_AGENT_KEY` `SZAMLAZZ_AFAKULCS` nélkül vagy
+nagybetűvel; nem-`prod` Barion az éles címen számlázás nélkül;
+nyugtázottan kikapcsolt workerek az éles címen. Élesben csak warn:
+hiányzó `ENABLE_JOB_WORKERS=true` nem éles címen, mindkét
+Turnstile-kulcs hiánya.
 
 Opcionális, degradált módban az app fut: Számlázz, Bunny, PostHog, GA4,
 Turnstile (párban vagy sehogy), e-mail (nincs kulcs → noop).
@@ -1390,6 +1398,8 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | Kulcs                                         | Szerep                                                                                                                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ENABLE_JOB_WORKERS`                          | `true` = cron workerek                                                                                                                                     |
+| `JOB_WORKERS_OFF_CONFIRM`                     | `igen` = a workerek tudatos kikapcsolása az éles címen; nélküle `ENABLE_JOB_WORKERS=true` hiányában az app nem indul. Az `.env.example` még nem jelöli     |
+| `BARION_SEND_3DS`                             | `false` = a Barion Start négy 3DS-blokkja kimarad (vészkapcsoló); üresen bekapcsolva. Az `.env.example` még nem jelöli                                     |
 | `PAYLOAD_MEDIA_DIR`                           | élesben `/app/media` volume                                                                                                                                |
 | `EXTRA_ALLOWED_ORIGINS`                       | DNS-cutover CORS                                                                                                                                           |
 | `NEXT_PUBLIC_ALLOW_INDEXING`                  | `true` = nincs noindex-kapu                                                                                                                                |

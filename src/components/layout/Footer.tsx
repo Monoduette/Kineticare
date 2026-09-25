@@ -4,6 +4,7 @@ import { Container } from '../ui/Container'
 import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL_TAGLINE } from '../../lib/brand-logo'
 import { KAPCSOLATI_EMAIL_TARTALEK } from '../../lib/contact-email'
 import { getContactEmail } from '../../lib/contact-email-server'
+import { WITHDRAWAL_LINK_LABEL, WITHDRAWAL_PATH } from '../../lib/withdrawal/client'
 
 import { FooterPageLink } from './FooterPageLink'
 import { NewsletterSignup } from './NewsletterSignup'
@@ -90,6 +91,16 @@ export function Footer({ kapcsolatiEmail = KAPCSOLATI_EMAIL_TARTALEK }: FooterPr
                     <FooterPageLink href={link.href}>{link.label}</FooterPageLink>
                   </li>
                 ))}
+                <li>
+                  {/* Elállási funkció (45/2014. Korm. rendelet 22. § (1b)): a
+                      felirat a rendelet szövege, és minden oldal láblécében, a
+                      jogi linkek között áll, nem menüpont mögött (NKFH,
+                      „Elállási funkció: gyakorlati tudnivalók webáruházak
+                      részére”, 2026. 07. 17.). A lábléc a jogi és
+                      segítő linkek bevett helye: NN/g, Footers 101
+                      (https://www.nngroup.com/articles/footers/). */}
+                  <FooterPageLink href={WITHDRAWAL_PATH}>{WITHDRAWAL_LINK_LABEL}</FooterPageLink>
+                </li>
                 <li>
                   {/* GDPR: a süti-hozzájárulás visszavonása/módosítása — a
                       ConsentBanner-t nyitja újra (kliens-komponens). */}

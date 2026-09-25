@@ -25,6 +25,16 @@ import { SzamlazzApiError, type SzamlazzAgentError, type SzamlazzClientConfig } 
  */
 export const SZAMLAZZ_DEFAULT_API_URL = 'https://www.szamlazz.hu/szamla/'
 export const SZAMLAZZ_DEFAULT_TIMEOUT_MS = 15_000
+/**
+ * A kérés-timeout FELSŐ korlátja (a-szamlazz-11, a-refund-14). A számla-,
+ * stornó- és helyesbítő-hívás egy advisory-zár tranzakcióján BELÜL fut, amelyet
+ * a Postgres `idle_in_transaction_session_timeout` (60 s) leöl; a refund-panel
+ * pedig 30 s-ig vár a szerverre, amely sorban GetState + Refund + bizonylat
+ * hívásokat végez. Egy 15 s fölé állított `SZAMLAZZ_TIMEOUT_MS` így a zár
+ * elvesztéséhez (második beküldő) és téves „bizonytalan" panel-üzenethez
+ * vezetne — a konfig ezért ezt az értéket némán levágja.
+ */
+export const SZAMLAZZ_MAX_TIMEOUT_MS = 15_000
 export const SZAMLAZZ_DEFAULT_INVOICE_PREFIX = 'KIN'
 
 /**
@@ -98,7 +108,10 @@ function parseTimeoutMs(raw: string | undefined): number {
     return SZAMLAZZ_DEFAULT_TIMEOUT_MS
   }
   const parsed = Number.parseInt(raw, 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : SZAMLAZZ_DEFAULT_TIMEOUT_MS
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return SZAMLAZZ_DEFAULT_TIMEOUT_MS
+  }
+  return Math.min(parsed, SZAMLAZZ_MAX_TIMEOUT_MS)
 }
 
 /**
@@ -329,8 +342,12 @@ function tagValues(xml: string, tag: string): string[] {
   return values
 }
 
-/** Egy XML-tag értékének kinyerése (első előfordulás). */
-function tagValue(xml: string, tag: string): string | undefined {
+/**
+ * Egy XML-tag értékének kinyerése (első előfordulás). Exportált: a
+ * számlaadat-lekérdezés (invoice-data.ts) a <szamla> dokumentumot ugyanezzel a
+ * CDATA-tudatos olvasóval járja be.
+ */
+export function tagValue(xml: string, tag: string): string | undefined {
   return tagValues(xml, tag)[0]
 }
 
@@ -452,6 +469,14 @@ export interface SzamlazzParsedSuccess {
   /** Vevői fiók URL (ha a Számlázz.hu adja) — a rendelés invoicePdfUrl mezőjéhez. */
   vevoifiokUrl?: string
   /**
+   * A bizonylat nettó és bruttó végösszege a válasz törzséből (`szamlanetto` /
+   * `szamlabrutto`, xs:double; stornón és helyesbítőn negatív). Csak akkor
+   * van kitöltve, ha a törzsben véges szám áll. A lekérdezés (pdf.ts) ebből
+   * dönti el, hogy a talált bizonylat a MI rendelésünké-e (a-szamlazz-5).
+   */
+  szamlanetto?: number
+  szamlabrutto?: number
+  /**
    * 56-os jelzés: a bizonylat KIÁLLT, de a számlaértesítő e-mail nem ment ki a
    * vevőnek. A hívó RIASZTÁST ír, hogy a levelet kézzel újra lehessen küldeni.
    */
@@ -488,11 +513,20 @@ export interface SzamlazzParsedSuccess {
  * bizonylatot kötne a rendeléshez.
  */
 export function parseAgentResponse(body: string, headers: Headers): SzamlazzParsedSuccess {
-  if (isTruthyHeader(headers.get('szlahu_down'))) {
+  const down = headers.get('szlahu_down')
+  if (isTruthyHeader(down)) {
     throw new SzamlazzApiError({
       message: 'A Számlázz.hu karbantartás miatt átmenetileg nem elérhető (szlahu_down).',
       kind: 'http',
       retryable: true,
+      // Hatás nélküli (noEffect), de csak a dokumentált `szlahu_down: true`
+      // értéknél. A hivatalos Hibakezelés oldal szerint ilyenkor a választ a
+      // Számlázz.hu CMS-e szolgálja ki, és „a rendszerből jelenleg nem lehet
+      // számlákat létrehozni, lekérdezni” (docs.szamlazz.hu/hu/agent/basics/
+      // error-handling, v202505151456, Wayback 2025-06-14; angolul: „it is not
+      // possible to create/query invoices from the system at the moment”). A
+      // kérés tehát nem jutott el a számlázóig.
+      noEffect: down.trim().toLowerCase() === 'true',
     })
   }
 
@@ -538,6 +572,23 @@ export function parseAgentResponse(body: string, headers: Headers): SzamlazzPars
     const fromHeader = headers.get('szlahu_vevoifiokurl')
     return fromHeader?.trim() ? decodeUrlHeaderValue(fromHeader) : undefined
   }
+  /** A törzs `szamlanetto` / `szamlabrutto` értéke, ha véges szám (xs:double). */
+  const amounts = (): Pick<SzamlazzParsedSuccess, 'szamlanetto' | 'szamlabrutto'> => {
+    const read = (tag: string): number | undefined => {
+      const raw = tagValue(body, tag)
+      if (raw === undefined || raw === '') {
+        return undefined
+      }
+      const parsed = Number(raw)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+    const szamlanetto = read('szamlanetto')
+    const szamlabrutto = read('szamlabrutto')
+    return {
+      ...(szamlanetto !== undefined ? { szamlanetto } : {}),
+      ...(szamlabrutto !== undefined ? { szamlabrutto } : {}),
+    }
+  }
 
   // Hibajelzésnél a fejléc és a törzs hibakódjainak UNIÓJA dönt: egy 56-os
   // fejléc mellett a törzsben álló 57-es (vagy bármely más) kód sem tűnhet el,
@@ -560,6 +611,7 @@ export function parseAgentResponse(body: string, headers: Headers): SzamlazzPars
         return {
           szamlaszam: number,
           ...(url ? { vevoifiokUrl: url } : {}),
+          ...amounts(),
           notificationError: reportedErrors[0] ?? {
             code: SZAMLAZZ_NOTIFICATION_FAILED_CODE,
             message: '',
@@ -604,6 +656,7 @@ export function parseAgentResponse(body: string, headers: Headers): SzamlazzPars
     return {
       szamlaszam: number,
       ...(url ? { vevoifiokUrl: url } : {}),
+      ...amounts(),
       ...(notification ? { notificationError: notification } : {}),
     }
   }
@@ -722,6 +775,48 @@ export function bodyReadError(
 }
 
 /**
+ * Kapcsolódás előtti hálózati hibák: névfeloldási hiba (`getaddrinfo`) és
+ * elutasított TCP-kapcsolat (`connect`). Ezek csak kapcsolódás előtt
+ * keletkezhetnek; egy már felépült kapcsolat hibája ECONNRESET, EPIPE,
+ * UND_ERR_SOCKET vagy timeout, és az egyik sem került ide.
+ *
+ * Miért nem ment ki egyetlen kérés-bájt sem (node_modules/undici 7.29):
+ * a lib/core/connect.js a socket `connect`/`secureConnect` eseménye ELŐTTI
+ * hibát a kapcsolódás visszahívásának adja, a lib/dispatcher/client.js
+ * `connect()` pedig ezt a `handleConnectError` → `onError` ágon csak akkor
+ * osztja ki a kérésekre, ha egyik sem fut (`kRunning === 0`). A kérést író
+ * HTTP-réteg (`connectH1` / `connectH2`) csak sikeres kapcsolódás után jön
+ * létre. A kapcsolódási időtúllépés (UND_ERR_CONNECT_TIMEOUT) szándékosan
+ * nincs itt: időtúllépés nem számít bizonyítéknak.
+ */
+const CONNECT_PHASE_ERROR_SYSCALLS: ReadonlyMap<string, string> = new Map([
+  ['ECONNREFUSED', 'connect'],
+  ['ENOTFOUND', 'getaddrinfo'],
+  ['EAI_AGAIN', 'getaddrinfo'],
+])
+
+/**
+ * A fetch („fetch failed”) oka igazoltan kapcsolódás előtti hiba-e. Több
+ * címre próbálkozó kapcsolódásnál (Happy Eyeballs, a www.szamlazz.hu-nak
+ * több A-rekordja van) a Node AggregateError-t ad: ez csak akkor számít, ha
+ * MINDEN próbálkozás ilyen hibával ért véget.
+ */
+function isConnectPhaseFailure(cause: unknown): boolean {
+  if (cause instanceof AggregateError) {
+    return cause.errors.length > 0 && cause.errors.every(isConnectPhaseFailure)
+  }
+  if (!(cause instanceof Error)) {
+    return false
+  }
+  const { code, syscall } = cause as Error & { code?: unknown; syscall?: unknown }
+  return (
+    typeof code === 'string' &&
+    typeof syscall === 'string' &&
+    CONNECT_PHASE_ERROR_SYSCALLS.get(code) === syscall
+  )
+}
+
+/**
  * Számla-Agent hívás: a kész számla-XML POST-olása az
  * 'action-xmlagentxmlfile' multipart-mezőben. Az agent-kulcs az XML-ben
  * (bodyban) utazik — sosem az URL-ben. Naplózás titokmentesen.
@@ -774,6 +869,7 @@ export async function postInvoiceXml(
       message: `A Számlázz.hu elérhetetlen: ${error instanceof Error ? error.message : String(error)}`,
       kind: 'network',
       retryable: true,
+      noEffect: isConnectPhaseFailure(error instanceof Error ? error.cause : undefined),
     })
   }
 

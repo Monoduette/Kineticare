@@ -20,6 +20,12 @@ import { generateOrderNumber } from './order-number'
  *   deviza decimals: 0, így az összeg egységértéke megegyezik. A snapshot marad
  *   a megrendeléskori igazság forrása; az amountot a plugin-belsők (pl. későbbi
  *   tranzakció-folyamat) konzisztenciája miatt töltjük ugyanazzal az értékkel.
+ *
+ * A hook lekérdezései a `req`-kel futnak, vagyis a create SAJÁT
+ * tranzakciójában, ugyanazon a pool-kapcsolaton. Nélküle mindegyik újabb
+ * kapcsolatot kérne a poolból, miközben a checkout-zár és a create tranzakciója
+ * már fog egyet-egyet: tíz egyidejű pénztár így kimerítette a poolt, és minden
+ * lekérdezés a kapcsolat-timeoutig állt (a-checkout-4).
  */
 export const orderIntegrityBeforeChange: CollectionBeforeChangeHook = async ({
   data,
@@ -32,7 +38,7 @@ export const orderIntegrityBeforeChange: CollectionBeforeChangeHook = async ({
 
   const { payload } = req
 
-  data.orderNumber = await generateOrderNumber(payload)
+  data.orderNumber = await generateOrderNumber(payload, new Date(), req)
 
   const items = Array.isArray(data.items) ? data.items : []
   let totalHuf = 0
@@ -50,6 +56,7 @@ export const orderIntegrityBeforeChange: CollectionBeforeChangeHook = async ({
       id: productId,
       depth: 0,
       overrideAccess: true,
+      req,
     })
 
     const quantity = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1

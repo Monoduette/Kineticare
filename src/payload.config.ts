@@ -901,10 +901,16 @@ export default buildConfig({
         // A statement_timeout a futó lekérdezést öli; ez a tétlen sessiont.
         // Aktív hosszú migrate/seed nem esik bele.
         idle_in_transaction_session_timeout: 60_000,
-        // W3 (2026-08-22): `pool.max` SZÁNDÉKOSAN nincs beállítva. A default 10
-        // a `pg` értéke. Railway `max_connections` × replikaszám nélkül a cap
-        // vagy kimeríti a DB-t, vagy hamis biztonságot ad. A beágyazott zár
-        // (rendelés → e-mail) a sorrenden múlik, nem a pool méretén.
+        // Pool-méret (a-callback-7, a-szamlazz-11): a `pg` alapértelmezett 10-e
+        // kevés volt. Egy callback-átmenet csúcsán egy kérés akár 4 kapcsolatot
+        // fog (session-zár + rendelés-zár + ügyfél-zár + lekérdezés), egy
+        // számla-job 2–3-at; 4 ilyen egyszerre elfogyasztotta a 10-et, és a
+        // teljes oldal a 10 s-os connectionTimeoutMillis-ig állt. A 20 egy
+        // replikával (railway.json numReplicas: 1) a Postgres alapértelmezett
+        // max_connections = 100 értékének ötöde: a deploy-átfedés (két konténer
+        // egyszerre), a migrate-futás és a mentés is bőven belefér. Replikaszám-
+        // emelésnél ezt is újra kell számolni (replikák × max < max_connections).
+        max: 20,
       },
       // Dev drizzle-push ki: interaktív TÁBLATÖRLÉS-prompt, amin a nem-interaktív
       // futás örökre megakad; rossz DATABASE_URI mellett adatot törölne.

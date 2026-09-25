@@ -4,8 +4,10 @@ import {
   BARION_DEFAULT_TIMEOUT_MS,
   BARION_GET_TIMEOUT_MS,
   BARION_MAX_TIMEOUT_MS,
+  barionPost,
   describeBarionPosKeyShapeProblem,
   getBarionConfig,
+  isBarionRateLimited,
   type BarionClientConfig,
 } from '../lib/barion/client'
 import {
@@ -15,7 +17,13 @@ import {
   type StartPaymentItemInput,
   type StartPaymentParams,
 } from '../lib/barion/start'
-import { fetchPaymentState, mapBarionPaymentStatus } from '../lib/barion/state'
+import {
+  fetchPaymentState,
+  mapBarionPaymentStatus,
+  PAYMENT_STATE_MIN_INTERVAL_MS,
+  PAYMENT_STATE_RATE_LIMIT_RETRY_DELAY_MS,
+} from '../lib/barion/state'
+import { logger } from '../lib/logger'
 import { buildRefundRequest, refundPayment } from '../lib/barion/refund'
 import { BarionApiError } from '../lib/barion/types'
 
@@ -34,6 +42,18 @@ const DUMMY_PROD_POS_KEY = '00000000-0000-0000-0000-000000000000'
 
 const DUMMY_PAYMENT_ID = '11111111-2222-3333-4444-555555555555'
 const DUMMY_TRANSACTION_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+const OTHER_PAYMENT_ID = '99999999-8888-7777-6666-555555555555'
+
+/**
+ * Tesztenként új, GUID-alakú PaymentId: a PaymentState-kapu (lib/barion/state.ts)
+ * ugyanarra a PaymentId-re 5,5 s szünetet tart, a fájl tesztjei pedig egy
+ * modulpéldányon osztoznak.
+ */
+let paymentIdSeq = 0
+function freshPaymentId(): string {
+  paymentIdSeq += 1
+  return `00000000-0000-4000-8000-${paymentIdSeq.toString(16).padStart(12, '0')}`
+}
 
 const testConfig: BarionClientConfig = {
   environment: 'test',
@@ -683,10 +703,15 @@ describe('fetchPaymentState (Payment/PaymentState v4)', () => {
     )
 
     // A hívó kötőjeles vagy kötőjel nélküli alakot is adhat: az útvonal mindkét esetben azonos.
-    const response = await fetchPaymentState(DUMMY_PAYMENT_ID.replace(/-/g, ''), testConfig)
+    // (Másik fizetésazonosító, mint az előző tesztben: ugyanarra a PaymentId-re
+    // a kapu 5,5 s szünetet tartana.)
+    const response = await fetchPaymentState(
+      OTHER_PAYMENT_ID.replace(/-/g, '').toUpperCase(),
+      testConfig,
+    )
 
     expect(lastRequest().url).toBe(
-      `https://api.test.barion.com/v4/Payment/${DUMMY_PAYMENT_ID.replace(/-/g, '')}/PaymentState`,
+      `https://api.test.barion.com/v4/Payment/${OTHER_PAYMENT_ID.replace(/-/g, '')}/PaymentState`,
     )
     expect(response.PaymentId).toBe(DUMMY_PAYMENT_ID)
     expect(response.Transactions[0]?.TransactionId).toBe(DUMMY_TRANSACTION_ID)
@@ -1158,7 +1183,7 @@ describe('Barion-kliens: timeout módszerenként', () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ PaymentId: DUMMY_PAYMENT_ID, Status: 'Succeeded', Transactions: [] }),
     )
-    await fetchPaymentState(DUMMY_PAYMENT_ID, config)
+    await fetchPaymentState(freshPaymentId(), config)
     expect(timeoutSpy).toHaveBeenLastCalledWith(BARION_GET_TIMEOUT_MS)
   })
 
@@ -1175,7 +1200,151 @@ describe('Barion-kliens: timeout módszerenként', () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ PaymentId: DUMMY_PAYMENT_ID, Status: 'Succeeded', Transactions: [] }),
     )
-    await fetchPaymentState(DUMMY_PAYMENT_ID, config)
+    await fetchPaymentState(freshPaymentId(), config)
     expect(timeoutSpy).toHaveBeenLastCalledWith(8000)
+  })
+})
+
+/**
+ * PaymentState-hívásfegyelem (a-callback-8, a-checkout-5): a Barion ugyanarra a
+ * PaymentId-re 5 s-on belüli második hívásra HTTP 429-et ad, és a
+ * „küszöb fölött” minden további hívást is elutasít. A kapu a fetchPaymentState
+ * része, így minden hívó (callback, webhook-retry, order-poll, pénztár,
+ * köszönőoldal, refund) automatikusan betartja.
+ */
+describe('fetchPaymentState: PaymentId-nkénti kapu és a 429 kezelése', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function stateBody(paymentId: string, status = 'Prepared'): Record<string, unknown> {
+    return { PaymentId: paymentId, Status: status, Transactions: [] }
+  }
+
+  it('az egyidejű hívók egyetlen kérésen osztoznak, ugyanazt a választ kapják', async () => {
+    const paymentId = freshPaymentId()
+    let release: (response: Response) => void = () => {}
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => (release = resolve)))
+
+    const first = fetchPaymentState(paymentId, testConfig)
+    const second = fetchPaymentState(paymentId, testConfig)
+    release(jsonResponse(stateBody(paymentId, 'Succeeded')))
+
+    const [a, b] = await Promise.all([first, second])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(a.Status).toBe('Succeeded')
+    expect(b.Status).toBe('Succeeded')
+  })
+
+  it('ugyanarra a PaymentId-re a következő hívás csak 5,5 s-mal az előző vége után megy ki', async () => {
+    vi.useFakeTimers()
+    const paymentId = freshPaymentId()
+    fetchMock.mockResolvedValueOnce(jsonResponse(stateBody(paymentId, 'Prepared')))
+    await fetchPaymentState(paymentId, testConfig)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(stateBody(paymentId, 'Succeeded')))
+    const next = fetchPaymentState(paymentId, testConfig)
+    await vi.advanceTimersByTimeAsync(PAYMENT_STATE_MIN_INTERVAL_MS - 1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    // Friss állapotot kap, nem az előző választ.
+    await expect(next).resolves.toMatchObject({ Status: 'Succeeded' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(PAYMENT_STATE_MIN_INTERVAL_MS).toBeGreaterThan(5_000)
+  })
+
+  it('másik PaymentId-re nincs várakozás', async () => {
+    vi.useFakeTimers()
+    const firstId = freshPaymentId()
+    const secondId = freshPaymentId()
+    fetchMock.mockResolvedValueOnce(jsonResponse(stateBody(firstId)))
+    await fetchPaymentState(firstId, testConfig)
+    fetchMock.mockResolvedValueOnce(jsonResponse(stateBody(secondId)))
+    await expect(fetchPaymentState(secondId, testConfig)).resolves.toMatchObject({
+      PaymentId: secondId,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('HTTP 429 után egyszer, késleltetve újrapróbál, és a sikeres választ adja', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const paymentId = freshPaymentId()
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 429))
+    fetchMock.mockResolvedValueOnce(jsonResponse(stateBody(paymentId, 'Succeeded')))
+
+    const result = fetchPaymentState(paymentId, testConfig)
+    await vi.advanceTimersByTimeAsync(PAYMENT_STATE_RATE_LIMIT_RETRY_DELAY_MS - 1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(result).resolves.toMatchObject({ Status: 'Succeeded' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('a második 429 a hívóhoz jut (isBarionRateLimited), harmadik hívás nincs', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const paymentId = freshPaymentId()
+    fetchMock.mockResolvedValue(jsonResponse({}, 429))
+
+    const result = fetchPaymentState(paymentId, testConfig)
+    const settled = result.catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(PAYMENT_STATE_RATE_LIMIT_RETRY_DELAY_MS * 3)
+    const error = await settled
+    expect(isBarionRateLimited(error)).toBe(true)
+    expect(error).toMatchObject({ kind: 'http', httpStatus: 429 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('más HTTP-hibára nincs újrapróbálás', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const paymentId = freshPaymentId()
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 503))
+    await expect(fetchPaymentState(paymentId, testConfig)).rejects.toMatchObject({
+      httpStatus: 503,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * a-riasztas-14: a 'Barion API HTTP-hiba' sor a hívó kérésének requestId-jét
+ * viszi, ha a hívó átadja a naplózóját — különben csak az időbélyeg kötötte
+ * a kéréshez.
+ */
+describe('Barion-kliens: a hívó naplózója a hibasorokban', () => {
+  it('a PaymentState HTTP-hibasora a hívó requestId-jét és a barion modult hordozza', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 500))
+    const requestLog = logger.child({ requestId: 'req-barion-log-1' })
+
+    await expect(
+      fetchPaymentState(freshPaymentId(), testConfig, { logger: requestLog }),
+    ).rejects.toMatchObject({ httpStatus: 500 })
+
+    const entries = logSpy.mock.calls.map(
+      (call) => JSON.parse(String(call[0])) as Record<string, unknown>,
+    )
+    const entry = entries.find((item) => item.msg === 'Barion API HTTP-hiba')
+    expect(entry).toMatchObject({ requestId: 'req-barion-log-1', module: 'barion' })
+  })
+
+  it('a Start hibasora is a hívó requestId-jét hordozza', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 502))
+
+    await expect(
+      barionPost('/v2/Payment/Start', {}, testConfig, {
+        logger: logger.child({ requestId: 'req-barion-log-2' }),
+      }),
+    ).rejects.toMatchObject({ httpStatus: 502 })
+
+    const entries = logSpy.mock.calls.map(
+      (call) => JSON.parse(String(call[0])) as Record<string, unknown>,
+    )
+    expect(entries.find((item) => item.msg === 'Barion API HTTP-hiba')).toMatchObject({
+      requestId: 'req-barion-log-2',
+    })
   })
 })

@@ -299,7 +299,11 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
       [grantId],
     )
     const before = await observe()
-    await expect(cleanup()).resolves.toEqual({ status: 'manual_review' })
+    await expect(cleanup()).resolves.toEqual({
+      status: 'manual_review',
+      detail: 'grant-provenance',
+      productId,
+    })
     expect(await observe()).toEqual(before)
   })
 
@@ -331,7 +335,11 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
     })
     expect(current.grants![0].xmin).not.toBe(originalGrant.xmin)
     const before = await observe()
-    await expect(cleanup()).resolves.toEqual({ status: 'manual_review' })
+    await expect(cleanup()).resolves.toEqual({
+      status: 'manual_review',
+      detail: 'access-changed',
+      productId,
+    })
     expect(await observe()).toEqual(before)
     expect(before.receipts).toEqual([])
   })

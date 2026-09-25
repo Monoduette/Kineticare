@@ -188,6 +188,26 @@ describe('queryInvoiceByKulsoAzon — bizonylat-lekérdezés (mockolt fetch)', (
     expect(calls[0]?.url).toBe('https://www.szamlazz.hu/szamla/')
   })
 
+  it('a-szamlazz-5: a v2-válasz bruttó és nettó végösszege is visszajön (az átvétel előtti egyeztetéshez)', async () => {
+    // A hivatalos „Bizonylat lekérése PDF-ben" válaszminta (valaszVerzio=2).
+    stubFetch(() =>
+      agentResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><xmlszamlavalasz xmlns="http://www.szamlazz.hu/xmlszamlavalasz">' +
+          `<sikeres>true</sikeres><szamlaszam>${FOUND_INVOICE_NUMBER}</szamlaszam>` +
+          '<szamlanetto>30000</szamlanetto><szamlabrutto>38100</szamlabrutto><pdf>JVBERi0xLjQK</pdf>' +
+          '</xmlszamlavalasz>',
+      ),
+    )
+
+    const result = await queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG)
+
+    expect(result).toEqual({
+      szamlaszam: FOUND_INVOICE_NUMBER,
+      szamlanetto: 30000,
+      szamlabrutto: 38100,
+    })
+  })
+
   it('a lekérdező XML az action-szamla_agent_pdf mezőben utazik, az agent-kulcs a bodyban', async () => {
     stubFetch(() => agentResponse(SUCCESS_BODY))
 

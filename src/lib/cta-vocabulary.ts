@@ -50,6 +50,8 @@ export type CtaAction =
   | 'feedback-open'
   | 'feedback-submit'
   | 'feedback-close'
+  | 'withdrawal-open'
+  | 'withdrawal-confirm'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -614,6 +616,35 @@ export const CTA_VOCABULARY = [
     person: 'nominal',
     weight: 'ghost',
     progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #47 (ÚJ, w1-fogyasztói, 2026-09-25) – az elállási funkció megnyitása
+    // (lábléc, a fiók rendeléslistája). A szöveget a 45/2014. Korm. rendelet
+    // 22. § (1b) írja elő („elállás a szerződéstől”), ezért főnévi: a P-1
+    // szabály itt nem dönthet. Szöveglink, mert a /elallas oldalra navigál,
+    // amelynek a címe ugyanez.
+    section: '#47',
+    action: 'withdrawal-open',
+    label: 'Elállás a szerződéstől',
+    person: 'nominal',
+    weight: 'link',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #48 (ÚJ, w1-fogyasztói, 2026-09-25) – az elállási nyilatkozat
+    // beküldése a /elallas űrlapján. A 22. § (1b) szerint a megerősítő funkció
+    // felirata „elállás megerősítése”, ezért főnévi, nem E/1. Adat megy el,
+    // ezért a folyamatban-felirat a `Küldés…` (L-1).
+    section: '#48',
+    action: 'withdrawal-confirm',
+    label: 'Elállás megerősítése',
+    person: 'nominal',
+    weight: 'primary',
+    progress: 'send',
     patterned: false,
     pattern: null,
   },

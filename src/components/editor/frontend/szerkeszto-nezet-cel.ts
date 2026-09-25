@@ -38,6 +38,7 @@ export const KODBELI_UTVONALAK: ReadonlySet<string> = new Set([
   'belepes',
   'belepes-atallas',
   'blog',
+  'elallas',
   'elfelejtett-jelszo',
   'fiok',
   'fizetes',

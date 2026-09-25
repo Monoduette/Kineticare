@@ -19,6 +19,39 @@ export const RECEIPTS = {
   invoiceDone: 'refund-invoice-done',
 } as const
 
+/**
+ * A helyesbítő újrapróbáló jobja sorba állt (a-refund-4): a panel ebből tudja,
+ * hogy a rendszer a háttérben még keresi a bizonylatot. Tájékoztató jelzés,
+ * nem bizonyíték: a kísérlet lezárását nem befolyásolja, ezért nincs a
+ * lezárást hordozó RECEIPTS között.
+ */
+export const REFUND_INVOICE_RETRY_QUEUED_ACTION = 'refund-invoice-retry-queued'
+
+/**
+ * A helyesbítő ELSŐ beküldése igazoltan hatás nélkül maradt (`szlahu_down`
+ * vagy kapcsolódás előtti hálózati hiba, corrective.ts). Egyszer írható nyugta
+ * a helyesbítő zárja alatt; a refund-őr csak ennek alapján engedi az egyetlen
+ * ismételt beküldést (refund-guard.ts). Nem része a lezárást hordozó RECEIPTS-nek.
+ */
+export const REFUND_INVOICE_NO_EFFECT_ACTION = 'refund-invoice-no-effect'
+
+/**
+ * A helyesbítő egyetlen ismételt beküldése elindult (refund-guard.ts). Csak
+ * egyszer jöhet létre, ezért harmadik beküldés nincs. Nem része a RECEIPTS-nek.
+ */
+export const REFUND_INVOICE_RESUBMIT_STARTED_ACTION = 'refund-invoice-resubmit-started'
+
+/**
+ * A helyesbítő-job sorba állításának ideje (ms) a retry-queued nyugtából;
+ * null, ha nincs benne olvasható időpont (a `queuedAt` előtti, régi nyugta).
+ */
+export function retryQueuedAtMs(receipt: Record<string, unknown> | null): number | null {
+  const queuedAt = receipt?.queuedAt
+  if (typeof queuedAt !== 'string') return null
+  const ms = Date.parse(queuedAt)
+  return Number.isFinite(ms) ? ms : null
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

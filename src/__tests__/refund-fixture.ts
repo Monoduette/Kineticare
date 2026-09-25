@@ -100,6 +100,11 @@ const locks = vi.hoisted(() => ({
   held: [] as string[],
   events: [] as string[],
   beforeOrder: null as null | (() => void),
+  /**
+   * Ennél a kulcsnál a zár a KÉSZ szakasz után dob, ahogy a valódi
+   * withAdvisoryLock, ha a tétlen zár-tranzakció COMMIT-ja bontott kapcsolaton fut.
+   */
+  failAfterSection: null as null | string,
   tails: new Map<string, Promise<void>>(),
 }))
 vi.mock('../lib/advisory-lock', () => ({
@@ -122,7 +127,12 @@ vi.mock('../lib/advisory-lock', () => ({
     locks.held.push(key)
     locks.events.push(key)
     try {
-      return await fn()
+      const result = await fn()
+      if (locks.failAfterSection === key) {
+        locks.failAfterSection = null
+        throw new Error('SYNTHETIC: Failed query: rollback')
+      }
+      return result
     } finally {
       locks.held.splice(locks.held.lastIndexOf(key), 1)
       release()
@@ -141,12 +151,22 @@ vi.mock('../lib/refund/access-store', () => ({
   readRefundAccessBaseline: access.read,
   applyRefundAccessCleanup: access.apply,
 }))
-vi.mock('../lib/szamlazz', () => ({
-  issueStornoForOrder: documents.storno,
-  issueCorrectiveInvoiceForOrder: documents.corrective,
-  queueCorrectiveInvoiceJob: documents.queue,
-  isRetryableStornoError: () => false,
-  isRetryableCorrectiveError: () => false,
+vi.mock('../lib/szamlazz', async (original) => {
+  // Az újrapróbálhatóság a valódi szabály (SzamlazzApiError.retryable), nem a teszté.
+  const real = await original<typeof import('../lib/szamlazz')>()
+  return {
+    issueStornoForOrder: documents.storno,
+    issueCorrectiveInvoiceForOrder: documents.corrective,
+    queueCorrectiveInvoiceJob: documents.queue,
+    isRetryableStornoError: () => false,
+    isRetryableCorrectiveError: real.isRetryableCorrectiveError,
+  }
+})
+/** A vevői értesítő kimenő levele; alapból a kiküldés nélküli (noop) szolgáltató válasza. */
+const mail = vi.hoisted(() => ({ send: vi.fn() }))
+vi.mock('../lib/email', async (original) => ({
+  ...(await original<typeof import('../lib/email')>()),
+  sendMail: mail.send,
 }))
 
 interface Audit {
@@ -351,6 +371,13 @@ export function fixture(orderInput?: Order) {
     },
   )
   const actor = { id: 1, role: 'owner' } as User
+  /**
+   * A Barion GetState a sikeres visszatérítéseket a fizetés tranzakciói
+   * között, a forrásra mutató RelatedId-vel adja vissza (Payment-PaymentState-v4,
+   * TransactionType: RefundToBankCard). Az alap refund-mock ide jegyzi őket,
+   * hogy a következő GetState ugyanazt mutassa, mint az éles Barion.
+   */
+  const barionRefunds: Array<Record<string, unknown>> = []
   // A checkout a rendelés egyetlen tranzakciójának `${orderNumber}-1` kereskedői azonosítót ad.
   provider.state.mockImplementation(async () => ({
     PaymentId: order.barionPaymentId,
@@ -362,6 +389,7 @@ export function fixture(orderInput?: Order) {
         Status: 'Succeeded',
         Total: 20000,
       },
+      ...structuredClone(barionRefunds),
     ],
   }))
   provider.refund.mockImplementation(
@@ -371,11 +399,20 @@ export function fixture(orderInput?: Order) {
       expect(store.intents.get(payload)?.state).toBe('provider_started')
       expect(input.transactionsToRefund[0].posTransactionId).toBe(`${order.orderNumber}-1`)
       expect(audits.some((audit) => audit.action === 'refund-prepared')).toBe(true)
+      const refundTransactionId = `aaaaaaaa-bbbb-cccc-dddd-${String(store.intents.get(payload)!.refundSequence).padStart(12, '0')}`
+      barionRefunds.push({
+        TransactionId: refundTransactionId,
+        POSTransactionId: `${order.orderNumber}-1`,
+        TransactionType: 'RefundToBankCard',
+        Status: 'Succeeded',
+        Total: input.transactionsToRefund[0].amountToRefund,
+        RelatedId: 'SYNTHETIC-TX',
+      })
       return {
         PaymentId: order.barionPaymentId,
         RefundedTransactions: [
           {
-            TransactionId: `aaaaaaaa-bbbb-cccc-dddd-${String(store.intents.get(payload)!.refundSequence).padStart(12, '0')}`,
+            TransactionId: refundTransactionId,
             POSTransactionId: `${order.orderNumber}-1`,
             Total: input.transactionsToRefund[0].amountToRefund,
             Status: 'Succeeded',
@@ -404,6 +441,7 @@ export function fixture(orderInput?: Order) {
     order,
     user,
     audits,
+    barionRefunds,
     failures,
     payload,
     options,
@@ -427,7 +465,9 @@ beforeEach(() => {
   locks.held = []
   locks.events = []
   locks.beforeOrder = null
+  locks.failAfterSection = null
   locks.tails.clear()
+  mail.send.mockReset().mockResolvedValue({ ok: true, provider: 'noop' })
   vi.stubGlobal(
     'fetch',
     vi.fn(() => {
@@ -441,4 +481,4 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-export { store, locks, provider, documents, access }
+export { store, locks, provider, documents, access, mail }

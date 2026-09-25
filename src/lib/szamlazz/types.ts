@@ -7,10 +7,15 @@
  * - A válasz valaszVerzio=2 mellett XML (xmlszamlavalasz): <sikeres>,
  *   <szamlaszam>, hiba esetén <hibakod>/<hibauzenet>. Egyes hibák csak a
  *   szlahu_* HTTP-válaszfejlécekből derülnek ki (pl. szlahu_down).
- * - A <szamlaKulsoAzon> a harmadik fél rendszerének azonosítója — mi az
- *   orderNumber-t küldjük. Ez a bizonylat VISSZAKERESÉSI kulcsa (pdf.ts); a
- *   duplikátum-védelmet a <rendelesSzam> + a fiókban bekapcsolt
- *   rendelésszám-ismétlés-tiltás adja (lásd invoice.ts).
+ * - A <szamlaKulsoAzon> a harmadik fél rendszerének azonosítója — mi
+ *   bizonylatonként globálisan egyedi kulcsot küldünk (kulso-azon.ts). Ez a
+ *   bizonylat VISSZAKERESÉSI kulcsa (pdf.ts), NEM idempotencia-horgony: a
+ *   Számlázz.hu azonos kulcsra is kiállít újabb bizonylatot (a lekérdezés a
+ *   legújabb birtokost adja). A SZÁMLA duplikátum-védelmét a <rendelesSzam> +
+ *   a fiókban bekapcsolt rendelésszám-ismétlés-tiltás adja (71/152); a stornó
+ *   és a helyesbítő a hivatalos rendelésszám-oldal szerint kivétel ez alól,
+ *   ott a beküldés előtti lekérdezés és az advisory-zár véd (lásd invoice.ts,
+ *   corrective.ts).
  */
 
 export type SzamlazzErrorKind =
@@ -20,9 +25,9 @@ export type SzamlazzErrorKind =
   | 'agent'
   /**
    * 71/152-es hibakód: „Már létező rendelésszám". NEM valódi hiba, hanem a
-   * hivatalos idempotencia-jelzés (a fiókban bekapcsolt rendelésszám-ismétlés
-   * tiltás fogta meg az ismételt kérést) — a hívó a szamlaKulsoAzon-alapú
-   * lekérdezéssel oldja fel (a meglévő bizonylat számát veszi át).
+   * fiókban bekapcsolt rendelésszám-ismétlés-tiltás jelzése (számlán) — a
+   * hívó a szamlaKulsoAzon-alapú lekérdezéssel oldja fel, és a talált
+   * bizonylatot csak egyeztetés után veszi át (idegen bizonylat is lehet).
    */
   | 'duplicate'
   | 'invalid_response'
@@ -40,6 +45,15 @@ export class SzamlazzApiError extends Error {
   readonly agentErrors: SzamlazzAgentError[]
   /** Újrapróbálható-e (a job-retry e szerint dönt). */
   readonly retryable: boolean
+  /**
+   * Igazoltan hatás nélküli hiba: a kérést a Számlázz.hu számlázó rendszere
+   * nem dolgozta fel, bizonylat nem készülhetett. Csak két ág állítja
+   * (client.ts): a `szlahu_down: true` karbantartási fejléc és a kapcsolódás
+   * előtti hálózati hiba. A helyesbítő egyetlen ismételt beküldése erre épül
+   * (refund-guard.ts), ezért minden más hiba (timeout, 5xx, bontott kapcsolat,
+   * értelmezhetetlen válasz, agent-hibakód) alapból false.
+   */
+  readonly noEffect: boolean
 
   constructor(args: {
     message: string
@@ -47,6 +61,7 @@ export class SzamlazzApiError extends Error {
     httpStatus?: number
     agentErrors?: SzamlazzAgentError[]
     retryable: boolean
+    noEffect?: boolean
   }) {
     super(args.message)
     this.name = 'SzamlazzApiError'
@@ -54,6 +69,7 @@ export class SzamlazzApiError extends Error {
     this.httpStatus = args.httpStatus
     this.agentErrors = args.agentErrors ?? []
     this.retryable = args.retryable
+    this.noEffect = args.noEffect ?? false
   }
 }
 

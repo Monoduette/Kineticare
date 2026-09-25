@@ -33,6 +33,9 @@ vi.mock('../../lib/feedback/posthog-capture', () => ({
 }))
 
 const DUMMY_ENV_VALUE = 'DUMMY-42'
+// A valódi Számlázz.hu Agent-kulcs kisbetűs; nagybetűs értékre az env-ellenőrzés
+// külön RIASZTÁS-t küld (r-szamlazz-14), ami itt második levelet adna.
+const DUMMY_LOWERCASE_AGENT_VALUE = 'dummy-agent-kulcs-nem-valodi-titok'
 
 beforeEach(() => {
   setAlertSink(undefined)
@@ -49,7 +52,7 @@ beforeEach(() => {
   vi.stubEnv('BARION_POSKEY_TEST', '00000000-0000-0000-0000-000000000000')
   vi.stubEnv('RESEND_API_KEY', undefined)
   vi.stubEnv('SMTP_HOST', undefined)
-  vi.stubEnv('SZAMLAZZ_AGENT_KEY', DUMMY_ENV_VALUE)
+  vi.stubEnv('SZAMLAZZ_AGENT_KEY', DUMMY_LOWERCASE_AGENT_VALUE)
   vi.stubEnv('SZAMLAZZ_AFAKULCS', undefined)
   vi.stubEnv('OWNER_ALERT_EMAILS', 'tulajdonos@example.com')
   vi.stubEnv('NEXT_RUNTIME', 'nodejs')

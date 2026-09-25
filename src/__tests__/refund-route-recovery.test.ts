@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createRefundHandler, createRefundRecoveryStatusHandler } from '../lib/refund/route-handler'
 
-const service = vi.hoisted(() => ({ refund: vi.fn(), status: vi.fn(), recover: vi.fn() }))
+const service = vi.hoisted(() => ({
+  refund: vi.fn(),
+  status: vi.fn(),
+  recover: vi.fn(),
+  panel: vi.fn(),
+}))
 vi.mock('../lib/refund/refund-order', async (original) => ({
   ...(await original<typeof import('../lib/refund/refund-order')>()),
   refundOrder: service.refund,
@@ -12,6 +17,12 @@ vi.mock('../lib/refund/refund-recovery', () => ({
   getRefundRecoveryStatus: service.status,
   recoverRefundOrder: service.recover,
 }))
+vi.mock('../lib/refund/panel-context', () => ({ readRefundPanelContext: service.panel }))
+const PANEL = {
+  refundGate: 'Synthetic invoice gate',
+  paidDate: '2026-09-05',
+  daysSincePayment: 19,
+}
 
 const ORIGIN = 'https://synthetic.example.test'
 const ORDER = 'SYNTHETIC-RECOVERY-001'
@@ -42,6 +53,7 @@ function request(method = 'GET', body?: unknown, origin = ORIGIN) {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  service.panel.mockResolvedValue(PANEL)
   vi.stubEnv('NEXT_PUBLIC_SERVER_URL', ORIGIN)
   vi.stubGlobal(
     'fetch',
@@ -86,8 +98,10 @@ describe('persisted refund recovery route', () => {
       const response = await f.GET(request(), context())
       expect(response.status).toBe(200)
       expect(response.headers.get('cache-control')).toBe('no-store')
-      expect(await response.json()).toEqual(result)
+      // A mentett állapot változatlan, a panel összefüggése külön kulcson jön.
+      expect(await response.json()).toEqual({ ...result, panel: PANEL })
       expect(service.status).toHaveBeenCalledWith({ payload: f.payload, orderNumber: ORDER })
+      expect(service.panel).toHaveBeenCalledWith(f.payload, ORDER)
       expect(f.auth.mock.invocationCallOrder[0]).toBeLessThan(
         service.status.mock.invocationCallOrder[0]!,
       )
@@ -108,6 +122,7 @@ describe('persisted refund recovery route', () => {
     expect(get.headers.get('cache-control')).toBe('no-store')
     expect((await f.POST(request('POST', { action: 'recover' }), context())).status).toBe(code)
     expect(service.status).not.toHaveBeenCalled()
+    expect(service.panel).not.toHaveBeenCalled()
     expect(service.recover).not.toHaveBeenCalled()
     expect(service.refund).not.toHaveBeenCalled()
   })

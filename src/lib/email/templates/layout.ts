@@ -1,3 +1,4 @@
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../../contact-email'
 import type { EmailTemplate } from '../types'
 
 /**
@@ -6,6 +7,21 @@ import type { EmailTemplate } from '../types'
  */
 
 const BRAND_NAME = 'Kineticare'
+
+/**
+ * Az alapértelmezett lábléc, ha a sablon nem ad sajátot (`footer`). A K14
+ * tulajdonosi döntés szerint minden vevői levél megnevezi a hivatalos
+ * ügyfélszolgálati és panaszcímet, és a levél megválaszolható: a
+ * provider-réteg ugyanezt a címet teszi a Reply-To fejlécbe, ha a hívó nem
+ * adott mást (src/lib/email/provider.ts). GOV.UK: „include … contact details
+ * for your service if the user might need to contact you”
+ * (https://www.gov.uk/service-manual/design/sending-emails-and-text-messages);
+ * Postmark: „Avoid a noreply@ address if you can”
+ * (https://postmarkapp.com/guides/transactional-email-best-practices).
+ */
+export const DEFAULT_FOOTER_TEXT =
+  'Ez egy automatikus üzenet a Kineticare rendszerétől. Kérdésed vagy panaszod van? Válaszolj ' +
+  `erre a levélre, vagy írj az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
 
 /** A weboldal tokenjei (tokens.css) — egy forrásból, hogy ne csússzanak szét. */
 const SZIN = {
@@ -94,14 +110,14 @@ export interface LayoutInput {
   /** Halk záró megjegyzés a kártyán belül, a gomb alatt. Sima szöveg. */
   note?: string
   /**
-   * A lábléc két sora, ha a levél NEM „ne válaszolj" típusú. Sima szöveg,
-   * escape-elve.
+   * A levél saját, kétsoros lábléce. Sima szöveg, escape-elve.
    * - `reason`: miért kapja a címzett (Postmark: „Clearly identify the
    *   source/reason the recipient is receiving the email").
    * - `replyNote`: hova válaszolhat (GOV.UK: „include contact details for your
    *   service if the user might need to contact you",
    *   https://www.gov.uk/service-manual/design/sending-emails-and-text-messages).
-   * Elhagyva a váz a megszokott „automatikus üzenet, ne válaszolj" sort adja.
+   * Elhagyva a váz a `DEFAULT_FOOTER_TEXT`-et adja: automatikus üzenet, amely a
+   * hivatalos kapcsolati címet nevezi meg, és megválaszolható (K14).
    */
   footer?: { reason: string; replyNote: string }
 }
@@ -291,7 +307,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
                 ${
                   input.footer
                     ? `${escapeHtml(input.footer.reason)}<br />${escapeHtml(input.footer.replyNote)}`
-                    : `Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.`
+                    : escapeHtml(DEFAULT_FOOTER_TEXT)
                 }
               </td>
             </tr>
@@ -349,10 +365,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
   if (input.footer) {
     textLines.push('', input.footer.reason, input.footer.replyNote)
   } else {
-    textLines.push(
-      '',
-      `Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.`,
-    )
+    textLines.push('', DEFAULT_FOOTER_TEXT)
   }
 
   return { html, text: textLines.join('\n') }

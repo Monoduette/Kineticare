@@ -10,7 +10,8 @@
     "healthcheckPath": "/admin",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 3,
+    "restartPolicyMaxRetries": 10,
+    "drainingSeconds": 60,
     "numReplicas": 1
   }
 }

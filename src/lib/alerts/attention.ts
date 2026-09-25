@@ -199,6 +199,16 @@ export function attentionDefinitions(
         ],
       },
       label: 'sikertelen számla, stornó vagy helyesbítő',
+      // Előbb keresés és a visszatérítési panel, csak utána kézi kiállítás: a
+      // helyesbítő keresés-átvétel jobja ugyanezt a bizonylatot átveheti vagy
+      // kiállíthatja, és amíg ez lehetséges, a panel (refund-recovery.ts) a
+      // kézi kiállítást tiltja. A gombot a tényleges nevén mondjuk
+      // (recovery-action-label.ts, WCAG 2.2 SC 3.2.4). GOV.UK Design System,
+      // Error message: „Describe what has happened and tell them how to fix
+      // it.” (https://design-system.service.gov.uk/components/error-message/);
+      // NN/g, Error-Message Guidelines: „offer some potential remedies”
+      // (https://www.nngroup.com/articles/error-message-guidelines/).
+      //
       // Az ablak szándékos (a kézzel rendezett ügyet a rendszer nem látja, lásd
       // a fájl fejlécét), ezért a szöveg kimondja, mit NEM mutat ez a lista, és
       // hol van a teljes: NN/g, Visibility of System Status: „Only by knowing
@@ -207,7 +217,7 @@ export function attentionDefinitions(
       // Design System, Notification banner: „tell the user about something they
       // need to know about” (https://design-system.service.gov.uk/components/notification-banner/).
       // A havi runbook (08) sikertelen-bizonylat listájának nincs ablaka.
-      teendo: `Az utolsó ${ATTENTION_LOOKBACK_DAYS} napban a rendszer nem tudta kiállítani a bizonylatot. Állítsd ki kézzel a Számlázz.hu-ban. Ha a rendelésen több visszatérítés volt, egy korábbi helyesbítő akkor is hiányozhat, ha a legutóbbi kiállítottnak látszik. A ${ATTENTION_LOOKBACK_DAYS} napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (${MONTHLY_RECONCILIATION_CHAPTER}).`,
+      teendo: `Az utolsó ${ATTENTION_LOOKBACK_DAYS} napban a rendszer nem tudta kiállítani a bizonylatot. Kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a rendelésszámra, hogy nem készült-e már el. Stornónál és helyesbítőnél előbb nézd meg a rendelés visszatérítési paneljét: ha ott a „Feldolgozás folytatása” gomb látszik, azzal folytasd, ha pedig az áll ott, hogy ne állíts ki kézzel helyesbítőt, addig ne tedd. Ha nincs bizonylat, állítsd ki kézzel (05-ös útmutató), és szólj az üzemeltetőnek. Ha a rendelésen több visszatérítés volt, egy korábbi helyesbítő akkor is hiányozhat, ha a legutóbbi kiállítottnak látszik. A ${ATTENTION_LOOKBACK_DAYS} napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (${MONTHLY_RECONCILIATION_CHAPTER}).`,
     },
     {
       key: 'visszateritesElakadt',

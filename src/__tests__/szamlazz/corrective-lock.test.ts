@@ -3,12 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Intent-managed concurrency is covered separately with the real helper guard.
 vi.mock('../../lib/refund/intent-store', () => ({ loadRefundIntentsForOrder: async () => [] }))
+// Az eredeti számla adat-lekérdezése (áfakulcs-ellenőrzés, a-szamlazz-13):
+// egy 27%-os, élő eredeti számla, hogy valódi hálózati hívás ne mehessen ki.
+vi.mock('../../lib/szamlazz/invoice-data', () => ({
+  queryInvoiceData: async (szamlaszam: string) => ({
+    szamlaszam,
+    vatKeys: ['27'],
+    sztornozott: false,
+  }),
+}))
 
 import { getSzamlazzConfig } from '../../lib/szamlazz/client'
-import {
-  correctiveLockKey,
-  issueCorrectiveInvoiceForOrder,
-} from '../../lib/szamlazz/corrective'
+import { correctiveLockKey, issueCorrectiveInvoiceForOrder } from '../../lib/szamlazz/corrective'
 import type { Order } from '../../payload-types'
 
 /**
@@ -129,7 +135,10 @@ describe('issueCorrectiveInvoiceForOrder — advisory-zár (SEC-012)', () => {
       queryByKulsoAzon,
     })
 
-    expect(result).toMatchObject({ outcome: 'already-issued', correctiveInvoiceNumber: 'HELY-ELSO' })
+    expect(result).toMatchObject({
+      outcome: 'already-issued',
+      correctiveInvoiceNumber: 'HELY-ELSO',
+    })
     expect(postXml).not.toHaveBeenCalled()
   })
 })

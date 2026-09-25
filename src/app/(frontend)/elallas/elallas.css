@@ -1,0 +1,56 @@
+/**
+ * /elallas lap-szintű kiegészítései. Az űrlap a Kapcsolat űrlap osztályait
+ * használja (kapcsolat.css), itt csak a lap saját elemei élnek, a projekt
+ * tokenjeivel.
+ */
+
+/* A folyószövegbe ágyazott link (ÁSZF, adatkezelés, e-mail-cím) ALÁHÚZOTT:
+   a base.css alapnyelvén a link színe és díszítése a környező szövegé lenne,
+   ami a WCAG 2.2 SC 1.4.1 (Use of Color) bukása. Ugyanaz a megoldás, mint a
+   kapcsolat-űrlap hozzájárulás-linkjén (kapcsolat.css): ink szín + aláhúzás,
+   hoveren az akcent-mély szín. */
+.kc-withdrawal p a,
+.kc-withdrawal-success a:not(.kc-button) {
+  color: var(--kc-color-text);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  overflow-wrap: anywhere;
+}
+
+.kc-withdrawal p a:hover,
+.kc-withdrawal-success a:not(.kc-button):hover {
+  color: var(--kc-color-link-hover);
+}
+
+.kc-withdrawal-privacy {
+  margin-block-start: var(--kc-space-5);
+  color: var(--kc-color-text-muted);
+  font-size: var(--kc-font-s);
+}
+
+/* A visszaigazoló panel a vevő saját adatait mutatja vissza, amelyek szóköz
+   nélkül is hosszúak lehetnek (e-mail-cím). Törés nélkül 320 px-en 462 px
+   széles dokumentumot adott (mérve, Chromium), ezért a panel szövege bárhol
+   törhet (WCAG 2.2 SC 1.4.10 Reflow). */
+.kc-withdrawal-success {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A visszaigazoló panel adatai: címke–érték párok egymás alatt, hogy 320 px-en
+   se kelljen vízszintesen görgetni (WCAG 2.2 SC 1.4.10 Reflow). */
+.kc-withdrawal-success__list {
+  display: grid;
+  gap: var(--kc-space-1) var(--kc-space-4);
+  margin: 0;
+}
+
+.kc-withdrawal-success__list dt {
+  font-weight: var(--kc-font-weight-bold);
+}
+
+.kc-withdrawal-success__list dd {
+  margin: 0 0 var(--kc-space-2) 0;
+  overflow-wrap: anywhere;
+}

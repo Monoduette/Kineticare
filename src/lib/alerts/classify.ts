@@ -50,6 +50,28 @@ export const ALERT_CODES = {
   refundEllenorzesreVar: 'refund-ellenorzesre-var',
   /** Automatikus visszatérítés (paid-reject) sikertelen. */
   automatikusVisszateritesSikertelen: 'automatikus-visszaterites-sikertelen',
+  /** A Barion szerint más összeg ment már vissza, mint amit a rendelés nyilvántart (K17). */
+  visszateritesBarionElteres: 'visszaterites-barion-elteres',
+  /** A Barion elutasította a tulajdonosi visszatérítést, pénz nem mozdult. */
+  visszateritesBarionElutasitotta: 'visszaterites-barion-elutasitotta',
+  /** A Barion válaszából nem dönthető el, megtörtént-e a tulajdonosi visszatérítés. */
+  visszateritesKimeneteIsmeretlen: 'visszaterites-kimenete-ismeretlen',
+  /** A Barion visszaigazolta a visszatérítést, de a rendszer nem rögzítette. */
+  visszateritesRogziteseElakadt: 'visszaterites-rogzitese-elakadt',
+  /** A pénz visszament, de a hozzáférés vagy a bizonylat rendezése elakadt. */
+  visszateritesFeldolgozasaElakadt: 'visszaterites-feldolgozasa-elakadt',
+  /** Az automatikus visszatérítés (paid-reject) kimenete tisztázatlan. */
+  automatikusVisszateritesKimeneteIsmeretlen: 'automatikus-visszaterites-kimenete-ismeretlen',
+  /** A vevői visszatérítési értesítőt a szolgáltató véglegesen elutasította. */
+  visszateritesiErtesitoNemMentKi: 'visszateritesi-ertesito-nem-ment-ki',
+  /** A vevői visszatérítési értesítő sorsa bizonytalan (időtúllépés, hálózati vagy 5xx hiba). */
+  visszateritesiErtesitoBizonytalan: 'visszateritesi-ertesito-bizonytalan',
+  /** Élesben nincs e-mail-szolgáltató, a vevői visszatérítési értesítő nem ment ki. */
+  visszateritesiErtesitoNincsSzolgaltato: 'visszateritesi-ertesito-nincs-szolgaltato',
+  /** A helyesbítő számla nem található, és a rendszer újra sem küldheti be. */
+  helyesbitoNemKuldhetoBeUjra: 'helyesbito-nem-kuldheto-be-ujra',
+  /** A helyesbítő számla háttérbeli ellenőrzése többször hibára futott. */
+  helyesbitoUjraprobalasKimerult: 'helyesbito-ujraprobalas-kimerult',
 } as const
 
 /**

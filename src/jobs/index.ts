@@ -27,6 +27,20 @@ import {
  * jobok sem futnak. Workerek: `ENABLE_JOB_WORKERS=true`.
  */
 
+/**
+ * Az order-maintenance queue egy tickben ennyi jobot vesz fel. A Payload a
+ * felvett jobokat PÁRHUZAMOSAN futtatja (runJobs: `Promise.all`, `sequential`
+ * nélkül), és ebben a queue-ban futnak a számla-, stornó- és helyesbítő jobok:
+ * mindegyik egy zár-kapcsolatot és még 1–2 lekérdező kapcsolatot fog, a
+ * Számlázz.hu-hívások idejére is. A korábbi 25-ös limit egy Számlázz.hu-
+ * kimaradás utáni torlódásnál (resweep + újrapróbálások + friss rendelések) a
+ * 20-as poolt (payload.config.ts) kimerítette volna, és az egész oldal (pénztár,
+ * Barion-callback, admin) a kapcsolat-timeoutig állt volna (a-szamlazz-11).
+ * 4 job × legfeljebb 3 kapcsolat = 12, a maradék a kéréseké. A torlódás így
+ * is lefut, csak több tick (5 perc) alatt.
+ */
+export const ORDER_MAINTENANCE_AUTORUN_LIMIT = 4
+
 function jobWorkersEnabled(env: NodeJS.ProcessEnv): boolean {
   return env.ENABLE_JOB_WORKERS === 'true'
 }
@@ -87,7 +101,7 @@ export function buildJobsConfig(env: NodeJS.ProcessEnv = process.env): JobsConfi
             },
             {
               cron: ORDER_MAINTENANCE_CRON,
-              limit: 25,
+              limit: ORDER_MAINTENANCE_AUTORUN_LIMIT,
               queue: ORDER_MAINTENANCE_QUEUE,
             },
           ],

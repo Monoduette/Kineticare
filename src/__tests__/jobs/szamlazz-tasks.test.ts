@@ -21,6 +21,22 @@ import type { Order } from '../../payload-types'
  */
 const DUMMY_AGENT_KEY = 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK'
 
+/**
+ * A helyesbítő-kiállító a modul-határon mockolt (a job-nak nincs injektálási
+ * pontja): a job ágait lefedő többi teszt a kiállításig el sem jut, ezért a
+ * mock alapból hangosan dob.
+ */
+type IssueCorrectiveFn = (typeof import('../../lib/szamlazz'))['issueCorrectiveInvoiceForOrder']
+const szamlazz = vi.hoisted(() => ({
+  issueCorrective: vi.fn<IssueCorrectiveFn>(async () => {
+    throw new Error('TESZT-HIBA: ezen az ágon nem indulhat helyesbítő-kiállítás')
+  }),
+}))
+vi.mock('../../lib/szamlazz', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/szamlazz')>()),
+  issueCorrectiveInvoiceForOrder: szamlazz.issueCorrective,
+}))
+
 interface TaskResult {
   output: Record<string, unknown>
 }
@@ -315,6 +331,53 @@ describe('corrective-invoice-issue task', () => {
         outcome: 'failed',
         reason: 'ismeretlen visszatérítés-sorszám',
       })
+    } finally {
+      restore()
+    }
+  })
+
+  // A helyesbítő összege a kért sorszámú refund-bejegyzésé: ez megy a NAV-hoz.
+  // A visszatérítés indokát a kiállító nem olvassa (corrective.ts), ezt a
+  // corrective.test.ts őrzi, ezért itt csak a sorszám és az összeg számít.
+  it('a kiállító a kért sorszámú refund-bejegyzés összegét kapja, a kimenet a kiállítás eredménye', async () => {
+    const restore = withAgentKey()
+    try {
+      const order = {
+        id: 557,
+        orderNumber: 'KH-2026-000779',
+        status: 'paid',
+        invoiceNumber: 'E-TESZT-3',
+        refunds: [
+          {
+            transactionId: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+            amountHuf: 3000,
+            status: 'PartiallyRefunded',
+            refundedAt: '2026-09-20T10:00:00.000Z',
+            type: 'partial',
+          },
+          {
+            transactionId: 'c4a2e3f5-6a7b-4c8d-9e0f-1a2b3c4d5e6f',
+            amountHuf: 2000,
+            status: 'PartiallyRefunded',
+            refundedAt: '2026-09-21T10:00:00.000Z',
+            type: 'partial',
+          },
+        ],
+      } as unknown as Order
+      szamlazz.issueCorrective.mockResolvedValueOnce({
+        outcome: 'issued',
+        correctiveInvoiceNumber: 'E-TESZT-H2',
+      })
+      const { req } = reqWith(order)
+      const result = await runTask(correctiveInvoiceIssueTask, {
+        req,
+        input: { orderId: 557, refundSeq: 2 },
+      })
+      expect(szamlazz.issueCorrective).toHaveBeenCalledExactlyOnceWith(
+        order,
+        expect.objectContaining({ payload: req.payload, refundSeq: 2, amountHuf: 2000 }),
+      )
+      expect(result.output).toEqual({ outcome: 'issued', correctiveInvoiceNumber: 'E-TESZT-H2' })
     } finally {
       restore()
     }

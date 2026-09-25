@@ -28,6 +28,9 @@ const DB_GATED_TEST_FILES = [
   'order-number.test.ts',
   'products-status.test.ts',
   'webhook-audit-db.test.ts',
+  // A heti visszatérítés-újraellenőrzés jelöltlekérdezése (a `refunds` JSON-oszlop
+  // like-szűrése) csak valódi Postgresen bizonyítható (w1-barion-platform).
+  'order-poll-refund-recheck-db.test.ts',
 ]
 
 /** Egy biztosan zárt cím: a 1-es porton semmi sem figyel, a kapcsolat azonnal elutasított. */

@@ -4,7 +4,10 @@ import { issueInvoiceForOrder } from '../../lib/szamlazz'
 import { resolveSzamlazzTaskGate } from '../szamlazz-task-gate'
 
 /**
- * invoice-issue: paid után számla; `szamlaKulsoAzon` = orderNumber (idempotens).
+ * invoice-issue: paid után számla. Idempotens: a beküldés előtt a globálisan
+ * egyedi `szamlaKulsoAzon`-on (kulso-azon.ts) lekérdez, és egyeztetett
+ * bizonylatot vesz át. Visszatérített, számla nélküli rendelésre nem állít ki
+ * utólag számlát (K12), hanem RIASZTÁS-t ír.
  * A konfig-kapu (`resolveSzamlazzTaskGate`) a no-op / fél-lábas konfig ágát
  * throw nélkül zárja — lásd src/jobs/szamlazz-task-gate.ts.
  */

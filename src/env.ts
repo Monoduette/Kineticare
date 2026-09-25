@@ -320,6 +320,14 @@ function isProductionRuntime(): boolean {
   return process.env.NODE_ENV === 'production'
 }
 
+/**
+ * A job-workerek (ENABLE_JOB_WORKERS) TUDATOS kikapcsolásának nyugtázása az
+ * éles címen. Értéke 'igen'. Nélküle az éles oldal kikapcsolt workerekkel nem
+ * indul el, mert akkor egyetlen számla sem áll ki, és az elveszett
+ * Barion-callbackek sem pótlódnak (a-callback-10).
+ */
+export const JOB_WORKERS_OFF_CONFIRM_ENV = 'JOB_WORKERS_OFF_CONFIRM'
+
 /** Induláskori, error-szintű riasztás-kimenet (RIASZTÁS-sor). */
 export type BootAlert = (message: string, context?: Record<string, unknown>) => void
 
@@ -387,6 +395,19 @@ export function assertRequiredEnv(
     )
   }
 
+  // r-szamlazz-14: a Számlázz.hu csak kisbetűs Agent-kulcsot fogad el („A
+  // rendszer csak kisbetűs kulcsot fogad el”, docs.szamlazz.hu/hu/agent/basics/
+  // authentication). Nagybetűs kulccsal minden számlakérés 3-as hibával,
+  // véglegesen bukik. Az érték soha nem kerül az üzenetbe.
+  if (isEnvSet('SZAMLAZZ_AGENT_KEY') && /[A-Z]/.test(process.env.SZAMLAZZ_AGENT_KEY ?? '')) {
+    alert(
+      'RIASZTÁS: a SZAMLAZZ_AGENT_KEY nagybetűt tartalmaz, a Számlázz.hu viszont csak kisbetűs ' +
+        'Agent-kulcsot fogad el: így egyetlen számla sem áll ki. Másold be újra a kulcsot a ' +
+        'Számlázz.hu Vezérlőpultjáról, pontosan úgy, ahogy ott látszik (kisbetűvel).',
+      { valtozo: 'SZAMLAZZ_AGENT_KEY' },
+    )
+  }
+
   // EMAIL_FROM kötelező, ha van levélküldő — különben `noreply@localhost` és csendes küldési hiba.
   const emailFrom = process.env.EMAIL_FROM?.trim()
   const vanLevelkuldo = isEnvSet('RESEND_API_KEY') || isEnvSet('SMTP_HOST')
@@ -420,26 +441,62 @@ export function assertRequiredEnv(
     // a kulcs értékét soha nem tartalmazza (src/lib/barion/client.ts).
     const barionConfig = getBarionConfig(process.env)
     logBarionConfigSummary(barionConfig)
-    if (barionConfig.environment === 'test' && isLiveSiteUrl(rawServerUrl)) {
-      warn?.('barion_teszt_kornyezet_az_eles_oldalon', {
-        reszletek:
-          'Az oldal az éles címen fut (NEXT_PUBLIC_SERVER_URL), de a BARION_ENVIRONMENT értéke ' +
-          'test: a vásárlók a Barion teszt-környezetében fizetnek, valódi pénz nem érkezik. ' +
-          'Élesítés: BARION_ENVIRONMENT=prod, BARION_API_URL=https://api.barion.com és a bolt ' +
+    const liveSite = isLiveSiteUrl(rawServerUrl)
+
+    // a-egyeztetes-6 / a-ops-4: az éles címen a teszt-Barion mellett a
+    // sandbox-fizetések paid-re vinnék a rendelést, és a bekapcsolt számlázás
+    // VALÓDI, a NAV-nak jelentett számlát állítana ki fedezet nélkül. Ez az
+    // eset nem indulhat. (Éles naplóval igazolva, hogy ma nem ez a helyzet:
+    // 2026-09-24 barion_konfiguracio → barionEnvironment 'prod'.) Számlázás
+    // nélkül RIASZTÁS, de az oldal elindul.
+    if (barionConfig.environment === 'test' && liveSite) {
+      if (isEnvSet('SZAMLAZZ_AGENT_KEY')) {
+        throw new Error(
+          'Az alkalmazás nem indulhat el. Az éles címen (NEXT_PUBLIC_SERVER_URL) a ' +
+            "BARION_ENVIRONMENT nem 'prod', miközben a számlázás be van kapcsolva " +
+            '(SZAMLAZZ_AGENT_KEY): a Barion teszt-környezetében fizetett rendelések valódi, a ' +
+            "NAV-nak jelentett számlát kapnának. Állítsd a BARION_ENVIRONMENT-et 'prod'-ra (a " +
+            'BARION_API_URL-lel és a BARION_POSKEY_PROD-dal együtt), vagy tesztelj külön, nem éles ' +
+            'szolgáltatáson.',
+        )
+      }
+      alert(
+        'RIASZTÁS: az oldal az éles címen fut (NEXT_PUBLIC_SERVER_URL), de a BARION_ENVIRONMENT ' +
+          "értéke nem 'prod': a vásárlók a Barion teszt-környezetében fizetnek, valódi pénz nem " +
+          'érkezik. Élesítés: BARION_ENVIRONMENT=prod, BARION_API_URL az éles API-ra, és a bolt ' +
           'titkos kulcsa a BARION_POSKEY_PROD változóban.',
-      })
+        { valtozo: 'BARION_ENVIRONMENT' },
+      )
     }
 
-    // ENABLE_JOB_WORKERS nélkül nincs webhook-retry / order-poll — figyelmeztetés, nem boot-hiba.
+    // a-callback-10: az ENABLE_JOB_WORKERS az egyetlen kapcsoló minden
+    // újrapróbálásra, a pollra ÉS a számlakiállításra (az invoice-issue job is
+    // a worker-sorban fut). Az éles címen nyugtázás (JOB_WORKERS_OFF_CONFIRM=igen)
+    // nélkül nem indul; az éles napló szerint a workerek ma be vannak kapcsolva
+    // (a webhook-retry percenként fut, job_workerek_kikapcsolva sor nincs).
     if (process.env.ENABLE_JOB_WORKERS !== 'true') {
-      warn?.('job_workerek_kikapcsolva', {
-        reszletek:
-          'Az ENABLE_JOB_WORKERS nincs "true" értéken: élesben nem fut a webhook-retry, az ' +
-          'order-poll és a számla-resweep. Elveszett Barion-callback esetén a rendelés ' +
-          'payment_pending-ben ragadna, és a számlák sem állítódnának újra sorba. ' +
-          'Nézd meg a Railway env-t (staging + prod). Élesítés: ENABLE_JOB_WORKERS=true. ' +
-          'Fail-closed boot szándékosan nincs: a hiányzó flag ne vigye el a boltot.',
-      })
+      const reszletek =
+        'Az ENABLE_JOB_WORKERS nincs "true" értéken: nem fut a webhook-retry, az order-poll és ' +
+        'a számla-resweep, és egyetlen számla sem áll ki (a számlakiállítás is a job-sorban ' +
+        'fut). Elveszett Barion-callback esetén a rendelés payment_pending-ben ragadna. ' +
+        'Élesítés: ENABLE_JOB_WORKERS=true.'
+      if (liveSite) {
+        if (process.env[JOB_WORKERS_OFF_CONFIRM_ENV]?.trim() !== 'igen') {
+          throw new Error(
+            `Az alkalmazás nem indulhat el. ${reszletek} Ha a workereket az éles címen ` +
+              `szándékosan kapcsolod ki, állítsd be a ${JOB_WORKERS_OFF_CONFIRM_ENV}=igen ` +
+              'nyugtázást is.',
+          )
+        }
+        alert(
+          `RIASZTÁS: a job-workerek az éles címen tudatosan ki vannak kapcsolva. ${reszletek}`,
+          {
+            valtozo: 'ENABLE_JOB_WORKERS',
+          },
+        )
+      } else {
+        warn?.('job_workerek_kikapcsolva', { reszletek })
+      }
     }
 
     const [siteKeyEnv, secretKeyEnv] = turnstileEnvPair
