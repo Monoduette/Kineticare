@@ -1,15 +1,76 @@
 # Kineticare — teljes feladatlista
 
-**Utolsó frissítés:** 2026-09-23. A `main` a `d5c144d` (#293) commiton áll,
-a #283–#293 PR-ek mind bent vannak.
+**Utolsó frissítés:** 2026-09-25. A `main` a `d59056c` (#307) commiton áll,
+a #283–#307 PR-ek mind bent vannak.
 
 A lista elején a **ma nyitott** tételek állnak, utána a 2026 szeptemberében
 lezárt munka, végül a korábbi állapotok archívuma. A régi táblák nem tűntek el:
 az „Archív” szakaszba kerültek, hogy a döntések nyoma megmaradjon.
 
-## Nyitott most (2026-09-23)
+## Nyitott most (2026-09-25)
 
-### 1. Domain-átállás: `www.kineticare.hu` → Railway
+### 1. Fizetés, számlázás és ÁSZF: az élesítés utáni teendők
+
+A tulajdonos három fő kérdése a számlázás, az ÁSZF és a Barion
+(`CLAUDE.md`, „Állapotjelentés a tulajdonosnak”). A W1 (#307) 2026-09-25-én
+beolvadt; a keményítés élesben van, de egyik folyamat sem futott még végig
+valódi vásárlással.
+
+| #   | Teendő                                                                                                                                                     | Ki                 | Megjegyzés                                                                                                                                                                                                                                                                                                                                                                        |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | Barion: az első éles fizetésindítás a W1 után, pénzmozgás nélkül (runbook 11: vendég- és bejelentkezett indítás, a Barion-oldal megnyílik, riasztás nincs) | tulajdonos         | A 09-16-i és a 09-24-i próba `401 AuthenticationFailed`-del bukott, mert a Barion-bolt akkor még nem volt élesítve; a tulajdonos a próba után élesítette. Ez nem kulcshiba (`CLAUDE.md` 25. tanulság).                                                                                                                                                                            |
+| F2  | Számlázás: az első éles számla                                                                                                                             | tulajdonos         | A számlázás élesben be van kapcsolva, de fizetett rendelés még nem volt, így éles számla sem készült. Javaslat: próbavásárlás a legolcsóbb kurzusra, utána visszatérítés. Így a számla, a stornó vagy helyesbítő és a vevői értesítők is lefutnak.                                                                                                                                |
+| F3  | ÁSZF: ügyvédi átnézés (K15)                                                                                                                                | tulajdonos, ügyvéd | Tulajdonosi döntés: élesítés most, ügyvéd utólag. Az ÁSZF-ben nincs a 45/2014. Korm. rendelet 11. § (1) i) szerinti elállási pont (határidő, gyakorlás módja, nyilatkozatminta, visszatérítés), csak az „Elállási jog kizárása”. A „Fizetés után a Vásárló pénzvisszafizetést nem kérhet” mondat ütközik az online elállási funkcióval és a 23. § (1)-gyel. Kódból nem javítható. |
+| F4  | Külső életjel-figyelés (`HEALTHCHECK_PING_URL`)                                                                                                            | tulajdonos         | Élesben nincs beállítva: ha a job-workerek leállnak, külső figyelő nem jelez, csak a napló. Kell egy Healthchecks.io-csekk, és a címe a Railway-en.                                                                                                                                                                                                                               |
+| F5  | A #307 utolsó Codex-átnézésének öt közepes (P2) találata                                                                                                   | fejlesztés         | Lent részletezve. A #307 a tulajdonos döntése szerint zöld CI-vel beolvadt; a PR szálain a válasz rögzíti az ellenőrzést. Egyik sem mozgat rosszul pénzt vagy számlát.                                                                                                                                                                                                            |
+| F6  | A W1 harmadik hibavadász-körének kisebb találatai                                                                                                          | fejlesztés         | Lent részletezve. Egyik sem mozgat rosszul pénzt vagy bizonylatot.                                                                                                                                                                                                                                                                                                                |
+
+**F5, a #307 Codex-találatai (2026-09-25):**
+
+- Visszatérítés-egyeztetés: a rögzített visszatérítésekből csak a `Succeeded`
+  számít, a `Refunded` és a `PartiallyRefunded` nem, pedig a közös osztályozó
+  (`classifyRefundedTransactionStatus`) ezeket is sikeresnek veszi. Ilyenkor
+  téves `foreign-refund` riasztás szól.
+- Elállási űrlap JavaScript nélkül: a natív POST az `/elallas` oldalra megy, a
+  nyilatkozat nem rögzül. Űrlap-kódolást fogadó szerveroldali végpont és
+  visszaigazoló oldal kell mögé.
+- Számla-resweep: ha a tíz legrégebbi jelöltnek már van élő számlajobja, egy
+  elveszett jobú tizenegyedik rendelés addig nem kerül sorra, amíg a torlódás
+  el nem fogy. A resweep vegyen fel helyettük továbbiakat.
+- Visszatérítések heti újraellenőrzése: ha a workerek a 7–8. nap teljes 24
+  órás sávjában nem futnak, a visszatérítés kimarad, és riasztás sem szól.
+- Kézi számlaszám rögzítése: két egyidejű futás két rendelésen ugyanazt a
+  számot rögzíthetné. A számlaszám szerinti zár kell.
+
+**F6, a W1 hibavadász-kör kisebb találatai:**
+
+- `/api/elallas`: a Turnstile szerveroldali kiesése 400 és figyelmeztetés,
+  RIASZTÁS nélkül (a pénztár 503-at ad és riaszt).
+- A globális 404-oldalról hiányzik az „Elállás a szerződéstől” link.
+- A visszatérítés-egyeztetés riasztása (visszafordított vagy elbukott kártyás
+  visszatérítés) az admint ajánlja, amely ilyenkor elutasít; nincs alertCode és
+  runbook-sor.
+- Hat Számlázz.hu-RIASZTÁS kódja nincs a runbook 11-ben; két sor sosem
+  illeszkedik.
+- A kézikönyv 3.3 pontja és a 05/08-as runbook szerint a számla külső
+  azonosítója a puszta rendelésszám, pedig a #307 egyedivé tette.
+- A `docs/szamlazz-megfeleles.md` szerint semmi nem állítja sorba a helyesbítő
+  jobot, pedig a helyreállítás igen.
+- Stornó: ha a pending-írás közvetlenül az igénylés után bukik, a panel
+  beküldést állít, pedig kérés nem ment ki.
+- A leállás-kiürítés riasztása szerint a schedule-őr lezárja a megszakított job
+  sorát; az esemény-vezérelt jobokra ez nem igaz (ellenőrizendő).
+- Az automatikus visszatérítésnél a lezárás utáni zár-hiba elnyeli a vevői
+  értesítőt (ellenőrizendő).
+- A pénztár áfa-mondata nincs a `SZAMLAZZ_AFAKULCS`-hoz kötve: a 27%-os
+  átállás (runbook 14) előtt javítani kell.
+- A pénztári Turnstile kliensoldali kiesése riasztás nélkül blokkol; a widget
+  320 px-en kilóghat; két Turnstile-ág és a köszönőoldal kísérlet-kerete
+  teszteletlen.
+- Ha az audit és a munkatársi értesítő egyszerre bukik, a riasztások nem
+  létező bizonyítékra mutatnak (ellenőrizendő).
+
+### 2. Domain-átállás: `www.kineticare.hu` → Railway
 
 A teljes, mért menetrend: [`docs/kineticare-hu-atallas.md`](kineticare-hu-atallas.md),
 „Mért állapot és menetrend (2026-09-23)”. Csak a `www` CNAME változik; az apex,
@@ -30,7 +91,7 @@ a levelezés és a többi rekord marad.
 | D11 | Google Ads szünetel, amíg a DNS nem az új platformra mutat                                                                                         | tulajdonos | `docs/adwords-kampany.md` 0.1.                                                                                                                            |
 | D12 | A rossz helyen álló SES MX törlése az apexről (`10 feedback-smtp.us-east-1.amazonses.com`)                                                         | tulajdonos | Az átállástól független. Ha a `mail.kineticare.hu` leáll, a bejövő levél ide menne, és elveszne. A `send.kineticare.hu` MX-e marad.                       |
 
-### 2. Systeme.io vevők átköltöztetése
+### 3. Systeme.io vevők átköltöztetése
 
 | #   | Teendő                                                                       | Megjegyzés                                                                                        |
 | --- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -38,7 +99,7 @@ a levelezés és a többi rekord marad.
 | M2  | Az átállási értesítő levél kiküldése (email-job, `MIGRATION_NOTICE_CONFIRM`) | **Csak a végleges domain élesedése után.**                                                        |
 | M3  | A Systeme.io előfizetés lemondása                                            | **T+14 előtt ne.** Addig a visszaállás útja is ez.                                                |
 
-### 3. Tulajdonosi döntésre szándékosan parkolva
+### 4. Tulajdonosi döntésre szándékosan parkolva
 
 Ezekhez nem nyúlunk, amíg a tulajdonos nem dönt:
 
@@ -49,7 +110,7 @@ Ezekhez nem nyúlunk, amíg a tulajdonos nem dönt:
   „Visszaállítom …” gomb van, a mentést nem állítja meg);
 - új globális beállítások (Payload globals) a kódban élő szövegekhez.
 
-### 4. Dependabot
+### 5. Dependabot
 
 | PR   | Tartalom                    | Megjegyzés                                       |
 | ---- | --------------------------- | ------------------------------------------------ |
@@ -60,18 +121,18 @@ Ezekhez nem nyúlunk, amíg a tulajdonos nem dönt:
 A `@payloadcms/*` verziók pinneltek; emelésük csak kifejezett tulajdonosi
 kérésre, külön PR-ben (`CLAUDE.md`, TILOS ZÓNÁK 5.).
 
-### 5. Korábbról nyitva maradt
+### 6. Korábbról nyitva maradt
 
-| #       | Tétel                                                                           | Állapot                                                                                                                                                                                                     |
-| ------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| W3      | beágyazott zár + `pool.max`                                                     | `pool.max` 20 (W1); a `max_connections`-t minden induláskor mérjük, szűkös keretnél RIASZTÁS. A beágyazott zár nyitva.                                                                                      |
-| C6      | Consent-flow E2E stagingen, valódi PostHog-kulccsal és GA4-azonosítóval         | A harness kész (`docs/consent-e2e.md`).                                                                                                                                                                     |
-| C14     | Offsite mentés: E2E restore drill                                               | Emberi kapu: `DATABASE_URI` repo-secret, `BACKUP_AGE_RECIPIENT`, kézi futás, visszafejtés, restore sorszám-egyeztetéssel (`docs/adatbazis-mentes.md`).                                                      |
-| C15–C17 | SEO/GEO tartalmi munka, prompt-portfólió, bot-védelem ellenőrzése élesítés után | `docs/seo-geo-llm.md`.                                                                                                                                                                                      |
-| R1      | Railway legacy Config as Code kivezetése **2026-12-01 előtt**                   | `railway config migrate` előnézet, emberi jóváhagyással `--apply`, utána tiszta `railway config plan` (`docs/deploy-railway.md`).                                                                           |
-| R2      | A #292/#293 tartalom-szabályainak éles futtatása (content-job)                  | Nem ellenőriztük innen, lefutott-e: a sín Elrendezés-kitöltése és a „szakembereknek” webcímű oldal létrehozása. A naplóban „MÁR …” sorok jelzik, hogy nincs teendő (`docs/deploy-railway.md`, content-job). |
+| #       | Tétel                                                                           | Állapot                                                                                                                                                                                                                          |
+| ------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W3      | beágyazott zár + `pool.max`                                                     | `pool.max` 20 (W1); a `max_connections`-t minden induláskor mérjük, szűkös keretnél RIASZTÁS. Mérve 2026-09-25 (a #307 deployja): `max_connections` 100, két konténer × 20 + 10 tartalék = 50, belefér. A beágyazott zár nyitva. |
+| C6      | Consent-flow E2E stagingen, valódi PostHog-kulccsal és GA4-azonosítóval         | A harness kész (`docs/consent-e2e.md`).                                                                                                                                                                                          |
+| C14     | Offsite mentés: E2E restore drill                                               | Emberi kapu: `DATABASE_URI` repo-secret, `BACKUP_AGE_RECIPIENT`, kézi futás, visszafejtés, restore sorszám-egyeztetéssel (`docs/adatbazis-mentes.md`).                                                                           |
+| C15–C17 | SEO/GEO tartalmi munka, prompt-portfólió, bot-védelem ellenőrzése élesítés után | `docs/seo-geo-llm.md`.                                                                                                                                                                                                           |
+| R1      | Railway legacy Config as Code kivezetése **2026-12-01 előtt**                   | `railway config migrate` előnézet, emberi jóváhagyással `--apply`, utána tiszta `railway config plan` (`docs/deploy-railway.md`).                                                                                                |
+| R2      | A #292/#293 tartalom-szabályainak éles futtatása (content-job)                  | Nem ellenőriztük innen, lefutott-e: a sín Elrendezés-kitöltése és a „szakembereknek” webcímű oldal létrehozása. A naplóban „MÁR …” sorok jelzik, hogy nincs teendő (`docs/deploy-railway.md`, content-job).                      |
 
-## Kész 2026 szeptemberében (#283–#293)
+## Kész 2026 szeptemberében (#283–#307)
 
 | PR   | Mi került be                                                                                                                                                                                                                                                                                          |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -86,6 +147,20 @@ kérésre, külön PR-ben (`CLAUDE.md`, TILOS ZÓNÁK 5.).
 | #291 | Zárt-kéz sín, üres /rolunk fejléckép, DUMMY tesztértékek.                                                                                                                                                                                                                                             |
 | #292 | Admin-integráció (magyar felület, menücsoportok, AA-kontraszt), szerkesztői réteg (sorcímkék, mélylink, „Szerkesztem” szalag), kezdőlapi videó feliratai CMS-ben, Tudástár-kapcsoló, fríz és „Kurzusaink” fotóhelyek. Migrációk: `20260922_225015_film_hero_feliratok`, `20260923_073659_kep_helyek`. |
 | #293 | Ajánlat-kártyák blokk, Háttérfelirat, Gombos kiemelő sáv Kép mezője (migráció `20260923_083202_a_csapat_blokkmezok`), /szakembereknek a CMS-ből, kurzusoldali forrás-szalagok, mező-mélylink, induláskori seed csak friss telepítésen, „Mi hol szerkeszthető” táblázat.                               |
+| #294 | Mobil sín-ugrás javítása, naprakész projektleírás és dokumentáció.                                                                                                                                                                                                                                    |
+| #295 | „KÉZREHABILITÁCIÓ” feliratos logó, README-pontosítás.                                                                                                                                                                                                                                                 |
+| #296 | Mobil fejléc középre igazítva, finomabb nyitás-zárás a sínen, keskeny asztalon kisebb logó.                                                                                                                                                                                                           |
+| #297 | Sín: felfelé nyitásnál a képernyőről kicsúszó sorok elhalványulnak.                                                                                                                                                                                                                                   |
+| #298 | 308-as átirányítás a Search Console három 404-es régi címére.                                                                                                                                                                                                                                         |
+| #299 | A robots.txt engedi a nyilvános képeket (`/api/media/file/`).                                                                                                                                                                                                                                         |
+| #300 | Meta Pixel: csak hozzájárulás után, azonosító nélkül nem fut.                                                                                                                                                                                                                                         |
+| #301 | Űrlapok: második Turnstile-widget, újrapróbálás, 320 px; zöld sikerdoboz a hírlevélnél; stáb-értesítő javítások.                                                                                                                                                                                      |
+| #302 | Search Console: Product snippets és Merchant listings hibák.                                                                                                                                                                                                                                          |
+| #303 | Barion: PaymentId kötőjellel és anélkül, a v4 PaymentState csak kötőjel nélkül, Start-mezőkorlátok.                                                                                                                                                                                                   |
+| #304 | Éles fizetési kör, 1. javítási kör: Barion, pénztár, Számlázz.hu, visszatérítés, e-mail, ÁSZF (alanyi adómentes mondat).                                                                                                                                                                              |
+| #305 | Riasztási csatorna, napi összesítő, életjel, Figyelmet igényel blokk, AAM-keretfigyelő, havi egyeztető export, termék- és ár-őrök.                                                                                                                                                                    |
+| #306 | A #305 utolsó bot-találatai: napi összesítő, AAM, riasztási sink, runbook 08, ár-verseny.                                                                                                                                                                                                             |
+| #307 | W1: a Barion, a számlázás, a visszatérítés, az online elállás (`/elallas`) és a pénztár élesítés előtti keményítése; az order-poll saját queue-ja.                                                                                                                                                    |
 
 **Biztonsági átnézés, 2026-09-23:** a #290–#293 változásain lefutott security
 review nem talált kihasználható hibát.
