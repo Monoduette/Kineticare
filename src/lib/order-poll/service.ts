@@ -249,6 +249,17 @@ export const REFUND_RECHECK_MAX_ATTEMPTS = 3
  */
 export const REFUND_RECHECK_RETRY_GAP_MS = REFUND_RECHECK_BAND_MS / 4
 /**
+ * Ha a futás újraellenőrzése globális ok miatt áll meg (hitelesítési hiba,
+ * útvonalhibára utaló puszta 404, szállítási hiba, vagy a futás már a függő
+ * soroknál megszakadt), a sávból ennyi időn belül kieső, még le nem zárt
+ * visszatérítés sor-szintű RIASZTÁS-t kap, és a sávban többet nem próbáljuk.
+ * Így egy hosszú kiesés sem viheti ki a visszatérítést némán a sávból
+ * (rev3-rev2, BRK-X1). Az egy óra fedi a futások közti legrosszabb szünetet: a
+ * cron 5 perces, de egy futás a schedule-guard modellje szerint nagyjából egy
+ * óráig is tarthat.
+ */
+export const REFUND_RECHECK_LAST_CHANCE_MS = 60 * 60 * 1000
+/**
  * Az átmeneti hibával elbukott, újrapróbálásra váró újraellenőrzések:
  * fojtás-kulcs → eddigi sikertelen kísérletek és az utolsó hiba ideje. A
  * fojtás-kulcshoz hasonlóan folyamat-szintű (numReplicas: 1): újraindulás után
@@ -1736,12 +1747,11 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
    * többi visszatérítését. A globális hibák (hitelesítés, útvonalhibára utaló
    * puszta 404, szállítási hiba) megállítják a futás újraellenőrzését; a
    * hitelesítési hiba és a bizonyítatlan útvonalú 404 kísérletet sem számol,
-   * mert nem a sorról szól.
+   * mert nem a sorról szól, de a sort ilyenkor is hátrébb teszi. Globális
+   * megállásnál a sávból hamarosan kieső sorok sor-szintű RIASZTÁS-t kapnak
+   * (REFUND_RECHECK_LAST_CHANCE_MS).
    */
   const recheckRefundsAfterWeek = async (): Promise<void> => {
-    if (barionAborted) {
-      return
-    }
     const untilMs = now - REFUND_RECHECK_AFTER_MS
     const sinceMs = untilMs - REFUND_RECHECK_BAND_MS
     // A részleges visszatérítés ideje a `refunds` JSON-oszlopban él. A Payload
@@ -1816,10 +1826,69 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       ...inBand.filter((candidate) => !refundRecheckFailures.has(candidate.recheckKey)),
       ...inBand.filter((candidate) => refundRecheckFailures.has(candidate.recheckKey)),
     ]
+    const alertGaveUp = (
+      { order, refundedAtMs }: (typeof inBand)[number],
+      details: {
+        reason: 'kiserletek-elfogytak' | 'vegleges-hiba' | 'globalis-hiba'
+        attempts: number
+        failureClass: string
+        error: unknown
+      },
+    ): void => {
+      emitAlert(
+        log,
+        'visszaterites-ujraellenorzes-elmaradt',
+        'RIASZTÁS: a visszatérítés egy héttel későbbi ellenőrzése ennél a rendelésnél nem ' +
+          'futott le, és a rendszer többet nem próbálja. Nézd meg kézzel a fizetést a Barion ' +
+          'adminban: ha ott a visszatérítés sikertelen, vagy sztornózták ' +
+          '(StornoUnSuccessfulRefundToBankCard), a vevő nem kapta meg a pénzt.',
+        {
+          orderId: order.id,
+          orderNumber: order.orderNumber ?? null,
+          paymentId: order.barionPaymentId ?? null,
+          refundedAt: new Date(refundedAtMs).toISOString(),
+          reason: details.reason,
+          attempts: details.attempts,
+          failureClass: details.failureClass,
+          httpStatus:
+            details.error instanceof BarionApiError ? (details.error.httpStatus ?? null) : null,
+          providerErrorCodes: providerErrorCodesOf(details.error),
+        },
+      )
+    }
+    /**
+     * BRK-X1: a futás globális ok miatt nem ellenőrzi a sáv többi sorát. Amelyik
+     * még le nem zárt sor REFUND_RECHECK_LAST_CHANCE_MS-on belül kiesik a
+     * sávból, az most kap RIASZTÁS-t (a kulcs foglalt marad), különben egy
+     * hosszú kiesés alatt némán kimaradna. A már ellenőrzött vagy feladott sor
+     * kulcsa foglalt, azt a fojtás kiszűri.
+     */
+    const giveUpRowsLeavingBand = (failureClass: string): void => {
+      for (const candidate of ordered) {
+        if (candidate.refundedAtMs - sinceMs >= REFUND_RECHECK_LAST_CHANCE_MS) {
+          continue
+        }
+        if (!shouldEmitThrottledAlert(candidate.recheckKey, 2 * REFUND_RECHECK_BAND_MS, now)) {
+          continue
+        }
+        const attempts = refundRecheckFailures.get(candidate.recheckKey)?.failures ?? 0
+        refundRecheckFailures.delete(candidate.recheckKey)
+        alertGaveUp(candidate, { reason: 'globalis-hiba', attempts, failureClass, error: null })
+      }
+    }
+    // A függő sorok hitelesítési vagy szállítási megszakítása után a GetState
+    // ugyanúgy elhasalna: nincs hívás, csak a sávból kieső sorok RIASZTÁS-a.
+    if (barionAborted) {
+      giveUpRowsLeavingBand('futas-megszakadt')
+      return
+    }
     let checked = 0
     /** Volt-e sikeres GetState az újraellenőrzésben (az útvonalat bizonyítja). */
     let recheckFetchSucceeded = false
-    for (const { order, refundedAtMs, recheckKey } of ordered) {
+    /** A futás újraellenőrzését megállító globális hiba osztálya (lásd giveUpRowsLeavingBand). */
+    let globalStopClass: string | null = null
+    for (const candidate of ordered) {
+      const { order, refundedAtMs, recheckKey } = candidate
       if (checked >= REFUND_RECHECK_BATCH_SIZE) {
         break
       }
@@ -1868,40 +1937,67 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         fetchFailure.error instanceof BarionApiError
           ? (fetchFailure.error.httpStatus ?? null)
           : null
-      // A hitelesítési hiba nem sorfüggő (rossz vagy lejárt, esetleg épp
-      // forgatott POSKey): a sort nem adjuk fel és kísérletet sem számolunk,
-      // a futás többi sorát sem égetjük el. A következő futás újrapróbálja.
-      if (failureClass === 'auth') {
+      /**
+       * Globális hibánál (hitelesítés, bizonyítatlan útvonalú 404) a sor nem
+       * hibás: kísérletet nem számolunk, a sort nem adjuk fel. A sor viszont a
+       * még nem próbáltak mögé kerül, és REFUND_RECHECK_RETRY_GAP_MS-ig nem
+       * kérdezzük újra: egy sorra szóló, tartós puszta 404 így nem állhat
+       * futásról futásra a lista elején a sáv többi visszatérítése előtt
+       * (rev3-rev2, major). A futás többi sorát nem égetjük el.
+       */
+      const deferWithoutAttempt = (): void => {
         releaseThrottledAlert(recheckKey)
+        refundRecheckFailures.set(recheckKey, {
+          failures: previous?.failures ?? 0,
+          lastFailureAt: now,
+        })
+      }
+      // A hitelesítési hiba nem sorfüggő (rossz vagy lejárt, esetleg épp
+      // forgatott POSKey). A következő futás újrapróbálja.
+      if (failureClass === 'auth') {
+        deferWithoutAttempt()
         alertRunAbort(
           'barion-abort:auth',
           'RIASZTÁS: Barion hitelesítési hiba (rossz vagy lejárt POSKey) a visszatérítések ' +
-            'egy héttel későbbi ellenőrzésében: a futás ellenőrzése megállt. Ellenőrizd a ' +
-            'Barion-környezetet és a POSKey-t; a következő ütemezett futás újrapróbálja.',
+            'egy héttel későbbi ellenőrzésében: ebben a futásban az ellenőrzés leállt. ' +
+            'Ellenőrizd a Barion-környezetet és a POSKey-t; a következő ütemezett futás ' +
+            'újrapróbálja. Ha egy visszatérítés ellenőrzési ideje közben lejárna, arról ' +
+            'külön RIASZTÁS megy.',
           { source: 'refund-recheck', httpStatus },
         )
+        globalStopClass = failureClass
         break
       }
       let transient = !fetchFailure.failed || isTransientRefundRecheckFailure(fetchFailure.error)
       // A puszta 404 (not-found kód nélkül) globális útvonalhiba is lehet
       // (isUnverifiedNotFound). Csak akkor végleges erre a sorra, ha a futásban
       // bizonyított, hogy az útvonal működik (másik sikeres GetState vagy az
-      // útvonal-próba). Ha a próba is elbukik, a sort nem adjuk fel, kísérletet
-      // sem számolunk, és a futás újraellenőrzése megáll: az útvonal javítása
-      // után a sáv minden visszatérítése sorra kerül. Jelölt nélkül (vagy
-      // olvashatatlan jelöltnél) nincs bizonyíték egyik irányba sem: átmeneti
-      // kísérletként számít, így a sor a kísérlet-plafonnál RIASZTÁS-sal zárul.
+      // útvonal-próba). Ha a próba is elbukik vagy eldöntetlen, a sor kísérlet
+      // nélkül hátrébb kerül, és a futás újraellenőrzése megáll: az útvonal
+      // javítása után a sáv minden visszatérítése sorra kerül. Jelölt nélkül
+      // (vagy olvashatatlan jelöltnél) nincs bizonyíték egyik irányba sem:
+      // átmeneti kísérletként számít, így a sor a kísérlet-plafonnál RIASZTÁS-sal
+      // zárul. Ugyanez áll, ha a próba jelöltje maga ez a sor (a legutóbb frissült
+      // paid rendelés lehet egy részlegesen visszatérített is): a saját 404-e
+      // semmit nem bizonyít az útvonalról.
       if (failureClass === 'unverified-404' && !hadSuccessfulCall && !recheckFetchSucceeded) {
         const probe = await probeBarionRoute()
-        if (probe === 'failed' || probe === 'inconclusive' || probe === null) {
-          releaseThrottledAlert(recheckKey)
+        const probedThisOrder = routeProbe?.probeOrderId === order.id
+        if (
+          !probedThisOrder &&
+          (probe === 'failed' || probe === 'inconclusive' || probe === null)
+        ) {
+          deferWithoutAttempt()
           if (probe === 'failed') {
+            // Ugyanaz a globális hiba, mint a late-success scan útvonal-gyanúja:
+            // közös fojtás-kulcs, egy óra alatt egy RIASZTÁS (BRK-X2).
             alertRunAbort(
-              'refund-recheck:route-404',
+              LATE_SCAN_GLOBAL_ALERT_KEY,
               'RIASZTÁS: a Barion PaymentState HTTP 404-et adott a visszatérítések egy héttel ' +
                 'későbbi ellenőrzésében, és egy fizetett rendelés GetState-je is elbukott. ' +
-                'Valószínűleg a PaymentState-útvonal hibás: ellenőrizd a BARION_API_URL-t. A ' +
-                'visszatérítéseket addig nem adjuk fel, a következő futás újrapróbálja.',
+                'Valószínűleg a PaymentState-útvonal hibás: ellenőrizd a BARION_API_URL-t. ' +
+                'Amíg a hiba tart, a visszatérítéseket nem tudjuk ellenőrizni; ha egy ' +
+                'visszatérítés ellenőrzési ideje közben lejárna, arról külön RIASZTÁS megy.',
               { source: 'refund-recheck', httpStatus, ...routeProbeContext() },
             )
           } else {
@@ -1911,6 +2007,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
               { orderId: order.id, ...routeProbeContext() },
             )
           }
+          globalStopClass = failureClass
           break
         }
         transient = probe !== 'proved'
@@ -1926,32 +2023,23 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       } else {
         // Végleges hiba vagy elfogyott kísérletek: a kulcs foglalt marad, így a
         // sávban nincs több hívás, és ez a RIASZTÁS kulcsonként egyszer megy ki.
-        emitAlert(
-          log,
-          'visszaterites-ujraellenorzes-elmaradt',
-          'RIASZTÁS: a visszatérítés egy héttel későbbi ellenőrzése ennél a rendelésnél nem ' +
-            'futott le, és a rendszer többet nem próbálja. Nézd meg kézzel a fizetést a Barion ' +
-            'adminban: ha ott a visszatérítés sikertelen, vagy sztornózták ' +
-            '(StornoUnSuccessfulRefundToBankCard), a vevő nem kapta meg a pénzt.',
-          {
-            orderId: order.id,
-            orderNumber: order.orderNumber ?? null,
-            paymentId: order.barionPaymentId ?? null,
-            refundedAt: new Date(refundedAtMs).toISOString(),
-            reason: transient ? 'kiserletek-elfogytak' : 'vegleges-hiba',
-            attempts: failures,
-            failureClass,
-            httpStatus,
-            providerErrorCodes: providerErrorCodesOf(fetchFailure.error),
-          },
-        )
+        alertGaveUp(candidate, {
+          reason: transient ? 'kiserletek-elfogytak' : 'vegleges-hiba',
+          attempts: failures,
+          failureClass,
+          error: fetchFailure.error,
+        })
       }
       // Szállítási hiba (időtúllépés, hálózat, 5xx) jellemzően a Barion egészét
       // érinti: a futás többi sorát nem égetjük el vele. A többi sor a
       // következő futásban kerül sorra (a hibázott sor a még nem próbáltak mögé).
       if (failureClass === 'transport') {
+        globalStopClass = failureClass
         break
       }
+    }
+    if (globalStopClass !== null) {
+      giveUpRowsLeavingBand(globalStopClass)
     }
   }
 
