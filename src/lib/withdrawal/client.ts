@@ -1,3 +1,4 @@
+import { ctaLabel } from '../cta-vocabulary'
 import type { WithdrawalFormValues } from './validation'
 
 /**
@@ -14,9 +15,9 @@ export const WITHDRAWAL_ORDER_PARAM = 'rendeles'
 /**
  * A link felirata a lábléctől a levélig mindenhol. A szöveget a 45/2014.
  * Korm. rendelet 22. § (1b) írja elő („elállás a szerződéstől”); mondat
- * elején nagy kezdőbetűvel.
+ * elején nagy kezdőbetűvel. A CTA-szótár §3.2 #47 sora.
  */
-export const WITHDRAWAL_LINK_LABEL = 'Elállás a szerződéstől'
+export const WITHDRAWAL_LINK_LABEL = ctaLabel('withdrawal-open')
 
 /**
  * A nyilatkozat tartalmának mondata: ezt igazolja vissza az elismervény és a
@@ -24,8 +25,11 @@ export const WITHDRAWAL_LINK_LABEL = 'Elállás a szerződéstől'
  */
 export const WITHDRAWAL_STATEMENT = 'Elállok a szerződéstől.'
 
-/** A beküldő gomb felirata, ugyancsak a 22. § (1b) szerint („elállás megerősítése”). */
-export const WITHDRAWAL_SUBMIT_LABEL = 'Elállás megerősítése'
+/**
+ * A beküldő gomb felirata, ugyancsak a 22. § (1b) szerint („elállás
+ * megerősítése”). A CTA-szótár §3.2 #48 sora.
+ */
+export const WITHDRAWAL_SUBMIT_LABEL = ctaLabel('withdrawal-confirm')
 
 /** Az elállási oldal webcíme egy rendelésre, előtöltött rendelésszámmal. */
 export function withdrawalHref(orderNumber?: string | null): string {
