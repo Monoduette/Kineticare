@@ -382,12 +382,19 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     customer: 'Teszt Vásárló',
   } as const
 
+  /**
+   * Helyi, kifejezetten DUMMY-jelölt tesztjelszó (AGENTS.md, TILOS ZÓNÁK 1.):
+   * a createUser és a munkatárs REST-bejelentkezése ugyanezt használja.
+   */
+  const dummyPassword = (role: keyof typeof userNames): string =>
+    `DUMMY-helyi-teszt-${stamp}-${role}`
+
   async function createUser(role: keyof typeof userNames): Promise<Doc> {
     const user = (await payload.create({
       collection: 'users',
       data: {
         email: `db-guard-${role}-${stamp}@example.test`,
-        password: `Helyi-teszt-${stamp}-${role}`,
+        password: dummyPassword(role),
         name: userNames[role],
         role,
       },
@@ -2551,11 +2558,11 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       )
   }
 
-  /** A munkatárs tokenje a REST-kérésekhez (a createUser helyi tesztjelszavával). */
+  /** A munkatárs tokenje a REST-kérésekhez (a createUser DUMMY-tesztjelszavával). */
   async function staffToken(): Promise<string> {
     const { token } = await payload.login({
       collection: 'users',
-      data: { email: String(staff.email), password: `Helyi-teszt-${stamp}-staff` },
+      data: { email: String(staff.email), password: dummyPassword('staff') },
     })
     if (token === undefined) throw new Error('A munkatárs bejelentkezése nem adott tokent.')
     return token
