@@ -30,12 +30,28 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParams,
 }))
 
+// Az SDK tartósan tárolt opt-out állapota: opt-out alatt a posthog-js a
+// capture-t eldobja, ezért a teszt csak az akkor kézbesített eseményeket látja.
+const sdk = vi.hoisted(() => ({
+  optedOut: false,
+  delivered: [] as Array<[string, Record<string, unknown> | undefined]>,
+}))
+
 vi.mock('posthog-js', () => ({
   default: {
     init: vi.fn(),
-    capture: vi.fn(),
-    opt_in_capturing: vi.fn(),
-    opt_out_capturing: vi.fn(),
+    capture: vi.fn((event: string, properties?: Record<string, unknown>) => {
+      if (!sdk.optedOut) {
+        sdk.delivered.push([event, properties])
+      }
+    }),
+    has_opted_out_capturing: () => sdk.optedOut,
+    opt_in_capturing: vi.fn(() => {
+      sdk.optedOut = false
+    }),
+    opt_out_capturing: vi.fn(() => {
+      sdk.optedOut = true
+    }),
   },
 }))
 
@@ -44,7 +60,6 @@ vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'DUMMY-posthog-teszt-kulcs')
 
 const posthog = (await import('posthog-js')).default as unknown as {
   init: ReturnType<typeof vi.fn>
-  capture: ReturnType<typeof vi.fn>
 }
 const { CONSENT_STORAGE_KEY, optInToAnalytics, resetPostHogForTests } =
   await import('@/lib/analytics/posthog')
@@ -69,13 +84,14 @@ function renderPage(courseId: number): void {
 }
 
 function captured(): Array<[string, Record<string, unknown> | undefined]> {
-  return posthog.capture.mock.calls as Array<[string, Record<string, unknown> | undefined]>
+  return sdk.delivered
 }
 
 beforeEach(() => {
   resetPostHogForTests()
   posthog.init.mockReset()
-  posthog.capture.mockReset()
+  sdk.optedOut = false
+  sdk.delivered = []
   window.localStorage.clear()
   pathname = '/kurzusok/kez'
   container = document.createElement('div')
@@ -130,7 +146,7 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
   it('kurzusról kurzusra lépve (ugyanaz a komponens) az új courseId-vel is kimegy a course_viewed', () => {
     window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
     renderPage(7)
-    posthog.capture.mockReset()
+    sdk.delivered = []
 
     pathname = '/kurzusok/masik'
     renderPage(8)
@@ -140,8 +156,23 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
       ['course_viewed', { courseId: 8 }],
     ])
 
-    posthog.capture.mockReset()
+    sdk.delivered = []
     renderPage(8)
     expect(captured()).toEqual([])
+  })
+  it('korábbi elutasítás után (az SDK tartós opt-outjával) az újra-elfogadáskor is kimegy az aktuális oldal eseménye', () => {
+    // Újratöltés egy korábbi „Elutasítom” után: a tárolt döntés 'denied', az
+    // SDK a saját opt-outjával indulna.
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'denied')
+    sdk.optedOut = true
+    renderPage(7)
+    expect(posthog.init).not.toHaveBeenCalled()
+
+    act(() => optInToAnalytics())
+
+    expect(captured()).toEqual([
+      ['$pageview', { $current_url: '/kurzusok/kez' }],
+      ['course_viewed', { courseId: 7 }],
+    ])
   })
 })

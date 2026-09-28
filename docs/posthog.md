@@ -81,7 +81,9 @@ Az egyetlen igazságforrás: `ANALYTICS_EVENTS` a `src/lib/analytics/posthog.ts`
 előtt fut (a React a gyerek effectjét a szülőé előtt futtatja). Ezért
 `whenPostHogReady()` mögött várnak: az init után az aktuális oldal eseménye
 egyszer kimegy, a közben elhagyott oldalé nem. Ugyanígy megy ki a
-bannerben adott hozzájárulás után is. Kurzusról kurzusra lépve a
+bannerben adott hozzájárulás után is, akkor is, ha a látogató korábban
+elutasított: az init az SDK tartós opt-outját a tárolt 'granted' döntéshez
+igazítja. Kurzusról kurzusra lépve a
 `course_viewed` az új `courseId`-vel újra kimegy. Őr:
 `src/__tests__/analytics/posthog-init-sorrend.test.tsx`.
 

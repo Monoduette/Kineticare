@@ -148,6 +148,15 @@ export function initPostHog(): boolean {
     return false
   }
   posthog.init(POSTHOG_KEY, buildPostHogOptions())
+  // Ide csak tárolt 'granted' hozzájárulással jutunk. Ha a látogató korábban
+  // elutasított, az SDK a saját opt-outját tartósan tárolja, és újratöltés
+  // után is azzal indul. Ilyenkor a várakozó eseményeket (lent) elnyelné, a
+  // banner későbbi opt_in_capturing hívása pedig már későn jönne. Ezért az
+  // SDK állapotát itt a tárolt döntéshez igazítjuk; $opt_in eseményt csak
+  // ekkor küld, nem minden betöltéskor.
+  if (posthog.has_opted_out_capturing()) {
+    posthog.opt_in_capturing()
+  }
   initialized = true
   const pending = [...readyCallbacks]
   readyCallbacks.clear()
