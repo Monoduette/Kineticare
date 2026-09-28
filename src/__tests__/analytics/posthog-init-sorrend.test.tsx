@@ -61,7 +61,7 @@ vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'DUMMY-posthog-teszt-kulcs')
 const posthog = (await import('posthog-js')).default as unknown as {
   init: ReturnType<typeof vi.fn>
 }
-const { CONSENT_STORAGE_KEY, optInToAnalytics, resetPostHogForTests } =
+const { CONSENT_STORAGE_KEY, optInToAnalytics, optOutOfAnalytics, resetPostHogForTests } =
   await import('@/lib/analytics/posthog')
 const { PostHogProvider } = await import('@/components/analytics/PostHogProvider')
 const { PostHogPageView } = await import('@/components/analytics/PostHogPageView')
@@ -173,6 +173,23 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
     expect(captured()).toEqual([
       ['$pageview', { $current_url: '/kurzusok/kez' }],
       ['course_viewed', { courseId: 7 }],
+    ])
+  })
+  it('ugyanazon látogatáson belül visszavonás, navigáció, újra-elfogadás után az aktuális oldal eseménye kimegy', () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    renderPage(7)
+    act(() => optOutOfAnalytics())
+    sdk.delivered = []
+
+    pathname = '/kurzusok/masik'
+    renderPage(8)
+    expect(captured()).toEqual([])
+
+    act(() => optInToAnalytics())
+
+    expect(captured()).toEqual([
+      ['$pageview', { $current_url: '/kurzusok/masik' }],
+      ['course_viewed', { courseId: 8 }],
     ])
   })
 })

@@ -111,13 +111,20 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
 let initialized = false
 
 /**
+ * Aktív-e a rögzítés: inicializált kliens, amelyen nincs érvényben opt-out.
+ * Opt-out után az init megmarad, de a posthog-js a capture-t eldobja, ezért
+ * a várakozó kérések ilyenkor is várnak az újbóli bekapcsolásig.
+ */
+let capturing = false
+
+/**
  * Az init előtt beérkezett capture-kérések (oldalmegtekintés, TrackEvent).
  *
  * MIÉRT KELL. A React a gyerek-komponensek effectjeit a szülőé ELŐTT futtatja,
  * ezért a PostHogPageView és a TrackEvent az első betöltéskor még az init
  * előtt hívna capture-t, és az no-op lenne. Ugyanez történik, ha a látogató
  * az oldalon belül, a bannerben adja meg a hozzájárulást. A várakozó kérések
- * az init után egyszer lefutnak; a kérő komponens a visszaadott függvénnyel
+ * az init (vagy egy opt-out utáni újbóli bekapcsolás) után egyszer lefutnak; a kérő komponens a visszaadott függvénnyel
  * visszavonja a sajátját (route-váltás, unmount), így csak az aktuális oldal
  * eseménye megy ki. Hozzájárulás nélkül az init nem fut le, tehát ilyenkor
  * semmi nem megy ki.
@@ -125,11 +132,11 @@ let initialized = false
 const readyCallbacks = new Set<() => void>()
 
 /**
- * A callback azonnal lefut, ha a PostHog már inicializálva van, különben az
- * init után. A visszaadott függvény visszavonja a még várakozó callbacket.
+ * A callback azonnal lefut, ha a rögzítés aktív, különben amikor azzá válik.
+ * A visszaadott függvény visszavonja a még várakozó callbacket.
  */
 export function whenPostHogReady(callback: () => void): () => void {
-  if (initialized) {
+  if (capturing) {
     callback()
     return () => {}
   }
@@ -158,12 +165,18 @@ export function initPostHog(): boolean {
     posthog.opt_in_capturing()
   }
   initialized = true
+  startCapturing()
+  return true
+}
+
+/** A rögzítés aktív; a várakozó kérések egyszer lefutnak. */
+function startCapturing(): void {
+  capturing = true
   const pending = [...readyCallbacks]
   readyCallbacks.clear()
   for (const callback of pending) {
     callback()
   }
-  return true
 }
 
 /** Inicializálva van-e a PostHog-kliens (a provider és a tesztek használják). */
@@ -180,6 +193,7 @@ export function isPostHogInitialized(): boolean {
 export function enableAnalyticsCapture(): boolean {
   if (initialized) {
     posthog.opt_in_capturing()
+    startCapturing()
     return true
   }
   return initPostHog()
@@ -193,6 +207,7 @@ export function enableAnalyticsCapture(): boolean {
 export function disableAnalyticsCapture(): void {
   if (initialized) {
     posthog.opt_out_capturing()
+    capturing = false
   }
 }
 
@@ -300,5 +315,6 @@ export function capturePageView(url: string): void {
 /** Tesztelési segéd: az init-zárolt állapot visszaállítása. */
 export function resetPostHogForTests(): void {
   initialized = false
+  capturing = false
   readyCallbacks.clear()
 }
