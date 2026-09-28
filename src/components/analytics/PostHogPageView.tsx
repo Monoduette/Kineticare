@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
 
-import { capturePageView } from '@/lib/analytics/posthog'
+import { capturePageView, whenPostHogReady } from '@/lib/analytics/posthog'
 
 /**
  * PostHogPageView — $pageview küldés App Router route-váltásokra.
@@ -25,7 +25,11 @@ export function PostHogPageView(): null {
       return
     }
     const query = searchParams?.toString()
-    capturePageView(query ? `${pathname}?${query}` : pathname)
+    const url = query ? `${pathname}?${query}` : pathname
+    // Az első betöltéskor ez az effect a PostHogProvider initje ELŐTT fut
+    // (a gyerek effectje megelőzi a szülőét), ezért az init utánra vár.
+    // Route-váltáskor a cleanup visszavonja a még el nem küldött régit.
+    return whenPostHogReady(() => capturePageView(url))
   }, [pathname, searchParams])
 
   return null

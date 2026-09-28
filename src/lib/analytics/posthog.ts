@@ -110,6 +110,35 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
 
 let initialized = false
 
+/**
+ * Az init előtt beérkezett capture-kérések (oldalmegtekintés, TrackEvent).
+ *
+ * MIÉRT KELL. A React a gyerek-komponensek effectjeit a szülőé ELŐTT futtatja,
+ * ezért a PostHogPageView és a TrackEvent az első betöltéskor még az init
+ * előtt hívna capture-t, és az no-op lenne. Ugyanez történik, ha a látogató
+ * az oldalon belül, a bannerben adja meg a hozzájárulást. A várakozó kérések
+ * az init után egyszer lefutnak; a kérő komponens a visszaadott függvénnyel
+ * visszavonja a sajátját (route-váltás, unmount), így csak az aktuális oldal
+ * eseménye megy ki. Hozzájárulás nélkül az init nem fut le, tehát ilyenkor
+ * semmi nem megy ki.
+ */
+const readyCallbacks = new Set<() => void>()
+
+/**
+ * A callback azonnal lefut, ha a PostHog már inicializálva van, különben az
+ * init után. A visszaadott függvény visszavonja a még várakozó callbacket.
+ */
+export function whenPostHogReady(callback: () => void): () => void {
+  if (initialized) {
+    callback()
+    return () => {}
+  }
+  readyCallbacks.add(callback)
+  return () => {
+    readyCallbacks.delete(callback)
+  }
+}
+
 /** PostHog inicializálása (idempotens; csak konfigurált + hozzájárulás esetén). */
 export function initPostHog(): boolean {
   if (initialized) {
@@ -120,6 +149,11 @@ export function initPostHog(): boolean {
   }
   posthog.init(POSTHOG_KEY, buildPostHogOptions())
   initialized = true
+  const pending = [...readyCallbacks]
+  readyCallbacks.clear()
+  for (const callback of pending) {
+    callback()
+  }
   return true
 }
 
@@ -257,4 +291,5 @@ export function capturePageView(url: string): void {
 /** Tesztelési segéd: az init-zárolt állapot visszaállítása. */
 export function resetPostHogForTests(): void {
   initialized = false
+  readyCallbacks.clear()
 }
