@@ -2,7 +2,11 @@
 
 import { useEffect } from 'react'
 
-import { captureAnalyticsEvent, type AnalyticsEventName } from '@/lib/analytics/posthog'
+import {
+  captureAnalyticsEvent,
+  whenPostHogReady,
+  type AnalyticsEventName,
+} from '@/lib/analytics/posthog'
 
 /**
  * TrackEvent — mount-idejű üzleti esemény (funnel-lépések).
@@ -18,11 +22,16 @@ export interface TrackEventProps {
 }
 
 export function TrackEvent({ event, properties }: TrackEventProps): null {
+  // Tartalom szerinti függőség: a szerver-oldal minden rendernél új objektumot
+  // ad, de esemény csak akkor megy újra, ha a tartalma változik. Ha a látogató
+  // kurzusról kurzusra lép, a Next ugyanazt a komponenst rendereli újra, és a
+  // második kurzus courseId-jével is kell course_viewed.
+  const serialized = JSON.stringify(properties ?? null)
   useEffect(() => {
-    captureAnalyticsEvent(event, properties)
-    // A properties szándékosan NEM függőség: a mount-egyszeri küldés a cél,
-    // a properties-változás nem küld új eseményt.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event])
+    const parsed = JSON.parse(serialized) as Record<string, unknown> | null
+    // Az első betöltéskor ez az effect a PostHogProvider initje ELŐTT fut,
+    // ezért az init utánra vár (lásd whenPostHogReady).
+    return whenPostHogReady(() => captureAnalyticsEvent(event, parsed ?? undefined))
+  }, [event, serialized])
   return null
 }

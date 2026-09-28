@@ -76,6 +76,17 @@ Az egyetlen igazságforrás: `ANALYTICS_EVENTS` a `src/lib/analytics/posthog.ts`
 | `purchase_confirmed` | a köszönőoldalon, **csak** `kind: 'status'` + `paid` | `orderNumber`, `value`, `currency` |
 | `checkout_failed` | a pénztári beküldés elutasítása | gépi hibakategória |
 
+**Init előtti események.** A `$pageview`-t, a `course_viewed`-et és a
+`checkout_started`-et küldő komponens effectje a `PostHogProvider` initje
+előtt fut (a React a gyerek effectjét a szülőé előtt futtatja). Ezért
+`whenPostHogReady()` mögött várnak: az init után az aktuális oldal eseménye
+egyszer kimegy, a közben elhagyott oldalé nem. Ugyanígy megy ki a
+bannerben adott hozzájárulás után is, akkor is, ha a látogató korábban
+elutasított: az init az SDK tartós opt-outját a tárolt 'granted' döntéshez
+igazítja. Kurzusról kurzusra lépve a
+`course_viewed` az új `courseId`-vel újra kimegy. Őr:
+`src/__tests__/analytics/posthog-init-sorrend.test.tsx`.
+
 **Ismert mérési lyuk — vendég / nincs munkamenet.** A `ThankYouView` a
 `purchase_confirmed` eseményt kizárólag akkor küldi, ha a `pollOrderStatus`
 `kind: 'status'` **és** `status === 'paid'`. A státusz-végpont a saját
