@@ -114,9 +114,9 @@ Az SOS **nem** Ads-lander és **nem** fizetett ajtó. A `/kezrelax` 308 ide.
 
 **Stack (pinned, a `package.json` a bizonyíték):**
 
-- Next.js `16.3.5` App Router, React `19.3.0` (a #266 emelte a
-  16.3.3 / 19.2.8-ról, az ellátási-lánc-őrön át; a `CLAUDE.md`
-  stack-sora még a régi Next-számot írja), TypeScript `5.9.3` strict
+- Next.js `16.3.6` App Router, React `19.3.0` (a #266 emelte
+  16.3.3 / 19.2.8-ról, a #316 a Nextet 16.3.6-ra a GHSA-vcvr-r3jv-pc5j
+  miatt, mindkettő az ellátási-lánc-őrön át), TypeScript `5.9.3` strict
 - Payload CMS `3.88.0` + `@payloadcms/plugin-ecommerce` `3.88.0` (béta)
 - `@payloadcms/plugin-form-builder`, `@payloadcms/db-postgres`,
   `@payloadcms/richtext-lexical`: mind `3.88.0`
