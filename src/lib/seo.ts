@@ -928,8 +928,9 @@ export function structuredDataSku(
  * nincs (ÁSZF, „A megrendelés teljesítése”), ezért a szállítási díj 0 Ft.
  * A hozzáférés rendesen azonnal nyílik; az ÁSZF technikai hiba esetére
  * 24 órát + a jelzést követő munkanapot enged. A `handlingTime` felső határa
- * ezért 3 nap (pénteki fizetés → hétfői kézi megnyitás), nem 0: a strukturált
- * adat a vállalt legrosszabb esetet sem ígéri alul. Szállítási idő (transit)
+ * ezért 5 nap (négynapos ünnepi hétvége előtti fizetés → az azt követő első
+ * munkanapi kézi megnyitás), nem 0: a strukturált adat a vállalt legrosszabb
+ * esetet sem ígéri alul. Szállítási idő (transit)
  * nincs, 0 nap.
  */
 function digitalOfferShipping(): Record<string, unknown> {
@@ -940,7 +941,7 @@ function digitalOfferShipping(): Record<string, unknown> {
       shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'HU' },
       deliveryTime: {
         '@type': 'ShippingDeliveryTime',
-        handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 3, unitCode: 'DAY' },
+        handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 5, unitCode: 'DAY' },
         transitTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 0, unitCode: 'DAY' },
       },
     },

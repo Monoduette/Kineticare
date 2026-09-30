@@ -245,14 +245,14 @@ describe('Product + Offer JSON-LD a kurzusoldalon', () => {
     expect(free.brand).toBeUndefined()
   })
 
-  it('az Offer digitális szállítást közöl (0 Ft, HU, legfeljebb 3 nap), garancia nélkül visszaküldési szabályt nem', () => {
+  it('az Offer digitális szállítást közöl (0 Ft, HU, legfeljebb 5 nap), garancia nélkül visszaküldési szabályt nem', () => {
     expect(offers.shippingDetails).toEqual({
       '@type': 'OfferShippingDetails',
       shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'HUF' },
       shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'HU' },
       deliveryTime: {
         '@type': 'ShippingDeliveryTime',
-        handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 3, unitCode: 'DAY' },
+        handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 5, unitCode: 'DAY' },
         transitTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 0, unitCode: 'DAY' },
       },
     })
