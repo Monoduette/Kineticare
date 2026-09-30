@@ -97,7 +97,8 @@ A mai mondat helyett:
 > **2.7. Ingyenes kurzus igénylése**
 >
 > **Adatkezelés célja:** az ingyenes online kurzushoz való hozzáférés biztosítása: felhasználói fiók létrehozása és a belépéshez szükséges e-mail kiküldése.
-> **Kezelt adatok:** e-mail-cím, név (ha megadod).
+> **Kezelt adatok:** név és e-mail-cím.
+> **Adatszolgáltatás elmaradásának következménye:** név és e-mail-cím nélkül az igénylés nem küldhető be.
 > **Jogalap:** a szolgáltatás nyújtására irányuló szerződés teljesítése (GDPR 6. cikk (1) bekezdés b) pont).
 > **Időtartam:** a felhasználói fiók törléséig.
 
@@ -107,7 +108,7 @@ A mai mondat helyett:
 >
 > **Adatkezelés célja:** a Weboldal hibáinak és a látogatói észrevételeknek a fogadása és kijavítása.
 > **Kezelt adatok:** a beküldött üzenet szövege (mit csináltál, mi történt), az oldal útvonala, ahonnan küldted, valamint egy egyszeri, névtelen azonosító; ha a látogatottság-méréshez hozzájárultál, ehelyett a mérés azonosítója, így a hibajelzés a látogatásod mért adataihoz kapcsolható. Kérjük, az üzenetbe ne írj személyes vagy egészségügyi adatot; ha mégis megteszed, azt is tároljuk.
-> **Adatfeldolgozó:** PostHog Inc. (EU-s, németországi adattárolás). A beküldés a süti-beállításaidtól függetlenül működik, sütit nem helyez el.
+> **Adatfeldolgozók:** PostHog Inc. (EU-s, németországi adattárolás), valamint a Weboldal tárhelyszolgáltatója, a Railway Corporation, amelynek szervernaplójában a beküldött üzenet másodpéldánya is rögzül. A beküldés a süti-beállításaidtól függetlenül működik, sütit nem helyez el.
 > **Jogalap:** a KINETICARE jogos érdeke a Weboldal működőképességének biztosításához (GDPR 6. cikk (1) bekezdés f) pont).
 > **Időtartam:** [KITÖLTENDŐ, például a hiba lezárásától számított 1 év].
 
