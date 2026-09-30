@@ -926,14 +926,11 @@ export function structuredDataSku(
 /**
  * Az Offer szállítási adata. A kurzus DIGITÁLIS tartalom, postai kiszállítás
  * nincs (ÁSZF, „A megrendelés teljesítése”), ezért a szállítási díj 0 Ft.
- * A `deliveryTime` SZÁNDÉKOSAN hiányzik: az ÁSZF technikai hiba esetére
- * 24 óra + következő munkanap határidőt enged, ezt egy fix napszám félrevezető
- * ígéret lenne.
- *
- * A `hasMerchantReturnPolicy` SZÁNDÉKOSAN hiányzik: a kurzusoldal 30 napos,
- * kérdés nélküli visszafizetési garanciát hirdet, az ÁSZF viszont kizárja a
- * pénzvisszafizetést. Amíg a kettő nincs összhangban, a strukturált adat
- * egyiket sem állítja (a Search Console-ban ez csak nem kritikus figyelmeztetés).
+ * A hozzáférés rendesen azonnal nyílik; az ÁSZF technikai hiba esetére
+ * 24 órát + a jelzést követő munkanapot enged. A `handlingTime` felső határa
+ * ezért 3 nap (pénteki fizetés → hétfői kézi megnyitás), nem 0: a strukturált
+ * adat a vállalt legrosszabb esetet sem ígéri alul. Szállítási idő (transit)
+ * nincs, 0 nap.
  */
 function digitalOfferShipping(): Record<string, unknown> {
   return {
@@ -941,6 +938,45 @@ function digitalOfferShipping(): Record<string, unknown> {
       '@type': 'OfferShippingDetails',
       shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'HUF' },
       shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'HU' },
+      deliveryTime: {
+        '@type': 'ShippingDeliveryTime',
+        handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 3, unitCode: 'DAY' },
+        transitTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 0, unitCode: 'DAY' },
+      },
+    },
+  }
+}
+
+/**
+ * A kurzusoldalon LÁTHATÓ garanciából kiolvasott visszafizetési ablak (nap).
+ * Csak akkor ad értéket, ha a garancia címe vagy szövege napszámot mond
+ * („30 napos”) ÉS a szöveg pénz-visszafizetést ígér. Minden más esetben
+ * `null`: ilyenkor a strukturált adat nem állít visszaküldési szabályt.
+ * Az ÁSZF „Vegyes rendelkezések” pontja ugyanezt a garanciát rögzíti.
+ */
+export function guaranteeRefundDays(
+  guarantee: { title: string; text: string } | null | undefined,
+): number | null {
+  if (!guarantee) return null
+  const all = `${guarantee.title} ${guarantee.text}`
+  if (!/visszafizet|visszatérít|pénzvissza/i.test(all)) return null
+  const match = /(\d{1,3})\s*nap/i.exec(guarantee.title) ?? /(\d{1,3})\s*nap/i.exec(guarantee.text)
+  if (match === null) return null
+  const days = Number(match[1])
+  return Number.isInteger(days) && days > 0 && days <= 365 ? days : null
+}
+
+/** Visszafizetési garancia → MerchantReturnPolicy (digitális: nincs visszaküldendő tárgy). */
+function refundReturnPolicy(days: number): Record<string, unknown> {
+  return {
+    hasMerchantReturnPolicy: {
+      '@type': 'MerchantReturnPolicy',
+      applicableCountry: 'HU',
+      returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+      merchantReturnDays: days,
+      returnFees: 'https://schema.org/FreeReturn',
+      refundType: 'https://schema.org/FullRefund',
+      merchantReturnLink: absoluteUrl('/aszf'),
     },
   }
 }
@@ -959,8 +995,13 @@ export function courseJsonLd(args: {
    * Nélküle a kimenet változatlan.
    */
   priceValidUntil?: string
+  /**
+   * A kurzusoldalon látható pénz-visszafizetési garancia napjai
+   * (`guaranteeRefundDays`). Nélküle nincs visszaküldési szabály az Offerben.
+   */
+  refundDays?: number | null
 }): Record<string, unknown> {
-  const { product, name, path, priceHuf, imageUrl, priceValidUntil } = args
+  const { product, name, path, priceHuf, imageUrl, priceValidUntil, refundDays } = args
   const url = absoluteUrl(path)
   const description =
     typeof product.shortDescription === 'string' && product.shortDescription.trim().length > 0
@@ -1020,6 +1061,9 @@ export function courseJsonLd(args: {
                 : 'https://schema.org/Discontinued',
             seller: organization,
             ...digitalOfferShipping(),
+            ...(typeof refundDays === 'number' && refundDays > 0
+              ? refundReturnPolicy(refundDays)
+              : {}),
           },
         }
       : {}),

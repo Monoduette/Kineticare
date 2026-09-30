@@ -69,6 +69,7 @@ import {
   absoluteUrl,
   buildProductMetadata,
   courseJsonLd,
+  guaranteeRefundDays,
   faqPageJsonLd,
   productSeoDoc,
   resolveSeoDescription,
@@ -584,6 +585,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           name: title,
           path,
           priceHuf: price,
+          refundDays: guaranteeRefundDays(sales.guarantee),
           ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
         })}
       />
