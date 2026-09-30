@@ -91,7 +91,10 @@ A mai mondat helyett:
 >
 > **Adatkezelés célja:** a weboldalon keresztül beküldött időpontkérés fogadása, a kérelmezővel való kapcsolatfelvétel és az időpont egyeztetése.
 > **Kezelt adatok:** név, telefonszám, e-mail-cím, a panasz rövid leírása, a választott időpont-sávok.
-> **Jogalap:** a név és az elérhetőségek tekintetében a szerződés megkötését megelőzően az érintett kérésére történő lépések megtétele (GDPR 6. cikk (1) bekezdés b) pont); a panasz leírása egészségügyi adatnak minősül, ennek kezelése az érintett kifejezett hozzájárulásán alapul (GDPR 9. cikk (2) bekezdés a) pont), amelyet az űrlapon külön jelölőnégyzettel adsz meg.
+> **Jogalap:** az érintett kifejezett hozzájárulása (GDPR 6. cikk (1) bekezdés a) pont, az egészségügyi adatok tekintetében GDPR 9. cikk (2) bekezdés a) pont), amelyet az űrlapon a kötelező jelölőnégyzettel adsz meg; a hozzájárulás az időpontkérésben megadott valamennyi adatodra (név, telefonszám, e-mail-cím, panasz leírása, időpont-sávok) kiterjed.
+
+**Jelölés a jogi képviselőnek:** a `consentHealth` jelölőnégyzet felirata ma az „itt megadott adataim” kezelésére kér hozzájárulást, tehát az egész beküldésre. Ha a név és az elérhetőségek jogalapja inkább a szerződéskötést megelőző lépés (6. cikk (1) b) pont) lenne, a jelölőnégyzet feliratát is ehhez kell igazítani.
+
 > **Időtartam:** [KITÖLTENDŐ: például az időpont egyeztetésétől számított 30 nap, vagy ha a kezelés létrejön, az egészségügyi dokumentáció szabályai szerint].
 > **Kötelező adatok:** a név, a telefonszám és az egészségügyi adatok kezeléséhez adott hozzájárulás; ezek nélkül az időpontkérés nem küldhető be. Az e-mail-cím, a panasz leírása és az időpont-sávok megadása önkéntes.
 
@@ -123,7 +126,7 @@ A mai mondat helyett:
 ### 3.7. Kisebb javítások
 
 - **2.1. pont, kezelt adatok:** a „bankkártya adatai, bankszámlaszám” helyett: „A bankkártyás fizetést a Barion Payment Zrt. bonyolítja; a kártyaadatokat kizárólag a Barion kezeli, azokat a KINETICARE nem látja és nem tárolja. A KINETICARE a fizetés azonosítóját, összegét és eredményét kapja meg.”
-- **2.4. pont, hírlevél jogalapja:** „A KINETICARE jogos érdeke” helyett: „Az érintett hozzájárulása (GDPR 6. cikk (1) bekezdés a) pont), amelyet a feliratkozáskor adsz meg, és bármikor visszavonhatsz a hírlevelek alján található leiratkozó linkkel.” A tiltakozási jogról szóló mondat ekkor a hozzájárulás visszavonására cserélendő.
+- **2.4. pont, hírlevél jogalapja:** „A KINETICARE jogos érdeke” helyett: „Az érintett hozzájárulása (GDPR 6. cikk (1) bekezdés a) pont), amelyet a feliratkozáskor adsz meg, és bármikor visszavonhatsz az info@kineticare.hu címre küldött e-maillel.” (Automatikus leiratkozó link ma nincs: hírlevél-kiküldő rendszer még nincs bekötve, a feliratkozás törlése kézzel történik; ha később lesz ilyen rendszer, a szöveg a leiratkozó linkkel bővítendő.) A tiltakozási jogról szóló mondat ekkor a hozzájárulás visszavonására cserélendő.
 - **Elérhetőség:** az adatkezelő e-mail-címe mindhárom helyen: info@kineticare.hu (ha az ügyvezetés ezt választja).
 - **Kelt:** a módosítás dátumára frissítendő.
 
@@ -133,17 +136,17 @@ A mai mondat helyett:
 
 A tábla a weboldal mért működéséből készült. A székhelyeket és a szerződéses státuszt (adatfeldolgozói megállapodás) a jogi képviselőnek kell ellenőriznie; ahol a fejlesztői oldal nem tudja biztosan, „ELLENŐRIZENDŐ” jelölés áll.
 
-| Szolgáltató                    | Feladat                                                                   | Adattárolás helye                    |
-| ------------------------------ | ------------------------------------------------------------------------- | ------------------------------------ |
-| Railway Corporation            | a weboldal és az adatbázis tárhelye                                       | EU (Hollandia) régió; amerikai cég   |
-| Barion Payment Zrt.            | bankkártyás fizetés, Barion Pixel                                         | Magyarország                         |
-| KBOSS.hu Kft. (Számlázz.hu)    | számlakiállítás                                                           | Magyarország (élesben bekapcsolva)   |
-| Resend (Plus Five Five, Inc.)  | tranzakciós és rendszerlevelek küldése                                    | USA                                  |
-| PostHog Inc.                   | látogatottság-mérés (hozzájárulással)                                     | EU (Németország)                     |
-| Cloudflare, Inc.               | űrlapok robotvédelme (Turnstile)                                          | USA / globális                       |
-| BunnyWay d.o.o. (bunny.net)    | videók tárolása és lejátszása                                             | EU (Szlovénia)                       |
-| Tárhely.Eu Kft.                | az info@kineticare.hu postafiók                                           | Magyarország (ELLENŐRIZENDŐ, cégnév) |
-| Meta Platforms Ireland Limited | hirdetésmérés (hozzájárulással); **közös adatkezelő**, nem adatfeldolgozó | Írország / USA                       |
+| Szolgáltató                    | Feladat                                                                                                                                | Adattárolás helye                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Railway Corporation            | a weboldal és az adatbázis tárhelye                                                                                                    | EU (Hollandia) régió; amerikai cég   |
+| Barion Payment Zrt.            | bankkártyás fizetés, Barion Pixel; szerepe (adatfeldolgozó vagy önálló adatkezelő) ELLENŐRIZENDŐ, lásd a Barion szövegterv K2 kérdését | Magyarország                         |
+| KBOSS.hu Kft. (Számlázz.hu)    | számlakiállítás                                                                                                                        | Magyarország (élesben bekapcsolva)   |
+| Resend (Plus Five Five, Inc.)  | tranzakciós és rendszerlevelek küldése                                                                                                 | USA                                  |
+| PostHog Inc.                   | látogatottság-mérés (hozzájárulással)                                                                                                  | EU (Németország)                     |
+| Cloudflare, Inc.               | űrlapok robotvédelme (Turnstile)                                                                                                       | USA / globális                       |
+| BunnyWay d.o.o. (bunny.net)    | videók tárolása és lejátszása                                                                                                          | EU (Szlovénia)                       |
+| Tárhely.Eu Kft.                | az info@kineticare.hu postafiók                                                                                                        | Magyarország (ELLENŐRIZENDŐ, cégnév) |
+| Meta Platforms Ireland Limited | hirdetésmérés (hozzájárulással); **közös adatkezelő**, nem adatfeldolgozó                                                              | Írország / USA                       |
 
 ---
 
