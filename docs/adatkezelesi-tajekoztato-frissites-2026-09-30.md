@@ -65,6 +65,7 @@ A mai szöveg forrása a közzétett `/adatvedelem` oldal (kelt: 2025. 07. 05.).
 >
 > **Szolgáltató:** PostHog Inc. (adatfeldolgozó, EU-s adattárolással).
 > **Tárolt azonosító:** a böngészőben tárolt véletlenszerű azonosító (`ph_…_posthog`), tárolási idő: 1 év.
+> **Belépett felhasználók:** ha hozzájárultál a méréshez, és belépsz vagy regisztrálsz, a mérési adataidat a felhasználói fiókod belső azonosítójához kapcsoljuk (nevet és e-mail-címet nem adunk át a PostHog részére), így a fiókodhoz tartozó látogatási előzmény is mérhetővé válik.
 > **Jogalap:** hozzájárulásod (GDPR 6. cikk (1) bekezdés a) pont).
 > **Visszavonás:** a lábléc „Süti-beállítások” pontjában bármikor.
 
@@ -72,7 +73,7 @@ A mai szöveg forrása a közzétett `/adatvedelem` oldal (kelt: 2025. 07. 05.).
 
 > **6.3. A sütik beállítása és a hozzájárulás visszavonása**
 >
-> A Weboldal első megnyitásakor egy sávban kérdezzük meg, hogy hozzájárulsz-e a nem feltétlenül szükséges sütik (látogatottság-mérés és hirdetésmérés) használatához. Amíg nem döntesz, és ha a „Csak a szükségeseket” lehetőséget választod, a PostHog látogatottság-mérése és a Meta Pixel nem töltődik be, és a Barion marketingcélú sütijei sem kerülnek elhelyezésre. A Barion fizetési csalásmegelőzést szolgáló sütijei és alap-mérőkódja ettől függetlenül működik, mert a bankkártyás fizetés biztonságához szükségesek (lásd a 6.2/a. pontot). Döntésedet a böngésződben tároljuk, és legkésőbb 12 hónap múlva újra megkérdezünk. Döntésedet bármikor megváltoztathatod a Weboldal láblécében található „Süti-beállítások” pontban. A sütiket a böngésződ beállításaiban is törölheted vagy letilthatod.
+> A Weboldal első megnyitásakor egy sávban kérdezzük meg, hogy hozzájárulsz-e a nem feltétlenül szükséges sütik (látogatottság-mérés és hirdetésmérés) használatához. Amíg nem döntesz, és ha a „Csak a szükségeseket” lehetőséget választod, a PostHog látogatottság-mérése és a Meta Pixel nem töltődik be, és a Barion marketingcélú sütijei sem kerülnek elhelyezésre. Ha korábban hozzájárultál, és a döntésedet visszavonod, a már betöltött mérőkódok onnantól nem küldenek adatot, és a következő oldalbetöltéstől már be sem töltődnek; a korábban elhelyezett sütiket a böngésződben törölheted. A Barion fizetési csalásmegelőzést szolgáló sütijei és alap-mérőkódja ettől függetlenül működik, mert a bankkártyás fizetés biztonságához szükségesek (lásd a 6.2/a. pontot). Döntésedet a böngésződben tároljuk, és legkésőbb 12 hónap múlva újra megkérdezünk. Döntésedet bármikor megváltoztathatod a Weboldal láblécében található „Süti-beállítások” pontban. A sütiket a böngésződ beállításaiban is törölheted vagy letilthatod.
 
 ### 3.4. Az 1. pont javítása (harmadik országba továbbítás)
 
@@ -88,7 +89,7 @@ A mai mondat helyett:
 > **Kezelt adatok:** név, telefonszám, e-mail-cím, a panasz rövid leírása, a választott időpont-sávok.
 > **Jogalap:** a név és az elérhetőségek tekintetében a szerződés megkötését megelőzően az érintett kérésére történő lépések megtétele (GDPR 6. cikk (1) bekezdés b) pont); a panasz leírása egészségügyi adatnak minősül, ennek kezelése az érintett kifejezett hozzájárulásán alapul (GDPR 9. cikk (2) bekezdés a) pont), amelyet az űrlapon külön jelölőnégyzettel adsz meg.
 > **Időtartam:** [KITÖLTENDŐ: például az időpont egyeztetésétől számított 30 nap, vagy ha a kezelés létrejön, az egészségügyi dokumentáció szabályai szerint].
-> **Adatszolgáltatás elmaradásának következménye:** az időpontkérés nem küldhető be.
+> **Kötelező adatok:** a név, a telefonszám és az egészségügyi adatok kezeléséhez adott hozzájárulás; ezek nélkül az időpontkérés nem küldhető be. Az e-mail-cím, a panasz leírása és az időpont-sávok megadása önkéntes.
 
 **Jelölés a jogi képviselőnek:** a mai tájékoztató 1. pontja szerint a tájékoztató nem vonatkozik Kiss Kata és Kocsis Kata egyéni vállalkozók egészségügyi szolgáltatására. Az időpontkérés viszont a kineticare.hu oldalon, a KINETICARE Kft. rendszerében érkezik. El kell dönteni, ki az adatkezelő (a Kft. vagy az egyéni vállalkozó, esetleg a Kft. adatfeldolgozóként), és ehhez igazítani a 2.6. pontot.
 
