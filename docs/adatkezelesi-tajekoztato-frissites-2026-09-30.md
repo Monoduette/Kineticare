@@ -68,6 +68,8 @@ A mai szöveg forrása a közzétett `/adatvedelem` oldal (kelt: 2025. 07. 05.).
 > **Belépett felhasználók:** ha hozzájárultál a méréshez, és belépsz vagy regisztrálsz, a mérési adataidat a felhasználói fiókod belső azonosítójához kapcsoljuk (nevet és e-mail-címet nem adunk át a PostHog részére), így a fiókodhoz tartozó látogatási előzmény is mérhetővé válik.
 > **Jogalap:** hozzájárulásod (GDPR 6. cikk (1) bekezdés a) pont).
 > **Visszavonás:** a lábléc „Süti-beállítások” pontjában bármikor.
+>
+> **Hibakövetés hozzájárulástól függetlenül:** ha a Weboldal szerverén hiba történik egy kérés kiszolgálása közben, a hiba technikai adatait (kérésazonosító, az oldal útvonala, hibaüzenet, a programkód érintett helye) a PostHog-ba továbbítjuk, a süti-beállításaidtól függetlenül. Ez sütit nem helyez el, célja a hibák felderítése és javítása; jogalapja a KINETICARE jogos érdeke a Weboldal működőképességének biztosításához (GDPR 6. cikk (1) bekezdés f) pont).
 
 ### 3.3. A 6.3. pont cseréje (a hallgatólagos hozzájárulás helyett)
 
@@ -79,7 +81,9 @@ A mai szöveg forrása a közzétett `/adatvedelem` oldal (kelt: 2025. 07. 05.).
 
 A mai mondat helyett:
 
-> **Harmadik országba történő adattovábbítás.** Egyes adatfeldolgozóink, illetve a Meta az Európai Unión kívül, az Amerikai Egyesült Államokban is kezelhetnek személyes adatot. Ilyen továbbítás kizárólag az Európai Bizottság megfelelőségi határozata (EU–USA adatvédelmi keretrendszer) vagy az Európai Bizottság által elfogadott általános szerződési feltételek alapján történik. Az érintett szolgáltatókat a 4. pont sorolja fel.
+> **Harmadik országba történő adattovábbítás.** Egyes adatfeldolgozóink, illetve a Meta az Európai Unión kívül, az Amerikai Egyesült Államokban is kezelhetnek személyes adatot. Ilyen továbbítás [KITÖLTENDŐ szolgáltatónként, a jogi ellenőrzés után: az Európai Bizottság megfelelőségi határozata (EU–USA adatvédelmi keretrendszer) vagy az Európai Bizottság által elfogadott általános szerződési feltételek] alapján történik. Az érintett szolgáltatókat a 4. pont sorolja fel.
+
+**Jelölés a jogi képviselőnek:** ez a bekezdés csak az 5. fejezet 3. kérdésének lezárása után tehető közzé; addig a továbbítási alapot szolgáltatónként nem állítjuk biztos tényként.
 
 ### 3.5. Új adatkezelési cél: időpontkérés rendelői kezelésre
 
@@ -99,7 +103,10 @@ A mai mondat helyett:
 >
 > **Adatkezelés célja:** az ingyenes online kurzushoz való hozzáférés biztosítása: felhasználói fiók létrehozása és a belépéshez szükséges e-mail kiküldése.
 > **Kezelt adatok:** név és e-mail-cím.
-> **Adatszolgáltatás elmaradásának következménye:** név és e-mail-cím nélkül az igénylés nem küldhető be.
+> **Adatszolgáltatás elmaradásának következménye:** az igénylés csak a név, az e-mail-cím megadásával és az adatkezelési jelölőnégyzet bejelölésével küldhető be.
+
+**Jelölés a jogi képviselőnek:** az űrlap kötelező, előre be nem jelölt adatkezelési jelölőnégyzetet (`consentPrivacy`) kér. El kell dönteni, hogy ez hozzájárulás (akkor a jogalap GDPR 6. cikk (1) bekezdés a) pont, és a 2.7. pontot ehhez kell igazítani) vagy csak a tájékoztató tudomásulvétele (akkor a szerződéses jogalap marad, és a jelölőnégyzet felirata módosítandó).
+
 > **Jogalap:** a szolgáltatás nyújtására irányuló szerződés teljesítése (GDPR 6. cikk (1) bekezdés b) pont).
 > **Időtartam:** a felhasználói fiók törléséig.
 
