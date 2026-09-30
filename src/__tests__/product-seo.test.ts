@@ -11,6 +11,7 @@ import {
   resolveOgImageUrl,
   resolveSeoDescription,
   resolveSeoTitle,
+  guaranteeRefundDays,
   structuredDataSku,
 } from '../lib/seo'
 import type { Media, Product } from '../payload-types'
@@ -244,15 +245,38 @@ describe('Product + Offer JSON-LD a kurzusoldalon', () => {
     expect(free.brand).toBeUndefined()
   })
 
-  it('az Offer digitális szállítást közöl (0 Ft, HU), határidő és visszaküldési szabály nélkül', () => {
+  it('az Offer digitális szállítást közöl (0 Ft, HU, legfeljebb 5 nap), garancia nélkül visszaküldési szabályt nem', () => {
     expect(offers.shippingDetails).toEqual({
       '@type': 'OfferShippingDetails',
       shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'HUF' },
       shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'HU' },
+      deliveryTime: {
+        '@type': 'ShippingDeliveryTime',
+        handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 5, unitCode: 'DAY' },
+        transitTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 0, unitCode: 'DAY' },
+      },
     })
-    // A kurzusoldal 30 napos garanciája és az ÁSZF ellentmond egymásnak:
-    // amíg ez nincs rendezve, a strukturált adat egyiket sem állítja.
     expect(offers.hasMerchantReturnPolicy).toBeUndefined()
+  })
+
+  it('a látható visszafizetési garancia napjai visszaküldési szabályként jelennek meg', () => {
+    const doc = product({})
+    const withGuarantee = courseJsonLd({
+      product: doc,
+      name: courseTitle(doc),
+      path: courseHref(doc),
+      priceHuf: coursePriceHuf(doc),
+      refundDays: 30,
+    })
+    expect((withGuarantee.offers as Record<string, unknown>).hasMerchantReturnPolicy).toEqual({
+      '@type': 'MerchantReturnPolicy',
+      applicableCountry: 'HU',
+      returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+      merchantReturnDays: 30,
+      returnFees: 'https://schema.org/FreeReturn',
+      refundType: 'https://schema.org/FullRefund',
+      merchantReturnLink: absoluteUrl('/aszf'),
+    })
   })
 
   it('kitalált értékelést SOSEM közöl (nincs értékelés-adat a kurzusokon)', () => {
@@ -370,5 +394,23 @@ describe('structuredDataSku', () => {
     expect(structuredDataSku('  — ')).toBeUndefined()
     expect(structuredDataSku(null)).toBeUndefined()
     expect(structuredDataSku(undefined)).toBeUndefined()
+  })
+})
+
+describe('guaranteeRefundDays', () => {
+  it('napszámot csak pénz-visszafizetést ígérő garanciából olvas ki', () => {
+    expect(
+      guaranteeRefundDays({
+        title: '30 napos kipróbálási garancia',
+        text: 'Ha nem segített, kérdés nélkül visszafizetjük a program árát.',
+      }),
+    ).toBe(30)
+    expect(
+      guaranteeRefundDays({ title: '30 napos garancia', text: 'Elégedettségi garancia.' }),
+    ).toBeNull()
+    expect(
+      guaranteeRefundDays({ title: 'Garancia', text: 'A program árát visszafizetjük.' }),
+    ).toBeNull()
+    expect(guaranteeRefundDays(null)).toBeNull()
   })
 })
