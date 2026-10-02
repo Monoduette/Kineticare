@@ -900,6 +900,10 @@ Az admin saját rétegei (`admin.components`):
   Irányítópulton).
 - `providers`: `SzekcioMegnyito` (a `?szekcio=` / `?mezo=` mélylink
   nyitója) és benne a `KetLapFigyelo`.
+- `graphics`: `KineticareLogo` a belépő oldalon (színes logó világos,
+  fehér sötét témában) és `KineticareIcon` a fejléc kezdő-linkjében, a
+  Payload saját logója és ikonja helyett
+  (`src/components/admin/KineticareLogo.tsx`).
 
 Admin-meta: cím „<oldal> | Kineticare admin”, magyar leírás, OG-kép és
 kulcsszó ki, a weboldal ikonjai; `avatar: 'default'` (a Gravatart a CSP

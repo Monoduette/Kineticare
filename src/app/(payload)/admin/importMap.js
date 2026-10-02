@@ -70,6 +70,8 @@ import { AuditActionCell as AuditActionCell_f374a123c0711a72e50d4cbc76f8f7bf } f
 import { AuditActionDescription as AuditActionDescription_f374a123c0711a72e50d4cbc76f8f7bf } from '../../../components/admin/AuditActionCell'
 import { AuditEntityTypeCell as AuditEntityTypeCell_f374a123c0711a72e50d4cbc76f8f7bf } from '../../../components/admin/AuditActionCell'
 import { AuditEntityTypeDescription as AuditEntityTypeDescription_f374a123c0711a72e50d4cbc76f8f7bf } from '../../../components/admin/AuditActionCell'
+import { KineticareIcon as KineticareIcon_58c8ea38c428abb88db87463a703d94c } from '../../../components/admin/KineticareLogo'
+import { KineticareLogo as KineticareLogo_58c8ea38c428abb88db87463a703d94c } from '../../../components/admin/KineticareLogo'
 import { KezdolapVideoFejlecLink as KezdolapVideoFejlecLink_6e8db327abb4c1711d058b611f9e01a3 } from '../../../components/admin/AdminNavLinks'
 import { GyakoriTeendok as GyakoriTeendok_2c8af0de099fc982d22d5f70a8b9c0b2 } from '../../../components/admin/GyakoriTeendok'
 import { AdminNavLinks as AdminNavLinks_6e8db327abb4c1711d058b611f9e01a3 } from '../../../components/admin/AdminNavLinks'
@@ -155,6 +157,8 @@ export const importMap = {
   "/components/admin/AuditActionCell#AuditActionDescription": AuditActionDescription_f374a123c0711a72e50d4cbc76f8f7bf,
   "/components/admin/AuditActionCell#AuditEntityTypeCell": AuditEntityTypeCell_f374a123c0711a72e50d4cbc76f8f7bf,
   "/components/admin/AuditActionCell#AuditEntityTypeDescription": AuditEntityTypeDescription_f374a123c0711a72e50d4cbc76f8f7bf,
+  "/components/admin/KineticareLogo#KineticareIcon": KineticareIcon_58c8ea38c428abb88db87463a703d94c,
+  "/components/admin/KineticareLogo#KineticareLogo": KineticareLogo_58c8ea38c428abb88db87463a703d94c,
   "/components/admin/AdminNavLinks#KezdolapVideoFejlecLink": KezdolapVideoFejlecLink_6e8db327abb4c1711d058b611f9e01a3,
   "/components/admin/GyakoriTeendok#GyakoriTeendok": GyakoriTeendok_2c8af0de099fc982d22d5f70a8b9c0b2,
   "/components/admin/AdminNavLinks#AdminNavLinks": AdminNavLinks_6e8db327abb4c1711d058b611f9e01a3,

@@ -1249,3 +1249,27 @@ html:not([data-theme='dark']) .graphic-account--active .graphic-account__body {
   outline: var(--accessibility-outline);
   outline-offset: 2px;
 }
+
+/* ---- Kineticare logó és ikon a Payload-é helyett ----------------------------
+   graphics.Logo / graphics.Icon (src/components/admin/KineticareLogo.tsx).
+   A belépő oldalon a feliratos vízszintes logó: 240 px széles (a Payload
+   saját logója 193 px volt), keskeny kijelzőn a doboz szélességéig zsugorodik.
+   Témánként csak a hozzá illő kép látszik: világosban a színes, sötétben a
+   fehér (a színes sötétkék wordmark a sötét lapon olvashatatlan volna). */
+.kc-admin-logo {
+  display: block;
+  width: min(100%, 240px);
+  height: auto;
+}
+
+html[data-theme='dark'] .kc-admin-logo--vilagos,
+html:not([data-theme='dark']) .kc-admin-logo--sotet {
+  display: none;
+}
+
+/* A fejléc kezdő-linkjének 18×18 px-es doboza (StepNav .step-nav__home). */
+.kc-admin-ikon {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

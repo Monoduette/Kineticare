@@ -782,6 +782,13 @@ export default buildConfig({
     // displayFormat-jukat tartják (CourseProgress, Pages, ecommerce).
     dateFormat: 'yyyy. MM. dd. HH:mm',
     components: {
+      // A Payload saját logója és ikonja helyett a Kineticare-é: a belépő
+      // oldalon a feliratos vízszintes logó, a fejléc kezdő-linkjében a
+      // böngészőfül ikonja (src/components/admin/KineticareLogo.tsx).
+      graphics: {
+        Logo: '/components/admin/KineticareLogo#KineticareLogo',
+        Icon: '/components/admin/KineticareLogo#KineticareIcon',
+      },
       // A kezdőlap és a videó szövegeinek menüpontja, valamint a saját
       // nézetek linkjei az oldalsáv TETEJÉN, két csoportban (admin-audit K32,
       // K33). A Payload a saját nézeteket nem teszi be a navigációba.
