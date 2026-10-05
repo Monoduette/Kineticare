@@ -163,27 +163,15 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
                 </div>
               ) : null}
               <div className="kc-services-sin__rail">
-                {rows.map((row, index) => {
-                  const rowTitle = row.title.trim()
-                  const blurb = row.osszefoglalo?.trim() ?? ''
-                  return (
-                    <label
-                      className="kc-services-sin__rail-label"
-                      htmlFor={`${groupName}-${index}`}
-                      key={`rail-${row.id ?? index}`}
-                    >
-                      <span aria-hidden="true" className="kc-services-sin__marker">
-                        <RailDoorIcon door={homeHelpDoorIndex(row, index)} />
-                      </span>
-                      <span className="kc-services-sin__rail-copy">
-                        <span className="kc-services-sin__rail-title">{rowTitle}</span>
-                        {blurb.length > 0 ? (
-                          <span className="kc-services-sin__rail-blurb">{blurb}</span>
-                        ) : null}
-                      </span>
-                    </label>
-                  )
-                })}
+                {rows.map((row, index) => (
+                  <label
+                    className="kc-services-sin__rail-label"
+                    htmlFor={`${groupName}-${index}`}
+                    key={`rail-${row.id ?? index}`}
+                  >
+                    <RailLabelContent index={index} row={row} />
+                  </label>
+                ))}
               </div>
             </div>
             <div className="kc-services-sin__stage">
@@ -198,8 +186,9 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
             </div>
           </div>
         </fieldset>
-        {/* Koppintáskor a rádió görgetés nélkül kap fókuszt, a koppintott sor
-            helyben marad (SinKoppintasIgazito fejléc-kommentje, mérve). */}
+        {/* Asztalon a címke-kattintásra a rádió görgetés nélkül kap fókuszt
+            (SinKoppintasIgazito). Mobilon a sorok saját jelölőnégyzettel,
+            tisztán CSS-sel nyílnak és csukódnak (services-sin.css). */}
         <SinKoppintasIgazito fieldsetId={fieldsetId} />
       </div>
     </Section>
@@ -227,40 +216,83 @@ function RailPanel({
   // https://www.nngroup.com/articles/headings-learn-more/
   // https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html
   const kicker = `${index + 1}. ÚT`
+  const toggleId = `${groupName}-mobil-${index}`
 
   return (
     <article aria-labelledby={headingId} className="kc-services-sin__panel">
-      <div className="kc-services-sin__copy">
-        <p aria-hidden="true" className="kc-services-sin__kicker">
-          {kicker}
-        </p>
-        <h3 className="kc-services-sin__panel-title" id={headingId}>
-          {rowTitle}
-        </h3>
-        {summary.length > 0 ? <p className="kc-services-sin__osszefoglalo">{summary}</p> : null}
-        <hr className="kc-services-sin__rule" />
-        {body.length > 0 ? <p className="kc-services-sin__body">{body}</p> : null}
-        {url && label.length > 0 ? (
-          <Button
-            className="kc-services-sin__cta"
-            href={url}
-            openInNewTab={Boolean(row.ujAblakban)}
-          >
-            {label}
-            <CtaArrowIcon />
-          </Button>
-        ) : null}
-      </div>
-      {photo ? (
-        <span className="kc-services-sin__photo" style={mediaFocusStyle(photo)}>
-          <MediaImage media={photo} preferredSize="lg" sizes="(max-width: 899px) 100vw, 30vw" />
-        </span>
-      ) : (
-        <div className="kc-services-sin__placeholder">
-          <p className="kc-services-sin__placeholder-caption">Fotó később: {rowTitle}</p>
+      {/* Mobilon (< 900 px) a sor saját nyitója: egyszerre több sor is nyitva
+          maradhat (GOV.UK Accordion: „an accordion can show multiple sections
+          at a time, unlike tabs”), és a nyitás-csukás a CSS grid-sor
+          átmenete. Asztalon rejtett: ott a fenti rádiós fülek váltanak. */}
+      <input
+        className="kc-visually-hidden kc-services-sin__nyito-jelolo"
+        defaultChecked={index === 0}
+        id={toggleId}
+        type="checkbox"
+      />
+      <label className="kc-services-sin__mobil-cimke" htmlFor={toggleId}>
+        <RailLabelContent index={index} row={row} />
+      </label>
+      <div className="kc-services-sin__nyithato">
+        <div className="kc-services-sin__vago">
+          <div className="kc-services-sin__kartya">
+            <div className="kc-services-sin__copy">
+              <p aria-hidden="true" className="kc-services-sin__kicker">
+                {kicker}
+              </p>
+              <h3 className="kc-services-sin__panel-title" id={headingId}>
+                {rowTitle}
+              </h3>
+              {summary.length > 0 ? (
+                <p className="kc-services-sin__osszefoglalo">{summary}</p>
+              ) : null}
+              <hr className="kc-services-sin__rule" />
+              {body.length > 0 ? <p className="kc-services-sin__body">{body}</p> : null}
+              {url && label.length > 0 ? (
+                <Button
+                  className="kc-services-sin__cta"
+                  href={url}
+                  openInNewTab={Boolean(row.ujAblakban)}
+                >
+                  {label}
+                  <CtaArrowIcon />
+                </Button>
+              ) : null}
+            </div>
+            {photo ? (
+              <span className="kc-services-sin__photo" style={mediaFocusStyle(photo)}>
+                <MediaImage
+                  media={photo}
+                  preferredSize="lg"
+                  sizes="(max-width: 899px) 100vw, 30vw"
+                />
+              </span>
+            ) : (
+              <div className="kc-services-sin__placeholder">
+                <p className="kc-services-sin__placeholder-caption">Fotó később: {rowTitle}</p>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </article>
+  )
+}
+
+/** A sor címkéjének tartalma: az asztali fülön és a mobil nyitón ugyanaz. */
+function RailLabelContent({ row, index }: { row: ServiceRow; index: number }) {
+  const rowTitle = row.title.trim()
+  const blurb = row.osszefoglalo?.trim() ?? ''
+  return (
+    <>
+      <span aria-hidden="true" className="kc-services-sin__marker">
+        <RailDoorIcon door={homeHelpDoorIndex(row, index)} />
+      </span>
+      <span className="kc-services-sin__rail-copy">
+        <span className="kc-services-sin__rail-title">{rowTitle}</span>
+        {blurb.length > 0 ? <span className="kc-services-sin__rail-blurb">{blurb}</span> : null}
+      </span>
+    </>
   )
 }
 

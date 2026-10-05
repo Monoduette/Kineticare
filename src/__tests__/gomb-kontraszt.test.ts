@@ -1007,6 +1007,14 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
         'A fókusz a címkén van, a gyűrű accent-deep a paper lapon (5,16:1).',
     },
     {
+      szelektor:
+        '.kc-services-sin__nyito-jelolo:checked + .kc-services-sin__mobil-cimke .kc-services-sin__marker',
+      felulir: null,
+      indok:
+        'Ua. mobilon: a nyitott sor körjelölője dekoratív (aria-hidden), nem ' +
+        'fókuszálható. A fókuszgyűrű a teljes mobil címkén van, a paper lapon.',
+    },
+    {
       szelektor: '.kc-services-sin__cta',
       felulir: null,
       indok:

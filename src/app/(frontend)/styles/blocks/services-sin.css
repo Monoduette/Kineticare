@@ -206,6 +206,12 @@
      Kézi ms tilos: minden a globális tokenből származik. */
   --kc-services-motion-cross: calc(var(--kc-motion-base) * 1.75);
   --kc-services-motion-stagger: calc(var(--kc-motion-fast) / 3);
+  /* Mobil nyitás-csukás (grid-sor átmenet): base × 2 = 400 ms és a Carbon
+     kiegyensúlyozott, finoman induló és érkező görbéje (IBM Carbon motion:
+     `duration--slow-01` „Large expansion”, „standard, expressive”,
+     https://v10.carbondesignsystem.com/guidelines/motion/overview/). */
+  --kc-services-motion-open: calc(var(--kc-motion-base) * 2);
+  --kc-services-ease-open: cubic-bezier(0.4, 0.14, 0.3, 1);
   /* Belső térköz tokenek: mobil space-5 (24 px), asztal space-7 / space-8. */
   --kc-services-panel-pad: var(--kc-space-5);
   --kc-services-panel-gap: var(--kc-space-5);
@@ -259,7 +265,8 @@
   pointer-events: none;
 }
 
-.kc-services-sin__rail-label {
+.kc-services-sin__rail-label,
+.kc-services-sin__mobil-cimke {
   display: grid;
   grid-template-columns: var(--kc-services-marker-slot) minmax(0, 1fr) var(--kc-space-6);
   column-gap: var(--kc-space-4);
@@ -284,7 +291,8 @@
 
 /* + / − jel a sor jobb szélén: két vonal gradientből, betű nélkül. A jel
    dekoratív (az állapot a rádióé), színe a sín-cím inkje. */
-.kc-services-sin__rail-label::after {
+.kc-services-sin__rail-label::after,
+.kc-services-sin__mobil-cimke::after {
   content: '';
   grid-column: 3;
   width: var(--kc-space-5);
@@ -335,15 +343,30 @@
 
 /* Hover-tónus: a help-panel réteg, a címke dobozán túl space-2 kiterjesztéssel
    (spread-árnyék, nem margó: a rács és a gerinc nem mozdul). Nincs új szín. */
-.kc-services-sin__rail-label:hover {
+.kc-services-sin__rail-label:hover,
+.kc-services-sin__mobil-cimke:hover {
   background-color: var(--kc-color-help-panel);
   box-shadow: 0 0 0 var(--kc-space-2) var(--kc-color-help-panel);
 }
 
 /* A gyűrű erősödik hoverre: chrome → help-ink (a kör kitöltése nem vált). */
-.kc-services-sin__rail-label:hover .kc-services-sin__marker {
+.kc-services-sin__rail-label:hover .kc-services-sin__marker,
+.kc-services-sin__mobil-cimke:hover .kc-services-sin__marker {
   border-color: var(--kc-color-help-ink);
   color: var(--kc-color-help-ink);
+}
+
+/* A mobil nyitó (jelölőnégyzet + címke) asztalon nem létezik; a kártya
+   burkolói asztalon átlátszók, a panel rácsa a régi marad. */
+.kc-services-sin__nyito-jelolo,
+.kc-services-sin__mobil-cimke {
+  display: none;
+}
+
+.kc-services-sin__nyithato,
+.kc-services-sin__vago,
+.kc-services-sin__kartya {
+  display: contents;
 }
 
 .kc-services-sin__rail-copy {
@@ -761,99 +784,145 @@
   box-shadow: 0 0 0 var(--kc-space-2) var(--kc-color-help-panel);
 }
 
-/* ---- Mobil accordion (< 900 px): a panel a nyitott sor ALÁ fésülődik ----
-   A burkolók display: contents-szel átadják a gyermekeiket a layout-rácsnak;
-   a sorrendet `order` adja (fejléc 0; címke n → 2n−1; panel n → 2n). Az
-   inaktív panel 0 magas (keret, padding és árnyék nélkül), az aktív a
-   tartalmára nyílik. A rácsköz 0: a ritmust a sorok paddingje és az aktív
-   panel margója adja, hogy a rejtett panel ne hagyjon üres rést. */
+/* ---- Mobil accordion (< 900 px): minden sor maga nyílik és csukódik ----
+   2026-10-05, tulajdonosi kérés: „sima, egyszerű CSS-animáció, ami
+   esztétikus”. A rádiós fülek (egyszerre egy nyitott sor) mobilon azzal
+   jártak, hogy a koppintott sor FÖLÖTT csukódó panel elhúzta a lapot, és a
+   kiegyenlítéshez szkript kellett; a Safari a görgetés-horgonyzást nem
+   ismeri (caniuse: css-overflow-anchor, iOS Safari 27.2-ig nem támogatott).
+   Mobilon ezért minden sornak saját jelölőnégyzete van: egy sor nyitása nem
+   csukja be a többit, így semmi nem mozdul el a koppintott sor fölött. „If
+   you do use accordions, make sure to give people the capability to open
+   multiple sections at a time” (NN/g, Accordions Are Not Always the Answer
+   for Complex Content, https://www.nngroup.com/articles/accordions-complex-content/);
+   „an accordion can show multiple sections at a time, unlike tabs” (GOV.UK
+   Design System, Accordion, https://design-system.service.gov.uk/components/accordion/).
+   A nyitás-csukás egyetlen CSS-átmenet: a burkoló rács egyetlen sora
+   0fr ↔ 1fr között vált (a doboz a tartalma magasságáig nő), közben a
+   tartalom áttűnik. Asztalon a rádiós fülek változatlanok. */
 @media (max-width: 899px) {
   .kc-services-sin__layout {
     gap: 0;
   }
 
   .kc-services-sin__col,
-  .kc-services-sin__rail,
   .kc-services-sin__stage {
     display: contents;
   }
 
   .kc-services-sin__header {
-    order: 0;
     margin-bottom: var(--kc-space-5);
   }
 
-  .kc-services-sin__rail-label:nth-of-type(1) {
-    order: 1;
+  /* A rádiós fülek mobilon se nem látszanak, se nem fókuszálhatók. */
+  .kc-services-sin__rail,
+  .kc-services-sin__input {
+    display: none;
   }
 
-  .kc-services-sin__rail-label:nth-of-type(2) {
-    order: 3;
-  }
-
-  .kc-services-sin__rail-label:nth-of-type(3) {
-    order: 5;
-  }
-
-  .kc-services-sin__rail-label:nth-of-type(4) {
-    order: 7;
-  }
-
-  .kc-services-sin__rail-label:nth-of-type(5) {
-    order: 9;
-  }
-
+  /* A panel itt csak a sor tárolója: címke + nyíló kártya. A jelölőnégyzet
+     a panelen belül, a címke mellett áll, fókuszkor nem görget messzire. */
   .kc-services-sin__panel {
+    display: block;
+    position: relative;
     grid-area: auto;
-    height: 0;
     min-height: 0;
     margin: 0;
     padding: 0;
-    border-width: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
     box-shadow: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: none;
+  }
+
+  .kc-services-sin__nyito-jelolo {
+    display: block;
+  }
+
+  .kc-services-sin__mobil-cimke {
+    display: grid;
+  }
+
+  .kc-services-sin__panel:not(:first-of-type) .kc-services-sin__mobil-cimke {
+    border-top: 1px solid var(--kc-services-rail-line);
+  }
+
+  .kc-services-sin__nyito-jelolo:checked + .kc-services-sin__mobil-cimke .kc-services-sin__marker {
+    border-color: var(--kc-color-surface-dark);
+    background-color: var(--kc-color-surface-dark);
+    color: var(--kc-color-on-dark);
+  }
+
+  .kc-services-sin__nyito-jelolo:checked
+    + .kc-services-sin__mobil-cimke
+    .kc-services-sin__rail-title {
+    color: var(--kc-color-text);
+  }
+
+  /* Nyitott sor: a + jel függőleges szára eltűnik, marad a −. */
+  .kc-services-sin__nyito-jelolo:checked + .kc-services-sin__mobil-cimke::after {
+    background-size:
+      100% 2px,
+      0 0;
+  }
+
+  /* A fókuszgyűrű a látható címkén (base.css: accent-deep, 5,16:1). */
+  .kc-services-sin__nyito-jelolo:focus-visible + .kc-services-sin__mobil-cimke {
+    outline: 3px solid var(--kc-color-focus);
+    outline-offset: 2px;
+    background-color: var(--kc-color-help-panel);
+    box-shadow: 0 0 0 var(--kc-space-2) var(--kc-color-help-panel);
+  }
+
+  .kc-services-sin__nyithato {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows var(--kc-services-motion-open) var(--kc-services-ease-open),
+      opacity var(--kc-services-motion-cross) var(--kc-ease-out);
+  }
+
+  .kc-services-sin__nyito-jelolo:checked ~ .kc-services-sin__nyithato {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  /* A nyíló sor egyetlen eleme a vágó: padding és keret nélkül 0 magasra
+     zsugorodhat (min-height: 0), és levágja a kártyát. A kártya paddingje,
+     kerete és margója a vágón belül van, így a zárt sor valóban 0 magas
+     (mérve: a kártyán közvetlenül 74 px maradt volna). Oldalt 2 px hely
+     marad a kártya árnyékának. */
+  .kc-services-sin__vago {
+    display: block;
+    min-height: 0;
     overflow: hidden;
+    margin-inline: -2px;
+    padding-inline: 2px;
   }
 
-  .kc-services-sin__panel:nth-of-type(1) {
-    order: 2;
-  }
-
-  .kc-services-sin__panel:nth-of-type(2) {
-    order: 4;
-  }
-
-  .kc-services-sin__panel:nth-of-type(3) {
-    order: 6;
-  }
-
-  .kc-services-sin__panel:nth-of-type(4) {
-    order: 8;
-  }
-
-  .kc-services-sin__panel:nth-of-type(5) {
-    order: 10;
-  }
-
-  .kc-services-sin__input:nth-of-type(1):checked
-    ~ .kc-services-sin__layout
-    .kc-services-sin__panel:nth-of-type(1),
-  .kc-services-sin__input:nth-of-type(2):checked
-    ~ .kc-services-sin__layout
-    .kc-services-sin__panel:nth-of-type(2),
-  .kc-services-sin__input:nth-of-type(3):checked
-    ~ .kc-services-sin__layout
-    .kc-services-sin__panel:nth-of-type(3),
-  .kc-services-sin__input:nth-of-type(4):checked
-    ~ .kc-services-sin__layout
-    .kc-services-sin__panel:nth-of-type(4),
-  .kc-services-sin__input:nth-of-type(5):checked
-    ~ .kc-services-sin__layout
-    .kc-services-sin__panel:nth-of-type(5) {
-    height: auto;
-    margin: 0 0 var(--kc-space-5);
+  .kc-services-sin__kartya {
+    display: grid;
+    gap: var(--kc-services-panel-gap);
+    margin-bottom: var(--kc-space-5);
     padding: var(--kc-services-panel-pad);
-    border-width: 1px;
+    border: 1px solid var(--kc-color-help-border);
+    border-radius: var(--kc-radius-lg);
+    background-color: var(--kc-color-help-panel);
     box-shadow: var(--kc-shadow-sm);
+  }
+
+  /* A kártya tartalma a kártyával együtt tűnik át, külön mozgás nélkül. */
+  .kc-services-sin__copy,
+  .kc-services-sin__photo,
+  .kc-services-sin__placeholder {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }
 
@@ -869,12 +938,14 @@
   .kc-services-sin {
     --kc-services-motion-cross: 0s;
     --kc-services-motion-stagger: 0s;
+    --kc-services-motion-open: 0s;
   }
 
   .kc-services-sin__rail-label,
   .kc-services-sin__marker,
   .kc-services-sin__rail-title,
   .kc-services-sin__panel,
+  .kc-services-sin__nyithato,
   .kc-services-sin__copy,
   .kc-services-sin__photo,
   .kc-services-sin__placeholder {
