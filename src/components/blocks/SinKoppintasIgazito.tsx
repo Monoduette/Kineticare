@@ -105,6 +105,16 @@ export const SIN_MAGASSAG_GORBE = 'cubic-bezier(0.4, 0.14, 0.3, 1)'
  */
 export const SIN_KILEPO_GORBE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
+/**
+ * A képernyő teteje fölül belépő elem a mozgás e hányadáig rejtett marad,
+ * utána a kilépő sorok görbéjével jelenik meg (lásd: belepoElemek). A Carbon
+ * görbén a mozgás 60%-ánál a képkockánkénti elmozdulás már a csúcs (600
+ * px-es úton 55 px) harmada körül van, és tovább lassul. Mérve (390×844,
+ * 60 Hz): a látható elemek legnagyobb képkockánkénti ugrása lefelé nyitásnál
+ * 18–20 px lett (50%-os kezdettel 27–31 px), a felfelé nyitásé 19–22 px.
+ */
+export const SIN_BELEPO_KEZDET = 0.6
+
 /** A mobil accordion töréspontja (services-sin.css `max-width: 899px`). */
 export const SIN_MOBIL_MEDIA = '(max-width: 899px)'
 
@@ -119,16 +129,75 @@ type Doboz = Record<
   string
 >
 
-function dobozMeres(panel: HTMLElement, ablak: Window): Doboz {
+/** A panel doboza és képernyő-helye egyetlen méréssel. */
+interface PanelMeres {
+  doboz: Doboz
+  teteje: number
+  alja: number
+  /** A rács sorainak kiszámolt magassága (`grid-template-rows`, px-ben). */
+  sorok: string
+  /** Az oldalsó padding és keret: a záródó panel szélessége ne ugorjon. */
+  oldalak: Partial<
+    Record<'paddingLeft' | 'paddingRight' | 'borderLeftWidth' | 'borderRightWidth', string>
+  >
+}
+
+function panelMeres(panel: HTMLElement, ablak: Window): PanelMeres {
   const stilus = ablak.getComputedStyle(panel)
+  const hely = panel.getBoundingClientRect()
   return {
-    height: `${panel.getBoundingClientRect().height}px`,
-    paddingTop: stilus.paddingTop,
-    paddingBottom: stilus.paddingBottom,
-    marginBottom: stilus.marginBottom,
-    borderTopWidth: stilus.borderTopWidth,
-    borderBottomWidth: stilus.borderBottomWidth,
+    doboz: {
+      height: `${hely.height}px`,
+      paddingTop: stilus.paddingTop,
+      paddingBottom: stilus.paddingBottom,
+      marginBottom: stilus.marginBottom,
+      borderTopWidth: stilus.borderTopWidth,
+      borderBottomWidth: stilus.borderBottomWidth,
+    },
+    teteje: hely.top,
+    alja: hely.bottom,
+    sorok: stilus.gridTemplateRows,
+    oldalak: {
+      paddingLeft: stilus.paddingLeft,
+      paddingRight: stilus.paddingRight,
+      borderLeftWidth: stilus.borderLeftWidth,
+      borderRightWidth: stilus.borderRightWidth,
+    },
   }
+}
+
+/**
+ * A koppintott sor FÖLÖTT záródó panelnek csak a képernyőn látható része
+ * mozog (2026-10-05, tulajdonosi kör: lefelé nyitásnál „szaggat”). Ami a
+ * képernyő teteje fölött van, azt senki nem látja, mégis a teljes magassága
+ * mozgatta a lapot: a koppintott sor helyben tartása miatt a fölötte lévő
+ * tartalom (az előző sor, a szekció bevezetője) a panel TELJES magasságát
+ * futotta be 400 ms alatt, és a mozgás leggyorsabb szakaszában csúszott be
+ * a képernyő tetején (390×844-en 835 px, képkockánként 77 px-ig). Felfelé
+ * nyitáskor ilyen belépő tartalom nincs, ezért volt az az irány sima.
+ *
+ * Ezért a záródó panel kiinduló magassága csak a látható része: a rejtett
+ * rész az első képkockában összecsukódik, és a görgetéskövetés ezt a
+ * képernyőn kívül, láthatatlanul kiegyenlíti. A panel tartalma a mozgás
+ * alatt a panel ALJÁHOZ igazodik (`align-content: end`), a rács sorai pedig
+ * a koppintáskor mért magasságukon maradnak (a tartalomnál alacsonyabb
+ * panelben különben összenyomódnának: mérve a fotó 276 px-ről 192 px-re
+ * esett, a tartalom 84 px-t ugrott). Így a látható rész a helyén marad, és
+ * csak a panel teteje ereszkedik le, ahogy egy összecsukódó accordion szokott. A belépő tartalom útja így legfeljebb a
+ * koppintott sor képernyő-helye, nem a panel magassága. A látómező szélén
+ * gyorsan mozgó elem akaratlanul elrántja a figyelmet („Movement in a
+ * person's peripheral vision triggers a stimulus-driven shift in visual
+ * attention”), az átmenet dolga pedig az állapotok közti folytonosság
+ * („Show continuity in a transition between the states of an object”):
+ * NN/g, Animation for Attention and Comprehension,
+ * https://www.nngroup.com/articles/animation-usability/. A képernyőn kívüli
+ * rész mozgatása ehhez semmit nem ad, csak sebességet.
+ */
+function lathatoMagassag(teteje: number, alja: number, magassag: number): number {
+  if (!Number.isFinite(teteje) || !Number.isFinite(alja)) {
+    return magassag
+  }
+  return Math.min(magassag, Math.max(0, alja - Math.max(teteje, 0)))
 }
 
 /** Az első átmenet ideje ms-ban a kiszámolt `transition-duration`-ből (`0.35s` → 350). */
@@ -204,11 +273,14 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   const mobil = ablak.matchMedia?.(SIN_MOBIL_MEDIA).matches === true
   // A kiinduló doboz a panelek PILLANATNYI mérete: ha egy korábbi váltás
   // animációja még fut, onnan folytatjuk, ugrás nélkül.
-  const kezdoDobozok = mobil ? panelek.map((panel) => dobozMeres(panel, ablak)) : []
+  const kezdoMeresek = mobil ? panelek.map((panel) => panelMeres(panel, ablak)) : []
   // A többi sor koppintáskori helye (a koppintott sor helye az `elotte`).
   const kezdoCimkek = mobil
     ? cimkek.map((masik) => (masik === cimke ? null : masik.getBoundingClientRect()))
     : []
+  // A szekció bevezetője (mobilon a rács első sora) is beléphet felülről.
+  const fejlec = fieldset?.querySelector<HTMLElement>('.kc-services-sin__header') ?? null
+  const kezdoFejlec = mobil && fejlec ? fejlec.getBoundingClientRect() : null
   // A sorok pillanatnyi átlátszatlansága, még az előző váltás leállítása
   // előtt: a leállítás 1-re ugratná a félig halvány sort (felvillanás).
   const kezdoAtlatszosag = mobil
@@ -245,7 +317,7 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   // A végső elrendezés, még az animációk előtt mérve (az animáció már a
   // köztes méretet adná). A koppintott sor a helyén marad, tehát minden elem
   // végső képernyő-helye a mostani helye, a sor elmozdulásával kiegyenlítve.
-  const vegDobozok = panelek.map((panel) => dobozMeres(panel, ablak))
+  const vegDobozok = panelek.map((panel) => panelMeres(panel, ablak).doboz)
   const kiegyenlites = elotte - cimke.getBoundingClientRect().top
   const kepernyoAlja = ablak.innerHeight
   const kilepoCimkek = cimkek.filter((masik, index) => {
@@ -256,6 +328,25 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
     const latszott = kezdo.bottom > 0 && kezdo.top < kepernyoAlja
     return latszott && masik.getBoundingClientRect().top + kiegyenlites >= kepernyoAlja
   })
+  // A tükörkép (lefelé nyitás, a koppintott sor fölött záródó panel): ami a
+  // koppintáskor teljesen a képernyő teteje fölött volt, és a mozgás végén
+  // látszik, az felülről úszik be, a mozgás gyors szakaszában is. Ez az elem
+  // a mozgás első felében rejtett, és csak a lassuló második felében jelenik
+  // meg (Material Design, Choreography: az átmenet alatt zavaró elem
+  // eltűnhet, és az átmenet végén visszatér,
+  // https://m1.material.io/motion/choreography.html).
+  const belepEFelulrol = (elem: Element, kezdo: DOMRect | null | undefined) => {
+    // Csak a megjelenített (nem nulla magas) elem számít.
+    if (!kezdo || kezdo.bottom > 0 || !(kezdo.bottom - kezdo.top > 0)) {
+      return false
+    }
+    const veg = elem.getBoundingClientRect()
+    return veg.bottom + kiegyenlites > 0 && veg.top + kiegyenlites < kepernyoAlja
+  }
+  const belepoElemek: Element[] = [
+    ...cimkek.filter((masik, index) => belepEFelulrol(masik, kezdoCimkek[index])),
+    ...(fejlec && belepEFelulrol(fejlec, kezdoFejlec) ? [fejlec] : []),
+  ]
 
   const idozites: KeyframeAnimationOptions = {
     duration: SIN_MAGASSAG_MS,
@@ -264,22 +355,41 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   const animaciok: Animation[] = []
   try {
     panelek.forEach((panel, index) => {
-      const kezdo = kezdoDobozok[index]
+      const meres = kezdoMeresek[index]
       const veg = vegDobozok[index]
-      if (!kezdo || !veg || azonosDoboz(kezdo, veg)) {
+      if (!meres || !veg || azonosDoboz(meres.doboz, veg)) {
         return
       }
       // A záródó panel a CSS szerint rögtön rejtett lenne: a mozgás idejére
       // látható marad, hogy a zsugorodás látsszon.
       const zarodik = Number.parseFloat(veg.height) === 0
+      if (!zarodik) {
+        animaciok.push(panel.animate([meres.doboz, veg], idozites))
+        return
+      }
+      // A koppintott sor fölött záródó panelből csak a látható rész mozog
+      // (lásd: lathatoMagassag).
+      const teljes = Number.parseFloat(meres.doboz.height)
+      const lathato =
+        meres.alja <= elotte + 0.5 ? lathatoMagassag(meres.teteje, meres.alja, teljes) : teljes
+      const kurtitott = lathato < teljes - 0.5
+      const kezdo = kurtitott ? { ...meres.doboz, height: `${lathato}px` } : meres.doboz
+      const igazitas = kurtitott
+        ? { alignContent: 'end', ...(meres.sorok ? { gridTemplateRows: meres.sorok } : {}) }
+        : {}
+      // A mobil CSS a záródó panel oldalsó paddingjét és keretét azonnal
+      // 0-ra váltja: a tartalom kiszélesedne, a négyzetes fotó 276 px-ről
+      // 320 px-re nőne az első képkockában (390×844, mérve). A mozgás alatt
+      // a szélesség a koppintáskori marad; csak a magasság változik.
+      const oldalak = Object.fromEntries(
+        Object.entries(meres.oldalak).filter(([, ertek]) => typeof ertek === 'string' && ertek),
+      )
       animaciok.push(
         panel.animate(
-          zarodik
-            ? [
-                { ...kezdo, visibility: 'visible' },
-                { ...veg, visibility: 'visible' },
-              ]
-            : [kezdo, veg],
+          [
+            { ...kezdo, ...oldalak, ...igazitas, visibility: 'visible' },
+            { ...veg, ...oldalak, ...igazitas, visibility: 'visible' },
+          ],
           idozites,
         ),
       )
@@ -290,7 +400,22 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
     // folytatja: a kilépő tovább halványul, a maradó ugyanazzal a görbével tér
     // vissza, ugrás nélkül.
     const kilepoVege = Math.min(1, athalvanyulasMs / SIN_MAGASSAG_MS)
+    for (const belepo of belepoElemek) {
+      animaciok.push(
+        belepo.animate(
+          [
+            { opacity: 0 },
+            { opacity: 0, offset: SIN_BELEPO_KEZDET, easing: SIN_KILEPO_GORBE },
+            { opacity: 1 },
+          ],
+          { duration: SIN_MAGASSAG_MS },
+        ),
+      )
+    }
     cimkek.forEach((masik, index) => {
+      if (belepoElemek.includes(masik)) {
+        return
+      }
       const kezdoAtlatszo = kezdoAtlatszosag[index] ?? 1
       const kilep = kilepoCimkek.includes(masik)
       if (!kilep && kezdoAtlatszo >= 0.99) {
