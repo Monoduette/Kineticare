@@ -31,7 +31,7 @@ const BACKUP_POSTGRES =
 // bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
-  ['ci.yml', 'eef8b6a214d03b4833d57f40b25408fff05897da7cce064251f9fd8527fc8a6e'],
+  ['ci.yml', '0dd198a417b66640bdfd9f73404cdb34c9f08429b78ddf1d433bc6eb3cd9a41a'],
   ['claude.yml', '49e96a49ffb9c387822602c306d98a1a281f2c15dd290ce174bf9b8933e3e53e'],
   ['db-backup.yml', '15adb4fa8c0b8582a58916e46400d7670126a746c9d39b2e55670eb42affd388'],
   ['gitleaks.yml', 'b0241c695c543fcb2806348317f0bbcc745d51f8967329b53079216c450f98a0'],
@@ -848,6 +848,22 @@ describe('CI/platform supply-chain guard', () => {
     expect(step).toContain('KINETICARE_BACKUP_PG18_CONTAINER: ${{ job.services.postgres.id }}')
     expect(step).toContain('run: node --import tsx scripts/test-backup-archive-integrity.mjs')
     expect(step).not.toMatch(/continue-on-error|\|\|\s*true|\bif:/)
+  })
+
+  it('az audit-kapu blokkol: a kivétellistás kapu fut, a hibája nem nyelhető el', () => {
+    const ci = workflow('ci.yml')
+    const start = ci.indexOf('      - name: Sebezhetőség-audit (high és fölötte bukás)\n')
+    expect(start).toBeGreaterThan(ci.indexOf('  audit:\n'))
+    const nextStep = ci.indexOf('\n      - ', start + 1)
+    const nextJob = ci.indexOf('\n  ', ci.indexOf('\n    steps:', start) + 1)
+    const end = [nextStep, nextJob, ci.length].filter((i) => i > start).sort((a, b) => a - b)[0]
+    const step = ci.slice(start, end)
+    const gateLine =
+      'node scripts/audit-gate.mjs "$RUNNER_TEMP/audit.json" .github/audit-kivetelek.json'
+    expect(step).toContain('npm audit --json > "$RUNNER_TEMP/audit.json" || true')
+    expect(step).toContain(gateLine)
+    expect(step.slice(step.indexOf(gateLine))).not.toMatch(/\|\|\s*true|;\s*true|\|\|\s*:/)
+    expect(step).not.toMatch(/continue-on-error|\bif:/)
   })
 
   it('byte-for-byte engedélyezi kizárólag a négy review-zott workflow-t', () => {

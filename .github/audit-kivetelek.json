@@ -1,0 +1,8 @@
+[
+  {
+    "id": "GHSA-vfj7-8cjw-p6xm",
+    "csomag": "braces",
+    "lejar": "2026-11-05",
+    "indok": "2026-10-05: javított braces-változat nincs (minden kiadás <=3.0.3 érintett). Csak lint- és build-idejű úton érkezik (eslint-config-next -> fast-glob/micromatch, @payloadcms/next -> sass -> chokidar); futásidőben vevőtől érkező globmintát nem kap. Javított kiadásnál a kivétel törlendő."
+  }
+]
