@@ -882,14 +882,38 @@ describe('services-sin.css — mobil harmonika (< 900 px)', () => {
     ).toBe(true)
   })
 
-  it('a sorok közt hajszál-elválasztó fut, a nyitott sor és a kártyája közt nem', () => {
-    expect(
-      szabalyTorzs(
-        mobil,
-        '.kc-services-sin__panel:not(:first-of-type) .kc-services-sin__mobil-cimke',
-      ),
-    ).toContain('border-top: 1px solid var(--kc-services-rail-line)')
-    expect(szabalyTorzs(css, '.kc-services-sin__mobil-cimke')).not.toContain('border-bottom')
+  /**
+   * Tulajdonosi képernyőkép, 2026-10-05: a sorok közti vonal két vége görbült
+   * (a lekerekített címke felső kerete), és koppintás után az első soron
+   * lekerekített tónusdoboz maradt (iOS „ragadós” hover). Mobilon ezért nincs
+   * sor-elválasztó keret, a címke hover-tónusa pedig csak hover-eszközön él.
+   */
+  it('a mobil címkén nincs elválasztó keret, a hover-tónus csak hover-eszközön él', () => {
+    const cimkeSzabalyok = [...tiszta.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, prelude]) =>
+      szelektorLista(prelude).some((sz) => /mobil-cimke(:[\w-]+(\([^)]*\))?)*$/.test(sz)),
+    )
+    expect(cimkeSzabalyok.length).toBeGreaterThan(0)
+    for (const [, prelude, torzs] of cimkeSzabalyok) {
+      expect(torzs, prelude.trim()).not.toMatch(/border(-top|-bottom|-block)?\s*:/)
+    }
+
+    const kezdet = tiszta.indexOf('@media (hover: hover) {')
+    expect(kezdet).toBeGreaterThanOrEqual(0)
+    let melyseg = 0
+    let vege = -1
+    for (let i = tiszta.indexOf('{', kezdet); i < tiszta.length; i += 1) {
+      if (tiszta[i] === '{') melyseg += 1
+      if (tiszta[i] === '}') {
+        melyseg -= 1
+        if (melyseg === 0) {
+          vege = i + 1
+          break
+        }
+      }
+    }
+    const hoverBlokk = tiszta.slice(kezdet, vege)
+    expect(hoverBlokk).toContain('.kc-services-sin__mobil-cimke:hover')
+    expect(tiszta.slice(0, kezdet) + tiszta.slice(vege)).not.toContain('mobil-cimke:hover')
   })
 
   it('a rács köze 0 mobilon (a zárt sor nem hagy üres rést)', () => {

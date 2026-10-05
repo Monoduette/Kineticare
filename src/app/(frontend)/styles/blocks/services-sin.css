@@ -343,17 +343,32 @@
 
 /* Hover-tónus: a help-panel réteg, a címke dobozán túl space-2 kiterjesztéssel
    (spread-árnyék, nem margó: a rács és a gerinc nem mozdul). Nincs új szín. */
-.kc-services-sin__rail-label:hover,
-.kc-services-sin__mobil-cimke:hover {
+.kc-services-sin__rail-label:hover {
   background-color: var(--kc-color-help-panel);
   box-shadow: 0 0 0 var(--kc-space-2) var(--kc-color-help-panel);
 }
 
 /* A gyűrű erősödik hoverre: chrome → help-ink (a kör kitöltése nem vált). */
-.kc-services-sin__rail-label:hover .kc-services-sin__marker,
-.kc-services-sin__mobil-cimke:hover .kc-services-sin__marker {
+.kc-services-sin__rail-label:hover .kc-services-sin__marker {
   border-color: var(--kc-color-help-ink);
   color: var(--kc-color-help-ink);
+}
+
+/* A mobil címke hover-tónusa csak valódi hover-eszközön él. Érintőképernyőn
+   az iOS a koppintás után „ragadós” hovert hagy a soron, és a lekerekített
+   tónusdoboz ott maradt (tulajdonosi képernyőkép, 2026-10-05). A `hover`
+   médiajellemző az elsődleges bemenetet nézi: `none`, ha az eszköz nem tud
+   kényelmesen hoverelni (MDN, https://developer.mozilla.org/en-US/docs/Web/CSS/@media/hover). */
+@media (hover: hover) {
+  .kc-services-sin__mobil-cimke:hover {
+    background-color: var(--kc-color-help-panel);
+    box-shadow: 0 0 0 var(--kc-space-2) var(--kc-color-help-panel);
+  }
+
+  .kc-services-sin__mobil-cimke:hover .kc-services-sin__marker {
+    border-color: var(--kc-color-help-ink);
+    color: var(--kc-color-help-ink);
+  }
 }
 
 /* A mobil nyitó (jelölőnégyzet + címke) asztalon nem létezik; a kártya
@@ -799,7 +814,13 @@
    Design System, Accordion, https://design-system.service.gov.uk/components/accordion/).
    A nyitás-csukás egyetlen CSS-átmenet: a burkoló rács egyetlen sora
    0fr ↔ 1fr között vált (a doboz a tartalma magasságáig nő), közben a
-   tartalom áttűnik. Asztalon a rádiós fülek változatlanok. */
+   tartalom áttűnik. Asztalon a rádiós fülek változatlanok.
+   A sorok között nincs elválasztó vonal (tulajdonosi kérés, 2026-10-05: a
+   lekerekített címke felső kerete a két végén görbült). A sorokat a
+   körjelölők és a térköz tagolják: „Using varying amounts of whitespace to
+   either unite or separate elements is key to communicating meaningful
+   groupings” (NN/g, Proximity Principle in Visual Design,
+   https://www.nngroup.com/articles/gestalt-proximity/). */
 @media (max-width: 899px) {
   .kc-services-sin__layout {
     gap: 0;
@@ -845,10 +866,6 @@
 
   .kc-services-sin__mobil-cimke {
     display: grid;
-  }
-
-  .kc-services-sin__panel:not(:first-of-type) .kc-services-sin__mobil-cimke {
-    border-top: 1px solid var(--kc-services-rail-line);
   }
 
   .kc-services-sin__nyito-jelolo:checked + .kc-services-sin__mobil-cimke .kc-services-sin__marker {
