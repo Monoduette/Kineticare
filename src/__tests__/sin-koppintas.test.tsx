@@ -1,8 +1,5 @@
 // @vitest-environment happy-dom
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -10,27 +7,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Services } from '../components/blocks/Services'
 import {
-  SIN_BELEPO_KEZDET,
   SIN_CIMKE_OSZTALY,
-  SIN_KILEPO_GORBE,
-  SIN_MAGASSAG_GORBE,
-  SIN_MAGASSAG_MS,
   SinKoppintasIgazito,
-  elsoAtmenetMs,
   sinCimkeKattintas,
 } from '../components/blocks/SinKoppintasIgazito'
 import type { BlockServices } from '../payload-types'
 
 /**
- * Az „Így tudunk segíteni” sín koppintás-javításának őre
- * (src/components/blocks/SinKoppintasIgazito.tsx).
+ * Az „Így tudunk segíteni” sín őre: az asztali fül-címke kattintás-javítása
+ * (src/components/blocks/SinKoppintasIgazito.tsx) és a mobil harmonika
+ * szerkezete (Services.tsx).
  *
- * Bejelentett hiba (2026-09-23, mobil gyári böngésző): koppintásra a lap
- * 1188 px-t ugrott, mert a címke-kattintás a modul tetején álló rejtett
- * rádiót fókuszálta, és a fölötte összecsukódó panel is elcsúsztatta a sort.
- * A happy-dom nem számol elrendezést, ezért a címke helyzetét a teszt adja
- * meg (az összecsukódást a `getBoundingClientRect` második értéke jelzi); a
- * valódi elrendezést a mobil-emulációs mérés igazolta.
+ * Bejelentett hibák: 2026-09-23 koppintásra 1188 px-es ugrás (a rejtett
+ * rádió fókusza a modul tetejére görgetett); 2026-10-05 a mobil nyitás
+ * „nem sima”, a tulajdonos kérése: „sima, egyszerű CSS-animáció”. A
+ * happy-dom nem számol elrendezést és nem futtat átmenetet: a mobil
+ * mozgást a Chromiumos filmszalag igazolta, itt a szerkezetet őrizzük. A
+ * stíluslap szerződése a services-block.test.tsx „mobil harmonika” blokkjában.
  */
 
 const blokk = {
@@ -69,29 +62,60 @@ afterEach(() => {
 })
 
 describe('a sín szerkezete', () => {
-  it('a fieldset azonosítót kap, a címkék a saját rádiójukra mutatnak', () => {
+  it('a fieldset azonosítót kap, az asztali címkék a saját rádiójukra mutatnak', () => {
     const { fieldset, cimkek, radiok } = sinDom()
     expect(fieldset?.id).toBe('kc-help-abc123-sin')
     expect(cimkek).toHaveLength(3)
     cimkek.forEach((cimke, index) => expect(cimke.htmlFor).toBe(radiok[index]?.id))
     expect(radiok[0]?.checked).toBe(true)
   })
+
+  it('mobilon minden sornak saját nyitója van a panelen belül, az első nyitva indul', () => {
+    sinDom()
+    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
+    expect(panelek).toHaveLength(3)
+    panelek.forEach((panel, index) => {
+      const jelolo = panel.querySelector<HTMLInputElement>('input.kc-services-sin__nyito-jelolo')
+      const cimke = panel.querySelector<HTMLLabelElement>('label.kc-services-sin__mobil-cimke')
+      expect(jelolo?.type).toBe('checkbox')
+      expect(jelolo?.checked).toBe(index === 0)
+      expect(cimke?.htmlFor).toBe(jelolo?.id)
+      // A nyitó a címke ELŐTT, a nyíló kártya utánuk áll (`:checked +` és `~`).
+      expect(jelolo?.nextElementSibling).toBe(cimke)
+      expect(cimke?.nextElementSibling?.classList.contains('kc-services-sin__nyithato')).toBe(true)
+      expect(
+        panel.querySelector(
+          '.kc-services-sin__nyithato > .kc-services-sin__vago > .kc-services-sin__kartya .kc-services-sin__copy',
+        ),
+      ).not.toBeNull()
+    })
+    // Egymástól független jelölőnégyzetek: egy sor nyitása nem csukja a többit.
+    const jelolok = panelek.map((panel) =>
+      panel.querySelector<HTMLInputElement>('input.kc-services-sin__nyito-jelolo'),
+    )
+    expect(new Set(jelolok.map((jelolo) => jelolo?.name ?? '')).size).toBe(1)
+    expect(jelolok.every((jelolo) => !jelolo?.name)).toBe(true)
+  })
+
+  it('a mobil címke ugyanazt mondja, mint az asztali fül', () => {
+    const { cimkek } = sinDom()
+    const mobil = [
+      ...document.querySelectorAll<HTMLLabelElement>('label.kc-services-sin__mobil-cimke'),
+    ]
+    expect(mobil.map((cimke) => cimke.textContent)).toEqual(
+      cimkek.map((cimke) => cimke.textContent),
+    )
+  })
 })
 
-describe('sinCimkeKattintas', () => {
-  it('kiválasztja a sort, görgetés nélkül fókuszál, és helyben tartja a koppintott sort', () => {
+describe('sinCimkeKattintas (asztali fülek)', () => {
+  it('kiválasztja a sort, és görgetés nélkül fókuszál', () => {
     const { cimkek, radiok } = sinDom()
     const cimke = cimkek[2]
     const radio = radiok[2]
     if (!cimke || !radio) throw new Error('hiányzó sín-elem')
-    // Koppintáskor a sor 424 px-en áll; a fölötte lévő 812 px-es panel
-    // összecsukódása után -388 px-re csúszna.
-    vi.spyOn(cimke, 'getBoundingClientRect')
-      .mockReturnValueOnce({ top: 424 } as DOMRect)
-      .mockReturnValue({ top: -388 } as DOMRect)
     const fokusz = vi.spyOn(radio, 'focus')
     const gorget = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined)
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
     const valtozas = vi.fn()
     radio.addEventListener('change', valtozas)
 
@@ -103,444 +127,51 @@ describe('sinCimkeKattintas', () => {
     expect(valtozas).toHaveBeenCalled()
     expect(esemeny.preventDefault).toHaveBeenCalled()
     expect(fokusz).toHaveBeenCalledWith({ preventScroll: true })
-    expect(gorget).toHaveBeenCalledWith({ top: -812, behavior: 'instant' })
-  })
-
-  it('ha a sor nem mozdul, nem görget', () => {
-    const { cimkek } = sinDom()
-    const cimke = cimkek[1]
-    if (!cimke) throw new Error('hiányzó sín-elem')
-    vi.spyOn(cimke, 'getBoundingClientRect').mockReturnValue({ top: 300 } as DOMRect)
-    const gorget = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined)
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
-    sinCimkeKattintas(kattintas(cimke), window)
     expect(gorget).not.toHaveBeenCalled()
   })
 
-  it('a sínen kívüli kattintáshoz nem nyúl', () => {
+  it('a már kiválasztott sornál csak fókuszál', () => {
+    const { cimkek, radiok } = sinDom()
+    const cimke = cimkek[0]
+    const radio = radiok[0]
+    if (!cimke || !radio) throw new Error('hiányzó sín-elem')
+    const fokusz = vi.spyOn(radio, 'focus')
+    const valtozas = vi.fn()
+    radio.addEventListener('change', valtozas)
+    sinCimkeKattintas(kattintas(cimke), window)
+    expect(valtozas).not.toHaveBeenCalled()
+    expect(fokusz).toHaveBeenCalledWith({ preventScroll: true })
+  })
+
+  it('a sínen kívüli és a mobil címkére esett kattintáshoz nem nyúl', () => {
     sinDom()
-    const cim = document.querySelector('h2')
-    const gorget = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined)
-    const esemeny = kattintas(cim)
-    sinCimkeKattintas(esemeny, window)
-    expect(esemeny.preventDefault).not.toHaveBeenCalled()
-    expect(gorget).not.toHaveBeenCalled()
-  })
-})
-
-describe('mobil nyitás-zárás animáció', () => {
-  it('az átmenet idejét ms-ra váltja, a listából az elsőt veszi', () => {
-    expect(elsoAtmenetMs('0.35s, 0s')).toBe(350)
-    expect(elsoAtmenetMs('400ms')).toBe(400)
-    expect(elsoAtmenetMs('0s, 0s')).toBe(0)
-    expect(elsoAtmenetMs('')).toBe(0)
-  })
-
-  /** Mobil környezet: a mobil média igaz, a panel átmenete 0,35 s, 24 px-es paddinggel. */
-  function mobilKornyezet() {
-    vi.spyOn(window, 'matchMedia').mockImplementation(
-      (query: string) => ({ matches: query.includes('max-width') }) as MediaQueryList,
-    )
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(
-      () =>
-        ({
-          transitionDuration: '0.35s, 0s',
-          paddingTop: '24px',
-          paddingBottom: '24px',
-          marginBottom: '24px',
-          borderTopWidth: '1px',
-          borderBottomWidth: '1px',
-        }) as CSSStyleDeclaration,
-    )
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
-  }
-
-  /** A panel magassága koppintás előtt, majd utána (happy-dom nem számol elrendezést). */
-  function magassag(panel: HTMLElement, elotte: number, utana: number) {
-    vi.spyOn(panel, 'getBoundingClientRect')
-      .mockReturnValueOnce({ height: elotte } as DOMRect)
-      .mockReturnValue({ height: utana } as DOMRect)
-  }
-
-  it('mobilon a nyíló és a záródó panelt is animálja, a Carbon nagy kinyitás időzítésével', () => {
-    const { cimkek, radiok } = sinDom()
-    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-    const [regiPanel, kozepso, ujPanel] = panelek
-    const cimke = cimkek[2]
-    if (!cimke || !ujPanel || !regiPanel || !kozepso) throw new Error('hiányzó sín-elem')
-    mobilKornyezet()
-    magassag(regiPanel, 800, 0)
-    magassag(kozepso, 0, 0)
-    magassag(ujPanel, 0, 700)
-    const kesz = { finished: Promise.resolve(), cancel: vi.fn() } as unknown as Animation
-    const uj = vi.fn(() => kesz)
-    const regi = vi.fn(() => kesz)
-    const kozep = vi.fn(() => kesz)
-    Object.assign(ujPanel, { animate: uj })
-    Object.assign(regiPanel, { animate: regi })
-    Object.assign(kozepso, { animate: kozep })
-
-    sinCimkeKattintas(kattintas(cimke), window)
-
-    expect(radiok[2]?.checked).toBe(true)
-    expect(uj).toHaveBeenCalledTimes(1)
-    expect(regi).toHaveBeenCalledTimes(1)
-    expect(kozep).not.toHaveBeenCalled()
-    const [ujKockak, ujIdozites] = uj.mock.calls[0] as unknown as [
-      Keyframe[],
-      KeyframeAnimationOptions,
-    ]
-    expect(ujKockak[0]).toMatchObject({ height: '0px' })
-    expect(ujKockak[1]).toMatchObject({ height: '700px', paddingTop: '24px' })
-    expect(ujIdozites).toEqual({ duration: SIN_MAGASSAG_MS, easing: SIN_MAGASSAG_GORBE })
-    const [regiKockak] = regi.mock.calls[0] as unknown as [Keyframe[]]
-    expect(regiKockak[0]).toMatchObject({ height: '800px', visibility: 'visible' })
-    expect(regiKockak[1]).toMatchObject({ height: '0px', visibility: 'visible' })
-  })
-
-  describe('a képernyő alja alá kicsúszó sorok (nyitott 3. sorból az 1.-re)', () => {
-    const eredetiMagassag = window.innerHeight
-    afterEach(() => {
-      Object.defineProperty(window, 'innerHeight', { value: eredetiMagassag, configurable: true })
-    })
-
-    /** Élő mérés (390×844): a 2. és 3. sor 304 / 419 px-ről 1139 / 1254 px-re csúszik. */
-    function felfeleKoppintas(harmadikVege: number, atlatszosag?: string) {
-      Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
-      const { cimkek, radiok } = sinDom()
-      const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-      const [elso, masodik, harmadik] = panelek
-      const [koppintott, cimke2, cimke3] = cimkek
-      if (radiok[2]) radiok[2].checked = true
-      if (!elso || !masodik || !harmadik || !koppintott || !cimke2 || !cimke3) {
-        throw new Error('hiányzó sín-elem')
-      }
-      mobilKornyezet()
-      if (atlatszosag !== undefined) {
-        // Egy előző, félbeszakított halványítás pillanatnyi értéke.
-        vi.spyOn(window, 'getComputedStyle').mockImplementation(
-          () =>
-            ({
-              opacity: atlatszosag,
-              transitionDuration: '0.35s, 0s',
-              paddingTop: '24px',
-              paddingBottom: '24px',
-              marginBottom: '24px',
-              borderTopWidth: '1px',
-              borderBottomWidth: '1px',
-            }) as CSSStyleDeclaration,
-        )
-      }
-      magassag(elso, 0, 812)
-      magassag(masodik, 0, 0)
-      magassag(harmadik, 858, 0)
-      vi.spyOn(koppintott, 'getBoundingClientRect').mockReturnValue({ top: 200 } as DOMRect)
-      vi.spyOn(cimke2, 'getBoundingClientRect')
-        .mockReturnValueOnce({ top: 304, bottom: 419 } as DOMRect)
-        .mockReturnValue({ top: 1139, bottom: 1254 } as DOMRect)
-      vi.spyOn(cimke3, 'getBoundingClientRect')
-        .mockReturnValueOnce({ top: 419, bottom: 534 } as DOMRect)
-        .mockReturnValue({ top: harmadikVege, bottom: harmadikVege + 115 } as DOMRect)
-      const kesz = { finished: Promise.resolve(), cancel: vi.fn() } as unknown as Animation
-      panelek.forEach((panel) => Object.assign(panel, { animate: vi.fn(() => kesz) }))
-      const halvanyit2 = vi.fn(() => kesz)
-      const halvanyit3 = vi.fn(() => kesz)
-      Object.assign(cimke2, { animate: halvanyit2 })
-      Object.assign(cimke3, { animate: halvanyit3 })
-      Object.assign(koppintott, { animate: vi.fn(() => kesz) })
-      sinCimkeKattintas(kattintas(koppintott), window)
-      return { halvanyit2, halvanyit3, koppintott }
+    for (const cel of [
+      document.querySelector('h2'),
+      document.querySelector('label.kc-services-sin__mobil-cimke'),
+    ]) {
+      const esemeny = kattintas(cel)
+      sinCimkeKattintas(esemeny, window)
+      expect(esemeny.preventDefault).not.toHaveBeenCalled()
     }
-
-    it('a kicsúszó sor a záródó panel idejével és görbéjével halványul, a végén visszakapja az átlátszatlanságot', () => {
-      const { halvanyit2, halvanyit3, koppintott } = felfeleKoppintas(1254)
-      expect(halvanyit2).toHaveBeenCalledTimes(1)
-      expect(halvanyit3).toHaveBeenCalledTimes(1)
-      expect(koppintott.animate).not.toHaveBeenCalled()
-      const [kockak, idozites] = halvanyit2.mock.calls[0] as unknown as [
-        Keyframe[],
-        KeyframeAnimationOptions,
-      ]
-      // 350 ms (a panel átmenete) a 400 ms-ból: 0,875-nél már 0.
-      expect(kockak).toEqual([
-        { opacity: 1, easing: SIN_KILEPO_GORBE },
-        { opacity: 0, offset: 350 / SIN_MAGASSAG_MS },
-        { opacity: 0 },
-      ])
-      expect(idozites).toEqual({ duration: SIN_MAGASSAG_MS })
-      expect(idozites).not.toHaveProperty('fill')
-    })
-
-    it('a képernyőn maradó sor nem halványul', () => {
-      const { halvanyit2, halvanyit3 } = felfeleKoppintas(700)
-      expect(halvanyit2).toHaveBeenCalledTimes(1)
-      expect(halvanyit3).not.toHaveBeenCalled()
-    })
-
-    it('gyors ismételt koppintásnál a pillanatnyi átlátszatlanságból folytat, felvillanás nélkül', () => {
-      const { halvanyit2, halvanyit3, koppintott } = felfeleKoppintas(700, '0.3')
-      const [kilepo] = halvanyit2.mock.calls[0] as unknown as [Keyframe[]]
-      expect(kilepo[0]).toEqual({ opacity: 0.3, easing: SIN_KILEPO_GORBE })
-      expect(kilepo.at(-1)).toEqual({ opacity: 0 })
-      // A képernyőn maradó és a koppintott sor 0,3-ról fokozatosan tér vissza.
-      for (const visszater of [halvanyit3, koppintott.animate as ReturnType<typeof vi.fn>]) {
-        const [kockak] = visszater.mock.calls[0] as unknown as [Keyframe[]]
-        expect(kockak[0]).toEqual({ opacity: 0.3, easing: SIN_KILEPO_GORBE })
-        expect(kockak.at(-1)).toEqual({ opacity: 1 })
-      }
-    })
   })
 
-  it('a kicsúszó sor görbéje a tokens.css --kc-ease-out tokenje', () => {
-    const tokens = readFileSync(
-      join(process.cwd(), 'src', 'app', '(frontend)', 'styles', 'tokens.css'),
-      'utf8',
-    )
-    expect(tokens).toContain(`--kc-ease-out: ${SIN_KILEPO_GORBE};`)
-  })
-
-  describe('lefelé nyitás: a koppintott sor FÖLÖTT záródó panel (nyitott 1. sorból a 2.-ra)', () => {
-    const eredetiMagassag = window.innerHeight
-    afterEach(() => {
-      Object.defineProperty(window, 'innerHeight', { value: eredetiMagassag, configurable: true })
-    })
-
-    /**
-     * Élő mérés (390×844, 2026-10-05): a 2. sor 300 px-en, a fölötte nyitott
-     * 1. panel -535..276 px (811 px magas, ebből 276 px látszik), a rács sorai
-     * 461,5 px (szöveg) és 276 px (fotó). A záródás után az 1. sor és a
-     * szekció bevezetője felülről a képernyőre kerül.
-     */
-    function lefeleKoppintas() {
-      Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
-      const { cimkek, radiok } = sinDom()
-      const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-      const [elso, masodik, harmadik] = panelek
-      const [cimke1, koppintott, cimke3] = cimkek
-      const fejlec = document.querySelector<HTMLElement>('.kc-services-sin__header')
-      if (!elso || !masodik || !harmadik || !cimke1 || !koppintott || !cimke3 || !fejlec) {
-        throw new Error('hiányzó sín-elem')
-      }
-      if (radiok[0]) radiok[0].checked = true
-      vi.spyOn(window, 'matchMedia').mockImplementation(
-        (query: string) => ({ matches: query.includes('max-width') }) as MediaQueryList,
-      )
-      vi.spyOn(window, 'getComputedStyle').mockImplementation(
-        () =>
-          ({
-            opacity: '1',
-            transitionDuration: '0.35s, 0s',
-            paddingTop: '24px',
-            paddingBottom: '24px',
-            paddingLeft: '24px',
-            paddingRight: '24px',
-            marginBottom: '24px',
-            borderTopWidth: '1px',
-            borderBottomWidth: '1px',
-            borderLeftWidth: '1px',
-            borderRightWidth: '1px',
-            gridTemplateRows: '461.5px 276px',
-          }) as CSSStyleDeclaration,
-      )
-      vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
-      const hely = (elem: Element, elotte: Partial<DOMRect>, utana: Partial<DOMRect>) =>
-        vi
-          .spyOn(elem, 'getBoundingClientRect')
-          .mockReturnValueOnce(elotte as DOMRect)
-          .mockReturnValue(utana as DOMRect)
-      hely(elso, { top: -535, bottom: 276, height: 811 }, { top: 300, bottom: 300, height: 0 })
-      hely(masodik, { top: 415, bottom: 415, height: 0 }, { top: 415, bottom: 1115, height: 700 })
-      hely(harmadik, { height: 0 }, { height: 0 })
-      vi.spyOn(koppintott, 'getBoundingClientRect').mockReturnValue({ top: 300 } as DOMRect)
-      hely(cimke1, { top: -635, bottom: -535 }, { top: 186, bottom: 286 })
-      hely(cimke3, { top: 415, bottom: 530 }, { top: 1115, bottom: 1230 })
-      hely(fejlec, { top: -1000, bottom: -660 }, { top: -154, bottom: 186 })
-      const kesz = { finished: Promise.resolve(), cancel: vi.fn() } as unknown as Animation
-      const animalo = (elem: Element) => {
-        const animal = vi.fn(() => kesz)
-        Object.assign(elem, { animate: animal })
-        return animal
-      }
-      const zarodo = animalo(elso)
-      animalo(masodik)
-      animalo(harmadik)
-      const belepoSor = animalo(cimke1)
-      const belepoFejlec = animalo(fejlec)
-      animalo(cimke3)
-      animalo(koppintott)
-      sinCimkeKattintas(kattintas(koppintott), window)
-      return { zarodo, belepoSor, belepoFejlec, koppintott }
-    }
-
-    it('a záródó panelből csak a képernyőn látható rész zsugorodik, a tartalom az aljához igazodik', () => {
-      const { zarodo } = lefeleKoppintas()
-      expect(zarodo).toHaveBeenCalledTimes(1)
-      const [kockak] = zarodo.mock.calls[0] as unknown as [Keyframe[]]
-      // A képernyő teteje fölötti 535 px nem mozog: 276 px-ről indul, nem 811-ről.
-      expect(kockak[0]).toMatchObject({ height: '276px', visibility: 'visible' })
-      expect(kockak[1]).toMatchObject({ height: '0px', visibility: 'visible' })
-      // A látható rész a helyén marad: a sorok a mért magasságukon, alulra igazítva.
-      for (const kocka of kockak) {
-        expect(kocka).toMatchObject({ alignContent: 'end', gridTemplateRows: '461.5px 276px' })
-      }
-    })
-
-    it('a záródó panel szélessége nem ugrik: az oldalsó padding és keret a mozgás végéig marad', () => {
-      const { zarodo } = lefeleKoppintas()
-      const [kockak] = zarodo.mock.calls[0] as unknown as [Keyframe[]]
-      for (const kocka of kockak) {
-        expect(kocka).toMatchObject({
-          paddingLeft: '24px',
-          paddingRight: '24px',
-          borderLeftWidth: '1px',
-          borderRightWidth: '1px',
-        })
-      }
-    })
-
-    it('a képernyő teteje fölül belépő sor és bevezető csak a mozgás lassuló második felében jelenik meg', () => {
-      const { belepoSor, belepoFejlec, koppintott } = lefeleKoppintas()
-      for (const belepo of [belepoSor, belepoFejlec]) {
-        expect(belepo).toHaveBeenCalledTimes(1)
-        const [kockak, idozites] = belepo.mock.calls[0] as unknown as [
-          Keyframe[],
-          KeyframeAnimationOptions,
-        ]
-        expect(kockak).toEqual([
-          { opacity: 0 },
-          { opacity: 0, offset: SIN_BELEPO_KEZDET, easing: SIN_KILEPO_GORBE },
-          { opacity: 1 },
-        ])
-        expect(idozites).toEqual({ duration: SIN_MAGASSAG_MS })
-      }
-      expect(koppintott.animate).not.toHaveBeenCalled()
-    })
-  })
-
-  it('a koppintott sor ALATT záródó panel a teljes magasságából zsugorodik (felfelé nyitás változatlan)', () => {
-    Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
-    const { cimkek, radiok } = sinDom()
-    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-    const [elso, masodik, harmadik] = panelek
-    const koppintott = cimkek[0]
-    if (!elso || !masodik || !harmadik || !koppintott) throw new Error('hiányzó sín-elem')
-    if (radiok[2]) radiok[2].checked = true
-    mobilKornyezet()
-    vi.spyOn(elso, 'getBoundingClientRect')
-      .mockReturnValueOnce({ height: 0 } as DOMRect)
-      .mockReturnValue({ height: 812 } as DOMRect)
-    vi.spyOn(masodik, 'getBoundingClientRect').mockReturnValue({ height: 0 } as DOMRect)
-    vi.spyOn(harmadik, 'getBoundingClientRect')
-      .mockReturnValueOnce({ top: 534, bottom: 1392, height: 858 } as DOMRect)
-      .mockReturnValue({ height: 0 } as DOMRect)
-    vi.spyOn(koppintott, 'getBoundingClientRect').mockReturnValue({ top: 200 } as DOMRect)
-    const kesz = { finished: Promise.resolve(), cancel: vi.fn() } as unknown as Animation
-    const zarodo = vi.fn(() => kesz)
-    Object.assign(harmadik, { animate: zarodo })
-    Object.assign(elso, { animate: vi.fn(() => kesz) })
-    sinCimkeKattintas(kattintas(koppintott), window)
-    const [kockak] = zarodo.mock.calls[0] as unknown as [Keyframe[]]
-    expect(kockak[0]).toMatchObject({ height: '858px' })
-    expect(kockak[0]).not.toHaveProperty('alignContent')
-    Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
-  })
-
-  it('a gyors második koppintás leállítja az előző váltás animációit', () => {
-    const { cimkek, radiok } = sinDom()
-    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-    const [elso, masodik, harmadik] = panelek
-    if (!elso || !masodik || !harmadik || !cimkek[1] || !cimkek[2]) {
-      throw new Error('hiányzó sín-elem')
-    }
-    mobilKornyezet()
-    magassag(elso, 800, 0)
-    magassag(harmadik, 0, 700)
-    magassag(masodik, 0, 0)
-    const futo = { finished: new Promise(() => undefined), cancel: vi.fn() }
-    const animal = vi.fn(() => futo as unknown as Animation)
-    panelek.forEach((panel) => Object.assign(panel, { animate: animal }))
-
-    sinCimkeKattintas(kattintas(cimkek[2]), window)
-    expect(futo.cancel).not.toHaveBeenCalled()
-    sinCimkeKattintas(kattintas(cimkek[1]), window)
-
-    expect(futo.cancel).toHaveBeenCalled()
-    expect(radiok[1]?.checked).toBe(true)
-  })
-
-  it('csökkentett mozgásnál nem animál', () => {
-    const { cimkek } = sinDom()
-    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
+  it('a komponens eltávolítása leveszi a kezelőt', async () => {
+    const { fieldset, cimkek, radiok } = sinDom()
     const cimke = cimkek[1]
-    const ujPanel = panelek[1]
-    if (!cimke || !ujPanel) throw new Error('hiányzó sín-elem')
-    vi.spyOn(window, 'matchMedia').mockImplementation(() => ({ matches: true }) as MediaQueryList)
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
-    const animal = vi.fn()
-    Object.assign(ujPanel, { animate: animal })
-    sinCimkeKattintas(kattintas(cimke), window)
-    expect(animal).not.toHaveBeenCalled()
-  })
-
-  it('billentyű- vagy mutató-mozdulatra leáll a görgetéskövetés', () => {
-    const { cimkek } = sinDom()
-    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-    const [elso, masodik, harmadik] = panelek
-    const cimke = cimkek[2]
-    if (!elso || !masodik || !harmadik || !cimke) throw new Error('hiányzó sín-elem')
-    mobilKornyezet()
-    magassag(elso, 800, 0)
-    magassag(masodik, 0, 0)
-    magassag(harmadik, 0, 700)
-    const kepkockak: FrameRequestCallback[] = []
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((visszahivas) => {
-      kepkockak.push(visszahivas)
-      return kepkockak.length
-    })
-    const futo = { finished: new Promise(() => undefined), cancel: vi.fn() }
-    panelek.forEach((panel) => Object.assign(panel, { animate: () => futo }))
-    vi.spyOn(cimke, 'getBoundingClientRect')
-      .mockReturnValueOnce({ top: 400 } as DOMRect)
-      .mockReturnValue({ top: 380 } as DOMRect)
-    const gorget = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined)
-
-    sinCimkeKattintas(kattintas(cimke), window)
-    const hivasokElotte = gorget.mock.calls.length
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown' }))
-    kepkockak.forEach((kepkocka) => kepkocka(0))
-
-    expect(gorget.mock.calls.length).toBe(hivasokElotte)
-  })
-
-  it('a komponens eltávolítása leállítja a futó váltást', async () => {
-    const { fieldset, cimkek } = sinDom()
-    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-    const [elso, masodik, harmadik] = panelek
-    const cimke = cimkek[2]
-    if (!fieldset || !elso || !masodik || !harmadik || !cimke) {
-      throw new Error('hiányzó sín-elem')
-    }
-    mobilKornyezet()
-    magassag(elso, 800, 0)
-    magassag(masodik, 0, 0)
-    magassag(harmadik, 0, 700)
-    const futo = { finished: new Promise(() => undefined), cancel: vi.fn() }
-    panelek.forEach((panel) => Object.assign(panel, { animate: () => futo }))
+    if (!fieldset || !cimke) throw new Error('hiányzó sín-elem')
     const tarolo = document.createElement('div')
     document.body.append(tarolo)
     const gyoker = createRoot(tarolo)
     await act(async () => {
       gyoker.render(createElement(SinKoppintasIgazito, { fieldsetId: fieldset.id }))
     })
-
-    // A happy-dom a címke alapviselkedését (a rádió bejelölését) a buborékoló
-    // kezelő ELŐTT futtatja, a böngészők utána; ezért a kezelőt közvetlenül hívjuk.
-    sinCimkeKattintas(kattintas(cimke), window)
-    expect(futo.cancel).not.toHaveBeenCalled()
     await act(async () => {
       gyoker.unmount()
     })
-
-    expect(futo.cancel).toHaveBeenCalled()
+    const esemeny = new MouseEvent('click', { bubbles: true, cancelable: true })
+    cimke.querySelector('.kc-services-sin__rail-title')?.dispatchEvent(esemeny)
+    // Kezelő nélkül a böngésző alapviselkedése marad (a kattintás nem tiltott).
+    expect(esemeny.defaultPrevented).toBe(false)
+    expect(radiok).toHaveLength(3)
   })
 })

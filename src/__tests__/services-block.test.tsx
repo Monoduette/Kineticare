@@ -29,16 +29,38 @@ const cssFajl = (nev: string): string =>
     'utf8',
   )
 
-/** Egy szelektor ÖSSZES szabálytörzse (a töréspont-változatok is). */
+/** Szelektorlista szétbontása a legfelső szinten (a `:is(a, b)` egyben marad). */
+function szelektorLista(prelude: string): string[] {
+  const elemek: string[] = []
+  let melyseg = 0
+  let aktualis = ''
+  for (const jel of prelude) {
+    if (jel === '(') melyseg += 1
+    if (jel === ')') melyseg -= 1
+    if (jel === ',' && melyseg === 0) {
+      elemek.push(aktualis)
+      aktualis = ''
+    } else {
+      aktualis += jel
+    }
+  }
+  elemek.push(aktualis)
+  return elemek.map((elem) => elem.trim().replace(/\s+/g, ' '))
+}
+
+/**
+ * Egy szelektor ÖSSZES szabálytörzse (a töréspont-változatok is). A szabály
+ * akkor is találat, ha a szelektor egy csoportosított lista egyik tagja.
+ */
 function szabalyTorzsek(css: string, szelektor: string): string[] {
+  const tiszta = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const keresett = szelektor.trim().replace(/\s+/g, ' ')
   const torzsek: string[] = []
-  let honnan = 0
-  for (;;) {
-    const kezdet = css.indexOf(`${szelektor} {`, honnan)
-    if (kezdet < 0) break
-    const vege = css.indexOf('}', kezdet)
-    torzsek.push(css.slice(kezdet, vege))
-    honnan = vege
+  for (const [, prelude, torzs] of tiszta.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const lista = szelektorLista(prelude)
+    if (lista.join(', ') === keresett || lista.includes(keresett)) {
+      torzsek.push(`${prelude.trim()} {${torzs}`)
+    }
   }
   if (torzsek.length === 0) {
     throw new Error(`Nincs ilyen szabály a stíluslapon: ${szelektor}`)
@@ -278,7 +300,8 @@ describe('Services — REV C sín + panel', () => {
     const sorrend = [...markup.matchAll(/kc-services-sin__glyph--(rendelo|otthon|kepzes)/g)].map(
       (m) => m[1],
     )
-    expect(sorrend).toEqual(['kepzes', 'rendelo', 'otthon'])
+    // Előbb az asztali sín három címkéje, utána a panelek mobil címkéi.
+    expect(sorrend).toEqual(['kepzes', 'rendelo', 'otthon', 'kepzes', 'rendelo', 'otthon'])
     // Ismeretlen cím, de ismert CTA-cél: az URL dönt.
     const urlAlapjan = block({
       ...alap,
@@ -296,7 +319,7 @@ describe('Services — REV C sín + panel', () => {
     const urlSorrend = [
       ...render(urlAlapjan).matchAll(/kc-services-sin__glyph--(rendelo|otthon|kepzes)/g),
     ].map((m) => m[1])
-    expect(urlSorrend).toEqual(['rendelo', 'otthon', 'kepzes'])
+    expect(urlSorrend).toEqual(['rendelo', 'otthon', 'kepzes', 'rendelo', 'otthon', 'kepzes'])
   })
 
   it('sín-elrendezésnél nincs háromoszlopos tábla, a tábla-fotó kimarad', () => {
@@ -341,7 +364,8 @@ describe('Services — REV C sín + panel', () => {
     // nincs aktív nyíl a körben; a nyíl csak a CTA gombon marad.
     expect(markup).not.toContain('kc-services-sin__marker-idle')
     expect(markup).not.toContain('kc-services-sin__marker-active')
-    expect(markup.match(/kc-services-sin__glyph--/g)).toHaveLength(3)
+    // Soronként egy ikon az asztali sínen és egy a mobil címkén.
+    expect(markup.match(/kc-services-sin__glyph--/g)).toHaveLength(6)
     expect(markup).not.toContain('kc-services-sin__hand')
     expect(markup).not.toContain('kc-services-sin__rail-index')
     expect(markup).toContain('1. ÚT')
@@ -442,7 +466,8 @@ describe('Services — REV C sín + panel', () => {
   it('a három ajtó-ikon a Lucide-készlet (ISC) 24-es rácsú, currentColor-vonalas glifája, forrás-megjelöléssel', () => {
     const markup = render(railBlock())
     const svgs = markup.match(/<svg[^>]*kc-services-sin__glyph[^>]*>/g) ?? []
-    expect(svgs).toHaveLength(3)
+    // Asztali sín + mobil címke: soronként kettő, ugyanabból a glifából.
+    expect(svgs).toHaveLength(6)
     for (const svg of svgs) {
       expect(svg).toContain('viewBox="0 0 24 24"')
       expect(svg).toContain('fill="none"')
@@ -470,7 +495,7 @@ describe('Services — REV C sín + panel', () => {
     const sorrend = [...markup.matchAll(/kc-services-sin__glyph--(rendelo|otthon|kepzes)/g)].map(
       (m) => m[1],
     )
-    expect(sorrend).toEqual(['rendelo', 'otthon', 'kepzes'])
+    expect(sorrend).toEqual(['rendelo', 'otthon', 'kepzes', 'rendelo', 'otthon', 'kepzes'])
     // A vonal a képernyőn egyforma: mobil 2 (28 px → 2,3 px), asztal 1,5 (40 px → 2,5 px).
     const css = cssFajl('services-sin.css')
     expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain(
@@ -667,7 +692,20 @@ describe('services-sin.css — mozgás-réteg', () => {
     expect(panel).toContain('visibility: hidden')
     expect(panel).toContain('pointer-events: none')
     expect(panel).not.toContain('display: none')
-    expect(tiszta).not.toContain('display: none')
+    // `display: none` csak a nézethez nem tartozó másodpéldányon áll: asztalon
+    // a mobil nyitón, mobilon az asztali sínen és rádióin. Panelen soha
+    // (különben az átúszás elveszne).
+    const rejtettek = [...tiszta.matchAll(/([^{}]+)\{[^{}]*display: none;[^{}]*\}/g)].flatMap(
+      ([, prelude]) => szelektorLista(prelude),
+    )
+    expect(new Set(rejtettek)).toEqual(
+      new Set([
+        '.kc-services-sin__nyito-jelolo',
+        '.kc-services-sin__mobil-cimke',
+        '.kc-services-sin__rail',
+        '.kc-services-sin__input',
+      ]),
+    )
   })
 
   it('minden átmenet a mozgás-tokenekből áll (időtartam és görbe), nem kézi ms', () => {
@@ -770,70 +808,97 @@ describe('services-sin.css — mozgás-réteg', () => {
 })
 
 /**
- * ŐR — WP17 mobil accordion (tulajdonosi drótváz, 2026-09-07). 900 px alatt a
- * panel a nyitott sor ALÁ fésülődik: a burkolók display: contents-szel adják
- * át a gyermekeiket a layout-rácsnak, a sorrendet `order` adja, az inaktív
- * panel 0 magas (nem display: none — az átúszás marad). A + / − jel tisztán
- * CSS (::after), a rádió-mechanika változatlan.
- * https://www.nngroup.com/articles/mobile-accordions/
+ * ŐR — mobil harmonika (< 900 px). 2026-10-05, tulajdonos: „sima, egyszerű
+ * CSS-animáció”, a választott változat: „több fül is nyitva maradhat”. Mobilon
+ * minden panelnek saját jelölőnégyzete és címkéje van, a sorok egymástól
+ * függetlenül nyílnak (GOV.UK Accordion: „an accordion can show multiple
+ * sections at a time, unlike tabs”; NN/g: „give people the capability to open
+ * multiple sections at a time”). A nyitás a rács-sor 0fr ↔ 1fr átmenete, JS
+ * nélkül. Az asztali rádiós sín változatlan.
  * https://design-system.service.gov.uk/components/accordion/
+ * https://www.nngroup.com/articles/accordions-complex-content/
  */
-describe('services-sin.css — mobil accordion (< 900 px)', () => {
+describe('services-sin.css — mobil harmonika (< 900 px)', () => {
   const css = cssFajl('services-sin.css')
   const tiszta = css.replace(/\/\*[\s\S]*?\*\//g, '')
   const mobil = tiszta.slice(
     tiszta.indexOf('@media (max-width: 899px)'),
     tiszta.indexOf('@media (prefers-reduced-motion: reduce)'),
   )
-  const asztal = tiszta.slice(tiszta.indexOf('@media (min-width: 900px)'))
+  const reduce = tiszta.slice(tiszta.indexOf('@media (prefers-reduced-motion: reduce)'))
 
-  it('a burkolók átadják a gyermekeiket, a címkék és panelek összefésülődnek', () => {
+  it('a burkolók átadják a gyermekeiket, az asztali sín és rádiói rejtve', () => {
     expect(mobil).toMatch(
-      /\.kc-services-sin__col,\s*\.kc-services-sin__rail,\s*\.kc-services-sin__stage \{\s*display: contents;/,
+      /\.kc-services-sin__col,\s*\.kc-services-sin__stage \{\s*display: contents;/,
     )
-    for (let n = 1; n <= 3; n += 1) {
-      expect(mobil).toMatch(
-        new RegExp(
-          `\\.kc-services-sin__rail-label:nth-of-type\\(${n}\\) \\{\\s*order: ${2 * n - 1};`,
-        ),
-      )
-      expect(mobil).toMatch(
-        new RegExp(`\\.kc-services-sin__panel:nth-of-type\\(${n}\\) \\{\\s*order: ${2 * n};`),
-      )
-    }
+    expect(szabalyTorzs(mobil, '.kc-services-sin__rail')).toContain('display: none')
+    expect(szabalyTorzs(mobil, '.kc-services-sin__input')).toContain('display: none')
+    expect(szabalyTorzs(mobil, '.kc-services-sin__mobil-cimke')).toContain('display: grid')
   })
 
-  it('az inaktív panel 0 magas, keret és árnyék nélkül; az aktív a tartalmára nyílik', () => {
-    const panel = mobil.slice(mobil.indexOf('.kc-services-sin__panel {'))
-    expect(panel).toContain('grid-area: auto')
-    expect(panel).toContain('height: 0')
-    expect(panel).toContain('border-width: 0')
-    expect(panel).toContain('overflow: hidden')
-    expect(mobil).toContain('height: auto')
-    expect(mobil).toContain('padding: var(--kc-services-panel-pad)')
-    expect(mobil).not.toContain('display: none')
+  it('a nyíló sor 0fr ↔ 1fr között vált, a Carbon nagy kinyitás időzítésével', () => {
+    const nyithato = szabalyTorzs(mobil, '.kc-services-sin__nyithato')
+    expect(nyithato).toContain('grid-template-rows: 0fr')
+    expect(nyithato).toContain(
+      'grid-template-rows var(--kc-services-motion-open) var(--kc-services-ease-open)',
+    )
+    expect(
+      szabalyTorzs(mobil, '.kc-services-sin__nyito-jelolo:checked ~ .kc-services-sin__nyithato'),
+    ).toContain('grid-template-rows: 1fr')
+    const sin = szabalyTorzs(css, '.kc-services-sin')
+    expect(sin).toContain('--kc-services-motion-open: calc(var(--kc-motion-base) * 2);')
+    expect(sin).toContain('--kc-services-ease-open: cubic-bezier(0.4, 0.14, 0.3, 1);')
   })
 
-  it('a + / − jel gradientből áll, a nyitott sor a vízszintes vonalat viszi; asztalon nincs', () => {
-    const jel = szabalyTorzs(css, '.kc-services-sin__rail-label::after')
+  it('a zárt sor 0 magas: a vágó elemen nincs függőleges padding vagy margó, és levág', () => {
+    // Mérve Chromiumban: amíg a kártya maga volt a rács eleme, a paddingje,
+    // kerete és margója miatt a zárt sor 74 px magas maradt.
+    const vago = szabalyTorzs(mobil, '.kc-services-sin__vago')
+    expect(vago).toContain('min-height: 0')
+    expect(vago).toContain('overflow: hidden')
+    expect(vago).not.toMatch(/padding(-top|-bottom|-block)?:/)
+    expect(vago).not.toMatch(/margin(-top|-bottom|-block)?:/)
+    expect(szabalyTorzs(mobil, '.kc-services-sin__kartya')).toContain(
+      'padding: var(--kc-services-panel-pad)',
+    )
+  })
+
+  it('a + / − jel gradientből áll, a nyitott sor csak a vízszintes vonalat viszi; asztalon nincs', () => {
+    const jel = szabalyTorzs(css, '.kc-services-sin__mobil-cimke::after')
     expect(jel).toContain("content: ''")
     expect(jel).toContain('linear-gradient(var(--kc-color-help-ink), var(--kc-color-help-ink))')
     expect(jel).toMatch(/background-size:\s*100% 2px,\s*2px 100%/)
-    expect(tiszta).toMatch(
-      /rail-label:nth-of-type\(1\)::after[\s\S]*?background-size:\s*100% 2px,\s*0 0/,
-    )
-    expect(asztal).toMatch(/\.kc-services-sin__rail-label::after \{\s*content: none;/)
+    expect(
+      szabalyTorzs(
+        mobil,
+        '.kc-services-sin__nyito-jelolo:checked + .kc-services-sin__mobil-cimke::after',
+      ),
+    ).toMatch(/background-size:\s*100% 2px,\s*0 0/)
+    // Asztalon a mobil címke egészében rejtett, a jel vele együtt.
+    expect(
+      szabalyTorzsek(tiszta, '.kc-services-sin__mobil-cimke').some((t) =>
+        t.includes('display: none'),
+      ),
+    ).toBe(true)
   })
 
-  it('a sorok közt hajszál-elválasztó fut, a nyitott sor és a panelje közt nem', () => {
-    expect(szabalyTorzs(css, '.kc-services-sin__rail-label:not(:first-of-type)')).toContain(
-      'border-top: 1px solid var(--kc-services-rail-line)',
-    )
-    expect(szabalyTorzs(css, '.kc-services-sin__rail-label')).not.toContain('border-bottom')
+  it('a sorok közt hajszál-elválasztó fut, a nyitott sor és a kártyája közt nem', () => {
+    expect(
+      szabalyTorzs(
+        mobil,
+        '.kc-services-sin__panel:not(:first-of-type) .kc-services-sin__mobil-cimke',
+      ),
+    ).toContain('border-top: 1px solid var(--kc-services-rail-line)')
+    expect(szabalyTorzs(css, '.kc-services-sin__mobil-cimke')).not.toContain('border-bottom')
   })
 
-  it('a rács köze 0 mobilon (a rejtett panel nem hagy üres rést)', () => {
+  it('a rács köze 0 mobilon (a zárt sor nem hagy üres rést)', () => {
     expect(mobil).toMatch(/\.kc-services-sin__layout \{\s*gap: 0;/)
+  })
+
+  it('csökkentett mozgásnál a nyitás azonnali (SC 2.3.3)', () => {
+    expect(reduce).toContain('--kc-services-motion-open: 0s;')
+    expect(szabalyTorzs(reduce, '.kc-services-sin__nyithato')).toContain('transition: none')
   })
 })
 
