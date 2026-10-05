@@ -1479,7 +1479,7 @@ lokális Next buildet, ne `Build · skipped`. Start-log: `Migrating:` /
   `payload migrate` → vitest → eslint. Checkout `fetch-depth: 0` (G3).
   A DB-kapus tesztek CI-ben **dobnak**, ha nincs Postgres
   (`db-gated-coverage-guard.test.ts`). **build** (eldobható ál-env).
-  **audit:** `npm audit --audit-level=high`. Dependabot: heti npm +
+  **audit:** high/critical szinttől bukás (`scripts/audit-gate.mjs`; név szerinti, lejáró kivételek: `.github/audit-kivetelek.json`). Dependabot: heti npm +
   Actions; `@payloadcms/*` ignore.
 - `gitleaks.yml` — teljes history, `fetch-depth: 0`, CLI 8.24.3
 - `db-backup.yml` — age-titkosított dump; fail-closed, ha hiányzik a

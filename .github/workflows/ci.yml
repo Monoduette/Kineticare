@@ -227,5 +227,14 @@ jobs:
       # exit 0, `--audit-level=high` exit 1 — ugyanazon a lockfile-on mérve.
       # A tételek ebben a PR-ben rendeződtek (payload 3.88.0 + nanoid override),
       # így a kapu SZIGORÍTHATÓ arra a szintre, ahol tényleg fog.
+      # ═══ NÉV SZERINTI, LEJÁRÓ KIVÉTELEK (2026-10-05) ═══
+      # A `--audit-level=high`-nak nincs kivétel-kezelése: a `braces`
+      # GHSA-vfj7-8cjw-p6xm figyelmeztetéshez nincs javított kiadás, így minden
+      # PR és a main is piros maradt volna. A `scripts/audit-gate.mjs` ugyanúgy
+      # bukik minden high/critical tételen, kivéve a `.github/audit-kivetelek.json`
+      # advisory + csomag párjait, indoklással és lejárattal. Lejárt kivétel és
+      # hibás audit-kimenet (registry-hiba) szintén bukás.
       - name: Sebezhetőség-audit (high és fölötte bukás)
-        run: npm audit --audit-level=high
+        run: |
+          npm audit --json > "$RUNNER_TEMP/audit.json" || true
+          node scripts/audit-gate.mjs "$RUNNER_TEMP/audit.json" .github/audit-kivetelek.json

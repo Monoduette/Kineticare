@@ -265,8 +265,8 @@ A `.github/workflows/` alatt:
 - **`ci.yml`** — main-push és PR trigger (+ kézi `workflow_dispatch`):
   `verify` (npm ci → typecheck → vitest → eslint), `build` (next build,
   a kötelező env-ket futásidőben generált, eldobható álértékekkel — titok még
-  CI-ben sem kerül a repóba), `audit` (`npm audit --audit-level=high` —
-  high szinttől bukás).
+  CI-ben sem kerül a repóba), `audit` (`scripts/audit-gate.mjs` — high szinttől bukás;
+  név szerinti, lejáró kivételek a `.github/audit-kivetelek.json`-ban).
 - **`gitleaks.yml`** — titokszivárgás-ellenőrzés a TELJES historyn
   (`fetch-depth: 0`), hetente cronnal is; allowlist a `.gitleaks.toml`-ban.
 - **`claude.yml`** — opcionális `@claude` integráció (`ANTHROPIC_API_KEY`
