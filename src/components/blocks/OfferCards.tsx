@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 
 import type { BlockOfferCards } from '../../payload-types'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
+import { MediaImage } from '../content/MediaImage'
+import { pickMediaUrl } from '../content/media-url'
 import { ExternalLinkIcon } from '../layout/NavAnchor'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
@@ -47,6 +49,17 @@ import '../../app/(frontend)/styles/blocks/offer-cards.css'
  * A gomb célja a biztonságos CMS-URL segéden megy át (src/lib/safe-url.ts
  * `sanitizeCmsUrl`, ahogy az Appointment.tsx): tiltott vagy üres címnél és üres
  * feliratnál a kártya gomb nélkül jelenik meg (a séma súgója ezt ígéri).
+ *
+ * KÉP A KÁRTYA TETEJÉN. Ha a „Kép” mező ki van töltve (és van URL-je), a fotó
+ * a kártya teljes szélességében, a szöveg fölött áll, és a kis rajz helyére
+ * lép: egy kártyán egy vizuális belépési pont. A kép nem dekoráció, hanem a
+ * termék maga (a szakkönyv két példánya), ezért a Médiatár alt-szövegét kapja
+ * (WCAG 2.2 SC 1.1.1). NN/g, Cards: „A single card will typically include a
+ * few different types of media, such as an image, a title, a synopsis […] or
+ * a call-to-action button” (https://www.nngroup.com/articles/cards-component/);
+ * Baymard: „56% of users investigated product images as their first action”
+ * (https://baymard.com/research-articles/product-images-descriptive-text).
+ * Üres mezőnél a kártya pontosan a korábbi (ikonos) alakjában jelenik meg.
  *
  * AZONOSÍTÓK. Minden id az `idElotag`-ból és a kártya sorszámából épül; a
  * RenderBlocks a blokk azonosítóját adja, így két blokk egy lapon sem ütközik.
@@ -156,7 +169,11 @@ function AjanlatKartya({
   jegyzetId: string
 }) {
   const Cim = cimSzint
-  const ikon = kartyaIkon(kartya.ikon)
+  const kep =
+    typeof kartya.kep === 'object' && kartya.kep !== null && pickMediaUrl(kartya.kep, 'md')
+      ? kartya.kep
+      : null
+  const ikon = kep ? null : kartyaIkon(kartya.ikon)
   const kicker = kartya.kicker?.trim() ?? ''
   const szoveg = kartya.szoveg?.trim() ?? ''
   const tenyek = (kartya.tenyek ?? [])
@@ -169,6 +186,18 @@ function AjanlatKartya({
   return (
     <li className="kc-ajanlat-kartyak__cell">
       <Card as="article" className="kc-ajanlat-kartyak__card" padded={false}>
+        {kep ? (
+          // A `sizes` a mért kártyaszélesség: 900 px alatt egy hasáb (a lap
+          // szélessége), fölötte két hasáb a legfeljebb 1120 px-es tartalomban.
+          <div className="kc-ajanlat-kartyak__media">
+            <MediaImage
+              className="kc-ajanlat-kartyak__kep"
+              media={kep}
+              preferredSize="md"
+              sizes="(min-width: 900px) 560px, 100vw"
+            />
+          </div>
+        ) : null}
         <div className="kc-ajanlat-kartyak__body">
           {ikon ? (
             <span aria-hidden="true" className="kc-ajanlat-kartyak__ikon">

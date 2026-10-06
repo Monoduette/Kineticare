@@ -1,5 +1,6 @@
 import type { Block } from 'payload'
 
+import { KEP_CSERE_SUGO } from './kep-csere'
 import { linkFields } from './link-fields'
 import { sectionSettings } from './section-settings'
 
@@ -94,6 +95,23 @@ export const offerCards: Block = {
           admin: {
             description:
               'A kártya tetején álló kis rajz. Ha a „Nincs ikon” marad kiválasztva, a kártya ikon nélkül jelenik meg.',
+          },
+        },
+        {
+          // A termékfotó a kártya teljes szélességében, a szöveg fölött áll.
+          // NN/g, Cards: „A single card will typically include a few
+          // different types of media, such as an image, a title, a synopsis
+          // […] or a call-to-action button”
+          // (https://www.nngroup.com/articles/cards-component/); Baymard:
+          // „56% of users investigated product images as their first action”
+          // (https://baymard.com/research-articles/product-images-descriptive-text).
+          // Az alt a Médiatárból jön (WCAG 2.2 SC 1.1.1).
+          name: 'kep',
+          type: 'upload',
+          relationTo: 'media',
+          label: 'Kép',
+          admin: {
+            description: `Nem kötelező. Ha feltöltesz képet (fekvő, 4:3 a legjobb), a kártya tetején, teljes szélességben jelenik meg, és a kis rajz helyére lép. Ha üresen hagyod, a kártyán a fenti ikon látszik. ${KEP_CSERE_SUGO}`,
           },
         },
         {

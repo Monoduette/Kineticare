@@ -102,6 +102,7 @@ describe('offerCards: a Kártyák tömb', () => {
     expect(linkNevek).toEqual(['felirat', 'url', 'ujAblakban'])
     expect(nevesitett(kartyaMezok).map((field) => field.name)).toEqual([
       'ikon',
+      'kep',
       'kicker',
       'cim',
       'szoveg',
@@ -250,9 +251,16 @@ describe('offerCards: a szerkesztői szövegek tipográfiája (ui-sztenderdek 8.
         ['eyebrow', 'title', 'lead', 'kartyak'].includes(field.name),
       ),
       ...nevesitett(kartyaMezok).filter((field) =>
-        ['ikon', 'kicker', 'tenyek', 'felirat', 'gombSuly', 'jegyzet', 'allapotSzoveg'].includes(
-          field.name,
-        ),
+        [
+          'ikon',
+          'kep',
+          'kicker',
+          'tenyek',
+          'felirat',
+          'gombSuly',
+          'jegyzet',
+          'allapotSzoveg',
+        ].includes(field.name),
       ),
     ]
     for (const field of vizsgalt) {

@@ -38,6 +38,7 @@ import * as migration_20260921_095507_products_unlisted from './20260921_095507_
 import * as migration_20260922_225015_film_hero_feliratok from './20260922_225015_film_hero_feliratok';
 import * as migration_20260923_073659_kep_helyek from './20260923_073659_kep_helyek';
 import * as migration_20260923_083202_a_csapat_blokkmezok from './20260923_083202_a_csapat_blokkmezok';
+import * as migration_20261006_085333_ajanlat_kartya_kep from './20261006_085333_ajanlat_kartya_kep';
 
 export const migrations = [
   {
@@ -238,6 +239,11 @@ export const migrations = [
   {
     up: migration_20260923_083202_a_csapat_blokkmezok.up,
     down: migration_20260923_083202_a_csapat_blokkmezok.down,
-    name: '20260923_083202_a_csapat_blokkmezok'
+    name: '20260923_083202_a_csapat_blokkmezok',
+  },
+  {
+    up: migration_20261006_085333_ajanlat_kartya_kep.up,
+    down: migration_20261006_085333_ajanlat_kartya_kep.down,
+    name: '20261006_085333_ajanlat_kartya_kep'
   },
 ];

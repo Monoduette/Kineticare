@@ -282,7 +282,9 @@ rövid leírással. A lista két csoportra oszlik:
   **Ajánlat-kártyák**, amit bármelyik oldalon, bárhová beszúrhatsz.
 
 Az **Ajánlat-kártyák** egymás melletti kártyák (legfeljebb négy), mindegyiken
-ikon, kis felirat, cím, szöveg, tények felsorolása és egy gomb. A **Gomb
+ikon, kis felirat, cím, szöveg, tények felsorolása és egy gomb. Ha a kártya
+**Kép** mezőjébe képet teszel (fekvő, 4:3 a legjobb), az a kártya tetején, teljes
+szélességben jelenik meg, és az ikon helyére lép. A **Gomb
 súlya** alapból „Másodlagos (keretes)”; az „Elsődleges (kitöltött)” gomb a lap
 fő cselekvése, ezért egy lapon csak egy ilyen legyen. Ha az ajánlat még nem
 kapható, kapcsold be a **Még nem elérhető** pipát: alatta megjelenik a **Mikor

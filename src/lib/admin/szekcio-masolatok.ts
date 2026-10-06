@@ -162,6 +162,7 @@ export const KEP_MEZOK: Readonly<Record<string, readonly string[]>> = {
   courseCards: ['scenePhotos.left', 'scenePhotos.middle', 'scenePhotos.right'],
   ctaBanner: ['kep'],
   freeSos: ['backgroundImage'],
+  offerCards: ['kartyak.*.kep'],
   pressLogos: ['logos.*.image'],
   services: ['image', 'rows.*.photo'],
   states: ['cards.*.image'],
