@@ -1598,6 +1598,10 @@ export interface BlockOfferCards {
          */
         ikon?: ('kepzes' | 'szakkonyv' | 'nincs') | null;
         /**
+         * Nem kötelező. Ha feltöltesz képet (fekvő, 4:3 a legjobb), a kártya tetején, teljes szélességben jelenik meg, és a kis rajz helyére lép. Ha üresen hagyod, a kártyán a fenti ikon látszik. Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép adatait minden oldalon módosítja.
+         */
+        kep?: (number | null) | Media;
+        /**
          * A kártya címe fölötti egy-két szó (pl. „Képzés”). Nem kötelező: ha üresen hagyod, nem jelenik meg.
          */
         kicker?: string | null;
@@ -3793,6 +3797,7 @@ export interface BlockOfferCardsSelect<T extends boolean = true> {
     | T
     | {
         ikon?: T;
+        kep?: T;
         kicker?: T;
         cim?: T;
         szoveg?: T;

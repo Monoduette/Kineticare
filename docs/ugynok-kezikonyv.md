@@ -1222,15 +1222,15 @@ Terv: `docs/szekcio-rendszer-terv.md`.
 
 Blokkmezők a #292 / #293 óta (generált migrációkkal):
 
-| Blokk         | Mező                                                                                                                                 | Megjegyzés                                                                                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `filmHero`    | `captions` csoport                                                                                                                   | két beúszó felirat, `src/lib/film-captions.ts` (migráció `20260922_225015_film_hero_feliratok`)                                                                                           |
-| `about`       | `frieze.photo1–4`                                                                                                                    | a fríz négy íve; üres = beépített (`20260923_073659_kep_helyek`); a fríz csak az első látható `about`-on, közvetlenül `filmHero` után látszik                                             |
-| `courseCards` | `scenePhotos.left/middle/right`                                                                                                      | a „Kurzusaink” jelenet három fotója (ugyanaz a migráció)                                                                                                                                  |
-| `courseCards` | `hatterFelirat`                                                                                                                      | a kártyák alatti nagy, halvány szó; üresen a beépített `COURSE_SHOWCASE_MARK` (`20260923_083202_a_csapat_blokkmezok`)                                                                     |
-| `ctaBanner`   | `kep`                                                                                                                                | saját kép a sávhoz; üresen a gomb céljából feloldott kurzusborító, más célnál kép nélkül (ugyanaz)                                                                                        |
-| `offerCards`  | `eyebrow`, `title`, `lead`, `kartyak[]` (ikon, kicker, cím, szöveg, tények, gomb, `gombSuly`, jegyzet, `hamarosan`, `allapotSzoveg`) | 1–4 ajánlat-kártya, a `/szakembereknek` sémája (ugyanaz)                                                                                                                                  |
-| `services`    | `elrendezes` (`tabla` alapérték / `sin`)                                                                                             | a sín vagy tábla döntése; a megjelenítés (`home-help-states.ts`) ezt tiszteli (H15); az élő adatot a content-job `sin-elrendezes` szabálya tölti ki, ugyanabban a deployban (11. szakasz) |
+| Blokk         | Mező                                                                                                                                        | Megjegyzés                                                                                                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `filmHero`    | `captions` csoport                                                                                                                          | két beúszó felirat, `src/lib/film-captions.ts` (migráció `20260922_225015_film_hero_feliratok`)                                                                                           |
+| `about`       | `frieze.photo1–4`                                                                                                                           | a fríz négy íve; üres = beépített (`20260923_073659_kep_helyek`); a fríz csak az első látható `about`-on, közvetlenül `filmHero` után látszik                                             |
+| `courseCards` | `scenePhotos.left/middle/right`                                                                                                             | a „Kurzusaink” jelenet három fotója (ugyanaz a migráció)                                                                                                                                  |
+| `courseCards` | `hatterFelirat`                                                                                                                             | a kártyák alatti nagy, halvány szó; üresen a beépített `COURSE_SHOWCASE_MARK` (`20260923_083202_a_csapat_blokkmezok`)                                                                     |
+| `ctaBanner`   | `kep`                                                                                                                                       | saját kép a sávhoz; üresen a gomb céljából feloldott kurzusborító, más célnál kép nélkül (ugyanaz)                                                                                        |
+| `offerCards`  | `eyebrow`, `title`, `lead`, `kartyak[]` (ikon, `kep`, kicker, cím, szöveg, tények, gomb, `gombSuly`, jegyzet, `hamarosan`, `allapotSzoveg`) | 1–4 ajánlat-kártya, a `/szakembereknek` sémája (ugyanaz)                                                                                                                                  |
+| `services`    | `elrendezes` (`tabla` alapérték / `sin`)                                                                                                    | a sín vagy tábla döntése; a megjelenítés (`home-help-states.ts`) ezt tiszteli (H15); az élő adatot a content-job `sin-elrendezes` szabálya tölti ki, ugyanabban a deployban (11. szakasz) |
 
 ### 10.4 CSS
 
@@ -1454,11 +1454,11 @@ Az új platform ma csak a Railway-hoston érhető el: a `kineticare.hu`
 átállás nyitott (`docs/kineticare-hu-atallas.md`), addig a middleware
 `NEXT_PUBLIC_ALLOW_INDEXING=true` nélkül noindexet küld.
 
-Migrációk: 40 generált migráció a `src/migrations/` alatt (+ `index.ts`,
-`.checksums.json`). A legutóbbi három: `20260922_225015_film_hero_feliratok`
-(filmHero feliratmezők), `20260923_073659_kep_helyek` (fríz- és
+Migrációk: 41 generált migráció a `src/migrations/` alatt (+ `index.ts`,
+`.checksums.json`). A legutóbbi három: `20260923_073659_kep_helyek` (fríz- és
 jelenet-fotóhelyek), `20260923_083202_a_csapat_blokkmezok` (Ajánlat-kártyák
-táblái, `hatterFelirat`, CTA-sáv `kep`). Mind a Payload eszközével
+táblái, `hatterFelirat`, CTA-sáv `kep`), `20261006_085333_ajanlat_kartya_kep`
+(Ajánlat-kártya `kep`: a kártya tetején álló kép). Mind a Payload eszközével
 generált, pages + `_pages_v` párban. A start-parancs deploykor futtatja
 őket.
 

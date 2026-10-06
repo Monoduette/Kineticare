@@ -468,6 +468,7 @@ export type JavitasSzabaly =
   | 'kurzus-cim'
   | 'sin-elrendezes'
   | 'szakembereknek-oldal'
+  | 'ajanlat-kartya-kepek'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -4684,6 +4685,163 @@ export const alkalmazKocsisCvFoto = (input: {
 }
 
 /**
+ * 2026-10-06: a szakkönyv fotója (a tulajdonos feltöltése: a „Felső végtagi
+ * sportsérülések rehabilitációja” két példánya) 4:3-as, 1600×1200-as WebP, a
+ * manifest `szakkonyv-borito` szerepe (kezelt kép, eredetigazolással jön
+ * létre). Az alt a manifestével betűre azonos.
+ */
+export const SZAKKONYV_KEP_FORRAS: MediaForras = {
+  filename: 'szakkonyv-felso-vegtag-1600.webp',
+  filePath: 'public/media/team/szakkonyv-felso-vegtag-1600.webp',
+  alt: 'A Felső végtagi sportsérülések rehabilitációja című szakkönyv két példánya egymásra fektetve.',
+}
+
+/**
+ * 2026-10-06: az akkreditált képzés minta-igazolása (a tulajdonos
+ * feltöltése), a képernyőkép-keret nélkül, a szakkönyv-fotó szürke hátterén,
+ * árnyékkal: 4:3-as, 1200×900-as WebP, így a kártya 4:3-as képdoboza semmit
+ * nem vág le belőle. A manifest `kepzes-igazolas` szerepe (kezelt kép).
+ */
+export const KEPZES_IGAZOLAS_KEP_FORRAS: MediaForras = {
+  filename: 'kepzes-igazolas-1200.webp',
+  filePath: 'public/media/team/kepzes-igazolas-1200.webp',
+  alt: 'Minta igazolás az akkreditált továbbképzés sikeres elvégzéséről, Kocsis Kata és Kiss Kata aláírásával.',
+}
+
+/**
+ * Az ajánlat-kártyák képei IKON szerint: a kártyát az ikonja azonosítja (a
+ * lap seedje és a kódtartalék is így jelöli, src/lib/szakembereknek.ts). A
+ * sorrend a `futtatFotoCsere` forráslistájáé (a `letrehozando` indexei).
+ */
+export const AJANLAT_KARTYA_KEPEK: readonly {
+  ikon: 'kepzes' | 'szakkonyv'
+  nev: string
+  forras: MediaForras
+}[] = [
+  { ikon: 'kepzes', nev: 'a képzés igazolása', forras: KEPZES_IGAZOLAS_KEP_FORRAS },
+  { ikon: 'szakkonyv', nev: 'a szakkönyv képe', forras: SZAKKONYV_KEP_FORRAS },
+]
+
+/**
+ * 2026-10-06: a /szakembereknek ajánlat-kártyáinak „Kép” mezője (tulajdonosi
+ * kérés: a szakkönyv fotója és a képzés minta-igazolása a kártyák tetejére).
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csak az `offerCards` blokkok `AJANLAT_KARTYA_KEPEK` szerinti ikonú
+ *    kártyáit nézi, minden kártyára a SAJÁT ikonjához tartozó képet; más
+ *    ikonú kártya érintetlen;
+ *  - ÜRES mezőt tölt ki; ha MÁR a kártya képe áll ott: „MÁR” kihagyás
+ *    (idempotencia), más kép a szerkesztő döntése: hangos kihagyás, a script
+ *    nem ír felül;
+ *  - ha a kép nincs a Médiatárban, a döntés a rekord létrehozását kéri
+ *    (`letrehozando`), és a futtató élesben a repó fájljából hozza létre; ha a
+ *    forrásfájl sincs meg: hangos kihagyás;
+ *  - ha a lapon egyik kártya sincs meg: hangos kihagyás.
+ */
+export const alkalmazAjanlatKartyaKepek = (input: {
+  layout: Page['layout']
+  /** Naplócímke (pl. „Szakembereknek oldal”). */
+  oldalCimke: string
+  /** A képek állapota, az `AJANLAT_KARTYA_KEPEK` sorrendjében. */
+  ujMediak: readonly UjMediaAllapot[]
+}): FotoCsere => {
+  const { layout, oldalCimke, ujMediak } = input
+  const szabaly: JavitasSzabaly = 'ajanlat-kartya-kepek'
+  const hozzarendeles = (ikon: unknown): number =>
+    AJANLAT_KARTYA_KEPEK.findIndex((sor) => sor.ikon === ikon)
+  const vanKartya =
+    Array.isArray(layout) &&
+    layout.some(
+      (blokk) =>
+        blokk.blockType === 'offerCards' &&
+        (blokk.kartyak ?? []).some((kartya) => hozzarendeles(kartya.ikon) >= 0),
+    )
+  if (!Array.isArray(layout) || !vanKartya) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet: `${oldalCimke}: az ajánlat-kártyák képei`,
+          indok:
+            'a lapon nincs képzés- vagy szakkönyv-ikonos ajánlat-kártya, nincs hova tenni a képet',
+          hangos: true,
+        },
+      ],
+      letrehozando: [],
+    }
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  const letrehozando = new Set<number>()
+  const ujLayout: Szekciosor = layout.map((blokk, blokkIndex) => {
+    if (blokk.blockType !== 'offerCards') return blokk
+    let valtozott = false
+    const kartyak = (blokk.kartyak ?? []).map((kartya, kartyaIndex) => {
+      const index = hozzarendeles(kartya.ikon)
+      const sor = AJANLAT_KARTYA_KEPEK[index]
+      const ujMedia = ujMediak[index]
+      if (sor === undefined || ujMedia === undefined) return kartya
+      const hol = `${oldalCimke}: a(z) ${ertekCimke(kartya.cim)} kártya képe (${
+        blokkIndex + 1
+      }. szekció, ${kartyaIndex + 1}. kártya)`
+      const jelenlegiId = heroKepAzonosito(kartya.kep ?? null)
+      if (jelenlegiId !== null) {
+        if (jelenlegiId === ujMedia.id) {
+          kihagyasok.push({
+            szabaly,
+            uzenet: hol,
+            indok: `MÁR ${sor.nev} áll itt (azonosító: ${jelenlegiId}), nincs teendő`,
+          })
+        } else {
+          kihagyasok.push({
+            szabaly,
+            uzenet: hol,
+            indok: `a szerkesztő által választott kép áll itt (azonosító: ${jelenlegiId}): szerkesztői elsőbbség, a script nem ír felül`,
+            hangos: true,
+          })
+        }
+        return kartya
+      }
+      if (ujMedia.id === null && !ujMedia.forrasLetezik) {
+        kihagyasok.push({
+          szabaly,
+          uzenet: hol,
+          indok: `${sor.nev} („${ujMedia.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${sor.forras.filePath}) sem található, a kártya kép nélkül marad`,
+          hangos: true,
+        })
+        return kartya
+      }
+      modositasok.push({
+        szabaly,
+        uzenet: `${hol}: üres → „${ujMedia.filename}” (${
+          ujMedia.id === null
+            ? 'a rekordot a script a repó fájljából hozza létre'
+            : `azonosító: ${ujMedia.id}`
+        })`,
+        indok: null,
+      })
+      if (ujMedia.id === null) {
+        letrehozando.add(index)
+        return kartya
+      }
+      valtozott = true
+      return { ...kartya, kep: ujMedia.id }
+    })
+    return valtozott ? { ...blokk, kartyak } : blokk
+  })
+
+  return {
+    layout: modositasok.length > 0 && letrehozando.size === 0 ? ujLayout : null,
+    modositasok,
+    kihagyasok,
+    letrehozando: [...letrehozando].sort((x, y) => x - y),
+  }
+}
+
+/**
  * A két fotócsere-szabály futtatója. Előbb OLVAS (a forrásképek Médiatár-
  * állapota), és dönt; ha a döntés még nem létező rekordot igényel, élesben
  * létrehozza a repó fájljából (`biztositMediaFajlbol`, kezelt képnél
@@ -7037,6 +7195,62 @@ async function futtat(): Promise<void> {
   naplozdLepeseket(szakembereknek, dryRun)
   modositasokSzama += szakembereknek.modositasok.length
   kihagyasokSzama += szakembereknek.kihagyasok.length
+
+  // --- 2026-10-06: a /szakembereknek ajánlat-kártyáinak képei --------------
+  // A publikált lapot olvassuk (a frissen létrehozott is publikált); a kép
+  // rekordja csak élesben és csak akkor jön létre, ha a döntés kitölt.
+  const szakembereknekLap = (
+    await payload.find({
+      collection: 'pages',
+      where: { slug: { equals: SZAKEMBEREKNEK_OLDAL_SLUG } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+  ).docs[0]
+  if (szakembereknekLap === undefined) {
+    logger.warn(
+      `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: az ajánlat-kártyák képei (a „${SZAKEMBEREKNEK_OLDAL_SLUG}” oldalnak még nincs publikált változata${
+        dryRun ? '; éles futásban a fenti lépés hozza létre, és utána ez a lépés is lefut' : ''
+      })`,
+    )
+    kihagyasokSzama += 1
+  } else {
+    const kartyaKepek = await futtatFotoCsere({
+      forrasok: AJANLAT_KARTYA_KEPEK.map((sor) => sor.forras),
+      szabaly: 'ajanlat-kartya-kepek',
+      dryRun,
+      fuggosegek: mediaFuggosegek,
+      dontes: (ujMediak) =>
+        alkalmazAjanlatKartyaKepek({
+          layout: szakembereknekLap.layout,
+          oldalCimke: 'Szakembereknek oldal',
+          ujMediak,
+        }),
+    })
+    naplozdLepeseket(kartyaKepek, dryRun)
+    modositasokSzama += kartyaKepek.modositasok.length
+    kihagyasokSzama += kartyaKepek.kihagyasok.length
+    if (kartyaKepek.layout !== null && !dryRun) {
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', szakembereknekLap.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
+          collection: 'pages',
+          id: szakembereknekLap.id,
+          data: { layout: kartyaKepek.layout },
+          depth: 0,
+          overrideAccess: true,
+        })
+        figyelmeztessPiszkozatra(
+          'Szakembereknek oldal',
+          szakembereknekLap.updatedAt,
+          piszkozat?.updatedAt,
+        )
+      }
+    }
+  }
 
   // --- 16. javítás: a /kapcsolat lap szekciói -------------------------------
   const kapcsolatTalalat = await payload.find({

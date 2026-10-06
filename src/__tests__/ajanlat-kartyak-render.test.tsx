@@ -130,6 +130,48 @@ describe('OfferCards: ikon és kis felirat', () => {
   })
 })
 
+describe('OfferCards: kép a kártya tetején', () => {
+  const konyv = {
+    id: 720,
+    alt: 'A szakkönyv két példánya.',
+    url: '/api/media/file/szakkonyv.webp',
+    width: 1600,
+    height: 1200,
+  } as unknown as Kartya['kep']
+
+  it('kitöltött kép: a fotó a kártya teste ELŐTT, a Médiatár alt-jával, és a kis rajz helyére lép', () => {
+    const html = render({ block: blokk({ kartyak: [kartya({ ikon: 'szakkonyv', kep: konyv })] }) })
+    const media = html.indexOf('class="kc-ajanlat-kartyak__media"')
+    expect(media).toBeGreaterThan(-1)
+    expect(media).toBeLessThan(html.indexOf('class="kc-ajanlat-kartyak__body"'))
+    expect(html).toMatch(/<img[^>]*alt="A szakkönyv két példánya\."/)
+    expect(html).not.toContain('kc-ajanlat-kartyak__ikon')
+  })
+
+  it.each([
+    ['üres', null],
+    ['csak azonosító (depth 0)', 720],
+    ['URL nélküli rekord', { id: 720, alt: 'x' }],
+  ] as const)('%s kép: nincs képdoboz, az ikon marad', (_nev, kep) => {
+    const html = render({
+      block: blokk({ kartyak: [kartya({ ikon: 'szakkonyv', kep: kep as Kartya['kep'] })] }),
+    })
+    expect(html).not.toContain('kc-ajanlat-kartyak__media')
+    expect(html).toContain('kc-ajanlat-kartyak__ikon')
+  })
+
+  it('a kép csak a saját kártyáján áll: a szomszéd kártya ikonja megmarad', () => {
+    const html = render({
+      block: blokk({
+        kartyak: [kartya({ ikon: 'kepzes' }), kartya({ ikon: 'szakkonyv', kep: konyv })],
+      }),
+    })
+    expect(html.match(/kc-ajanlat-kartyak__media/g)).toHaveLength(1)
+    expect(html).toContain('d="M216,40H40')
+    expect(html).not.toContain('d="M232,48H160')
+  })
+})
+
 describe('OfferCards: tények (0–4)', () => {
   it.each([0, 1, 2, 3, 4])('%i tény', (darab) => {
     const tenyek = Array.from({ length: darab }, (_, index) => ({ szoveg: `Tény ${index + 1}` }))
