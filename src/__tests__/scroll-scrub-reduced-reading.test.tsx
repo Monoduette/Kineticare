@@ -13,7 +13,8 @@ import {
 const css = postcss.parse(readFileSync('src/components/scroll-scrub/scroll-scrub.css', 'utf8'))
 const reduced = css.nodes.find(
   (node): node is AtRule =>
-    node.type === 'atrule' && node.params === '(prefers-reduced-motion: reduce)',
+    node.type === 'atrule' &&
+    node.params.split(',')[0].trim() === '(prefers-reduced-motion: reduce)',
 )!
 const declaration = (nodes: (Rule | AtRule)[], selector: string, prop: string) => {
   const rule = nodes.find(

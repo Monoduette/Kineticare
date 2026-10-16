@@ -365,9 +365,14 @@
   display: none;
 }
 
-/* Csökkentett mozgás: természetes olvasási sorrend, a feliratok a főszöveg
-   után következnek. A szöveg megnőhet, a poszter marad 100dvh; nincs videó. */
-@media (prefers-reduced-motion: reduce) {
+/* Csökkentett mozgás ÉS a mobil (900 px alatti) poszter-mód: természetes
+   olvasási sorrend, a feliratok a főszöveg után következnek. A szöveg
+   megnőhet, a poszter marad 100dvh; nincs videó. A mobil poszter-mód
+   (scroll-scrub.tsx, `posterOnly`) klipet nem tölt, ezért a filmsáv sem
+   lehet három képernyő magas: álló kép fölött nincs mit görgetni, és a záró
+   felirat a még csukott kéz fölött jelent volna meg. A határ a fejlécé
+   (layout.css, 900 px). */
+@media (prefers-reduced-motion: reduce), (max-width: 899px) {
   .scroll-scrub__chapter {
     min-height: 100dvh !important;
   }

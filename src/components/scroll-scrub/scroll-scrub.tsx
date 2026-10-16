@@ -298,13 +298,16 @@ export function ScrollScrub({
     // javítása). Mobilon a ~0,9 MB-os klip ugyanazon a lassú hálózaton
     // versenyzett a JS-csomaggal, és a hidratálás (vele a menü) késett. A
     // mobil nézet (a fejléc 900 px-es határa alatt) ezért csak a posztert
-    // mutatja, klipet nem tölt le: ugyanaz a viselkedés, mint csökkentett
-    // mozgásnál. Asztalon a letöltés a böngésző első tétlen pillanatában
+    // mutatja, klipet nem tölt le, és a csökkentett mozgás statikus olvasó
+    // elrendezését kapja (scroll-scrub.css: egy képernyős fejezet, úszó
+    // feliratok helyett a főszöveg utáni lista). Asztalon a letöltés a böngésző első tétlen pillanatában
     // indul (requestIdleCallback; ahol nincs, például Safariban, 1,5 mp után),
     // nem a hidratálással versenyezve. Addig a klip első kockája, a poszter
     // látszik, tehát a lap képe nem változik.
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback
     const posterOnly = window.matchMedia('(max-width: 899px)')
+    /** Statikus olvasó elrendezés: csökkentett mozgás vagy a mobil poszter-mód. */
+    const staticLayout = () => reduceMotion || posterOnly.matches
     let idleReady = false
     const usesMobileMedia = () => scrollScrubUsesMobileMedia(window.innerWidth, window.innerHeight)
     const usesMobileVideoTuning = () => coarsePointer || smallViewport.matches
@@ -518,7 +521,7 @@ export function ScrollScrub({
           outside = y - segment.end
         }
         let opacity = smoothstep(1 - outside / Math.max(crossfade, 1))
-        if (reduceMotion) {
+        if (staticLayout()) {
           opacity = outside === 0 ? 1 : 0
         }
 
@@ -554,7 +557,7 @@ export function ScrollScrub({
       // mozgásnál az úszó változat helyett a főszöveg utáni lista olvasható.
       for (const [index, caption] of captionList.entries()) {
         const node = captionNodes[index]
-        const opacity = reduceMotion ? 0 : captionOpacity(progress, caption.from, caption.to)
+        const opacity = staticLayout() ? 0 : captionOpacity(progress, caption.from, caption.to)
         node.style.opacity = String(opacity)
         node.setAttribute('aria-hidden', opacity < 0.05 ? 'true' : 'false')
       }
@@ -564,7 +567,7 @@ export function ScrollScrub({
       // viszont el kell venni, különben a láthatatlan gombok elfognák az
       // egérmutatót a film fölött.
       if (copyNodes.length > 0) {
-        const opacity = sceneCopyOpacity(progress, copyHandoff, reduceMotion)
+        const opacity = sceneCopyOpacity(progress, copyHandoff, staticLayout())
         for (const node of copyNodes) {
           node.style.opacity = String(opacity)
           node.style.pointerEvents = opacity < 0.05 ? 'none' : ''
@@ -577,7 +580,7 @@ export function ScrollScrub({
         // tehát a kontraszt a kiúszás közben sem csökken.
         root.style.setProperty(
           '--ss-copy-scrim',
-          String(sceneCopyOpacity(progress, copyHandoff + CAPTION_FADE, reduceMotion)),
+          String(sceneCopyOpacity(progress, copyHandoff + CAPTION_FADE, staticLayout())),
         )
       }
     }
