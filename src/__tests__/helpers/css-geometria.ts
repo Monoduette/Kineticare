@@ -161,6 +161,11 @@ function lapit(
       if (ervenyes) ki += belso
     } else if (nev === 'supports' || nev === 'layer') {
       ki += lapit(torzs, nezetablakPx, magassagPx, kezdoBetumeretPx)
+    } else if (nev === 'starting-style') {
+      // Az átmenet KEZDŐ állapota (CSS Transitions 2, @starting-style): csak az
+      // elem megjelenésének első kockájában él, a nyugalmi elrendezésre nem hat.
+      // A törzs validálandó, de a deklarációi nem kerülnek a kaszkádba.
+      lapit(torzs, nezetablakPx, magassagPx, kezdoBetumeretPx)
     } else if (nev === 'container') {
       // A konténer-lekérdezés a TÁROLÓ szélességétől függ, amit a nézetablak-
       // modell nem ismer: a törzse nem kerül a kaszkádba. Hogy ez ne rejthessen

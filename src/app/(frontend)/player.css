@@ -702,7 +702,7 @@
        különben a sáv átüt a panelen, és a „modális" ígéret hazugság lenne. */
     z-index: 55;
     /* A fátyol SZÓ SZERINT a mobil navigációé (layout.css
-       `.kc-nav-mobile__overlay`): ugyanaz az ink-alapú, 50%-os márka-sötét,
+       `.kc-nav-mobile__drawer::backdrop`): ugyanaz az ink-alapú, 50%-os márka-sötét,
        hogy a két teljes képernyős réteg ugyanúgy viselkedjen. Nincs rá
        szerep-token, mert nem felület, hanem takarás. */
     background-color: rgb(16 36 62 / 0.5);

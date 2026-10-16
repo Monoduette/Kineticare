@@ -717,7 +717,9 @@
  */
 .kc-account-nav--drawer.kc-account-nav--exit {
   margin-top: auto;
-  padding-bottom: calc(var(--kc-space-3) + var(--kc-consent-offset));
+  padding-bottom: calc(
+    var(--kc-space-3) + var(--kc-consent-offset) + env(safe-area-inset-bottom, 0px)
+  );
   border-top: 1px solid var(--kc-header-hairline);
   border-bottom: 0;
 }
@@ -1069,53 +1071,145 @@
   --kc-hamburger-overhang: var(--kc-space-2);
 }
 
-.kc-nav-mobile__overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  background-color: rgb(16 36 62 / 0.5); /* márka-sötét fátyol a drawer mögött */
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity var(--kc-motion-base) var(--kc-ease-out),
-    visibility var(--kc-motion-base);
-}
-
-.kc-nav-mobile__overlay[data-open='true'] {
-  opacity: 1;
-  visibility: visible;
-}
-
 .kc-nav-mobile__drawer {
+  /* A popover a böngésző alapstílusát kapja (középre igazított, keretes,
+     tartalomhoz méretezett doboz): ezt itt felülírjuk. A rejtést a böngésző
+     végzi (a nem nyitott popover `display: none`), ezért a
+     `display` csak a nyitott állapot szabályaiban áll. */
   position: fixed;
   inset-block: 0;
+  inset-inline-start: auto;
   inset-inline-end: 0;
   z-index: 80;
-  display: flex;
+  display: none;
   flex-direction: column;
   width: min(20rem, 85vw);
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  /* A fiók maga görget, a lap nem görög vele (a lánc a fióknál megáll). */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* A sáv mért magassága a fiók saját görgetési dobozára is jár (2.4.11). */
+  scroll-padding-bottom: var(--kc-consent-offset);
   background-color: var(--kc-color-surface-raised); /* lap FÖLÉ emelt réteg */
+  color: var(--kc-color-text);
   box-shadow: var(--kc-shadow-lg);
-  transform: translateX(100%);
-  visibility: hidden;
-  transition:
-    transform var(--kc-motion-base) var(--kc-ease-out),
-    visibility var(--kc-motion-base);
 }
 
-.kc-nav-mobile__drawer[data-open='true'] {
-  transform: translateX(0);
-  visibility: visible;
+/* ---- Natív nyitás: popover (2026-10-16) ------------------------------------
+   A fejléc gombja `popovertarget`, a fiók `popover="manual"`: a böngésző
+   nyitja, a hidratálás előtt és JavaScript nélkül is (MobileNav.tsx). A
+   nyitott popover a böngésző felső rétegébe (top layer) kerül, minden
+   z-index FÖLÉ: a süti-sáv tehát nem takarhatja a fiókot.
+   https://html.spec.whatwg.org/multipage/popover.html
+   https://developer.mozilla.org/en-US/docs/Web/API/Popover_API */
+@supports selector(:popover-open) {
+  .kc-nav-mobile__drawer:popover-open {
+    display: flex;
+    pointer-events: auto;
+  }
+
+  /* A fátyol a popover saját `::backdrop`-ja (márka-sötét, 50%). A böngésző
+     alapstílusa a popover backdropján `pointer-events: none !important`, tehát
+     a fátyolra koppintás átmenne az alatta lévő linkre. Ezért nyitott fióknál
+     a lap (body) nem fogad mutatóeseményt, a fiók igen (fent): a fátyolra eső
+     koppintás így a gyökérelemet éri, a MobileNav arra zár. Mérve Chromium
+     141-ben (header-responsive.browser.mjs). */
+  .kc-nav-mobile__drawer::backdrop {
+    background-color: rgb(16 36 62 / 0.5);
+  }
+
+  html:has(#kc-mobile-menu:popover-open) body {
+    pointer-events: none;
+  }
+
+  /* Görgetészár CSS-ből: amíg a fiók nyitva, a lap nem görög. */
+  html:has(#kc-mobile-menu:popover-open) {
+    overflow: hidden;
+  }
+
+  .kc-nav-mobile__fallback {
+    display: none;
+  }
+}
+
+/* A beúszás csak mozgást engedő beállításnál; a zárás azonnali. A nyitott
+   állapot (`:popover-open`) a koppintás pillanatában igaz, a mozgás nem
+   késlelteti. */
+@supports selector(:popover-open) {
+  @media (prefers-reduced-motion: no-preference) {
+    .kc-nav-mobile__drawer:popover-open {
+      transition: transform var(--kc-motion-base) var(--kc-ease-out);
+    }
+
+    @starting-style {
+      .kc-nav-mobile__drawer:popover-open {
+        transform: translateX(100%);
+      }
+    }
+  }
+}
+
+/* ---- Tartalék: <details> a popover nélküli böngészőkben -------------------
+   Safari 17, Chrome 114 és Firefox 125 előtt nincs popover. Ott a fejléc
+   gombja helyett ugyanilyen `<summary>` nyit, a fiók a `[open]` testvér-
+   szabállyal jelenik meg. A fátyol a summary `::before`-ja: rá koppintva a
+   summary kattintását kapja, tehát JavaScript nélkül is zár. */
+.kc-nav-mobile__fallback {
+  display: none;
+}
+
+.kc-nav-mobile__fallback > summary {
+  list-style: none;
+}
+
+.kc-nav-mobile__fallback > summary::-webkit-details-marker {
+  display: none;
+}
+
+@supports not selector(:popover-open) {
+  .kc-nav-mobile > .kc-nav-mobile__toggle {
+    display: none;
+  }
+
+  .kc-nav-mobile__fallback {
+    display: block;
+  }
+
+  .kc-nav-mobile__fallback[open] ~ .kc-nav-mobile__drawer {
+    display: flex;
+  }
+
+  .kc-nav-mobile__fallback[open] > summary::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background-color: rgb(16 36 62 / 0.5);
+  }
+
+  html:has(.kc-nav-mobile__fallback[open]) {
+    overflow: hidden;
+  }
 }
 
 .kc-nav-mobile__drawer-header {
+  /* A fiók görget: a fejléc a tetején marad, a bezáró gomb mindig elérhető. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--kc-space-3);
-  min-height: 3.5rem; /* a mobil sáv magassága — a drawer folytatja a fejlécet */
+  min-height: 3.5rem; /* a mobil sáv magassága — a fiók folytatja a fejlécet */
   padding: var(--kc-space-3) var(--kc-space-4);
   border-bottom: 1px solid var(--kc-header-hairline);
+  background-color: var(--kc-color-surface-raised);
 }
 
 /* A landing feliratnyelve: ritkított verzál (vö. `.kc-eyebrow`). */
@@ -1131,17 +1225,15 @@
   list-style: none;
   margin: 0;
   padding: var(--kc-space-3) var(--kc-space-4);
-  overflow-y: auto;
 }
 
 /* ---- 2.4.11: a süti-sáv ne takarhassa el a menü alsó pontjait -------------
    A LYUK, AMIT BEZÁR. A `consent-banner.css` már véd a takarás ellen, de a
    védelme `body { padding-bottom }` és `scroll-padding-bottom` — a fiók viszont
-   `position: fixed` (lásd fent), ezért a body belső margója RÁ NEM HAT, a saját
-   görgetősávjára pedig a lap `scroll-padding`-je nem vonatkozik. Mérve: a body
-   megkapta a 274 px-et, a fiók alja mégis a képernyő alján maradt, és 320 px-en
-   13 fókuszált menüelemből 7 TELJESEN takart volt a süti-sáv alatt (360 px-en
-   3). Koppintással 4 menüpont volt elérhetetlen.
+   `position: fixed` (lásd fent), ezért a body belső margója RÁ NEM HAT. Mérve
+   (2026-09, a popover előtt): a body megkapta a 274 px-et, a fiók alja mégis a
+   képernyő alján maradt, és 320 px-en 13 fókuszált menüelemből 7 TELJESEN
+   takart volt a süti-sáv alatt (360 px-en 3).
 
    A SZABÁLY. WCAG 2.2 · 2.4.11 Focus Not Obscured (Minimum), AA: „When a user
    interface component receives keyboard focus, the component is not entirely
@@ -1151,25 +1243,32 @@
    receiving focus."
    https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html
 
-   MIÉRT A LISTA ÉS NEM A FIÓK. A görgethető doboz a lista (`overflow-y: auto`),
-   tehát a belső margónak ott kell lennie: így a legalsó menüpont FÖLÉ tud
-   görögni a sávnak. A fiókra tett margó csak a doboz alját tolná feljebb.
+   2026-10-16 ÓTA a popover a felső rétegben áll, tehát a sáv a nyitott fiókot
+   nem fedi; a térköz a `<details>`-tartalékágnak kell (ott a fiók z-indexe 80,
+   a sávé 1000), és iPhone-on az alsó biztonsági sávnak (`safe-area-inset`).
+   A lista alja a fiók görgetési dobozának alja, ezért a térköz ide kerül.
 
    A `--kc-consent-offset` a sáv MÉRT magassága (ResizeObserver, lásd
-   consent-banner.css); süti-sáv nélkül 0px, tehát ez a szabály ilyenkor csak a
-   szokásos térközt adja. Ugyanezt a változót használja a mobil vásárlósáv is —
-   az a felület emiatt már ma is helyesen viselkedik. */
+   consent-banner.css); süti-sáv nélkül 0px. */
 .kc-nav-mobile__list {
-  padding-bottom: calc(var(--kc-space-3) + var(--kc-consent-offset));
-  scroll-padding-bottom: var(--kc-consent-offset);
+  padding-bottom: calc(
+    var(--kc-space-3) + var(--kc-consent-offset) + env(safe-area-inset-bottom, 0px)
+  );
 }
 
+/* Menüpont 56 px, almenüpont 48 px (a tulajdonosi dizájn-vászon mérete,
+   2026-10-16): a 44 px-es minimumnál bővebb cél a hüvelykujjnak. Material 3
+   Navigation drawer: 56 dp magas tétel
+   (https://m3.material.io/components/navigation-drawer/specs); Apple HIG,
+   Layout: legalább 44×44 pt
+   (https://developer.apple.com/design/human-interface-guidelines/layout);
+   WCAG 2.2 SC 2.5.8 legalább 24×24 CSS px. */
 .kc-nav-mobile__link {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--kc-space-2);
-  min-height: 2.75rem; /* 44px érintési cél */
+  min-height: 3.5rem; /* 56 px érintési cél */
   padding: var(--kc-space-3) var(--kc-space-2);
   border-radius: var(--kc-radius-sm);
   font-size: var(--kc-font-m);
@@ -1223,7 +1322,7 @@
   display: flex;
   align-items: center;
   gap: var(--kc-space-2);
-  min-height: 2.75rem; /* 44px érintési cél */
+  min-height: 3rem; /* 48 px érintési cél */
   padding: var(--kc-space-2);
   border-radius: var(--kc-radius-sm);
   font-size: var(--kc-font-m);

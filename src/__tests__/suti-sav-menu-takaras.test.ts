@@ -5,10 +5,17 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * A süti-sáv NEM takarhatja el a mobil menü alsó pontjait — WCAG 2.2 · 2.4.11.
- * A süti-sáv `z-index: 1000`, a mobil menü fiókja `z-index: 80`, tehát a sáv a
- * fiók FÖLÉ kerül. A `consent-banner.css` már véd a takarás ellen, DE a védelme
+ * A süti-sáv `z-index: 1000`, a mobil menü fiókja `z-index: 80`, tehát a
+ * `<details>`-tartalékágon (popover nélküli böngésző) a sáv a fiók FÖLÉ kerül.
+ * A `consent-banner.css` már véd a takarás ellen, DE a védelme
  * `body { padding-bottom }` és `scroll-padding-bottom` — a fiók viszont
  * `position: fixed`, ezért a body belső margója rá nem hat, a saját
+ * görgetési dobozára pedig a lap `scroll-padding`-je nem vonatkozik.
+ *
+ * 2026-10-16 óta a fiók natív popover, nyitva a böngésző felső rétegében áll
+ * (a sáv fölött), és maga a fiók görget, nem a lista. A takarásmentességet
+ * böngészőben a tests/e2e/mobil-menu-suti-sav.e2e.mjs méri (elementFromPoint);
+ * ez az őr a CSS-szerződést tartja.
  */
 
 const LAYOUT_CSS = readFileSync(
@@ -34,6 +41,12 @@ function menuListaSzabalyok(): string[] {
   return kommentNelkul.match(/[^{}]*\.kc-nav-mobile__list[^{}]*\{[^}]*\}/g) ?? []
 }
 
+/** A fiók ALAP-szabályának törzse (kommentek nélkül). */
+function fiokAlapSzabaly(): string {
+  const kommentNelkul = LAYOUT_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+  return kommentNelkul.match(/(?:^|\n)\.kc-nav-mobile__drawer\s*\{([^}]*)\}/)?.[1] ?? ''
+}
+
 describe('a süti-sáv és a mobil menü', () => {
   it('a menülista alsó margója a sáv MÉRT magasságával számol', () => {
     const szabalyok = menuListaSzabalyok().join('\n')
@@ -43,15 +56,20 @@ describe('a süti-sáv és a mobil menü', () => {
     expect(szabalyok).toMatch(/padding-bottom:\s*calc\([\s\S]*?--kc-consent-offset/)
   })
 
-  it('a lista saját görgetéséhez is jár a sáv-magasság', () => {
-    // A fiók listája `overflow-y: auto`, tehát SAJÁT görgetési doboz: a lap
-    // `scroll-padding-bottom`-ja rá nem vonatkozik, külön kell megadni.
-    const szabalyok = menuListaSzabalyok().join('\n')
-    expect(szabalyok).toMatch(/scroll-padding-bottom:\s*var\(--kc-consent-offset\)/)
+  it('a lista alja az iPhone alsó biztonsági sávját is kihagyja', () => {
+    expect(menuListaSzabalyok().join('\n')).toMatch(
+      /padding-bottom:\s*calc\([\s\S]*?env\(safe-area-inset-bottom/,
+    )
   })
 
-  it('a lista MARADJON saját görgetési doboz (különben a margó értelmét veszti)', () => {
-    expect(menuListaSzabalyok().join('\n')).toContain('overflow-y: auto')
+  it('a fiók a görgetési doboz, és a sáv-magasság a saját görgetésére is jár', () => {
+    // A fiók `overflow-y: auto`, tehát SAJÁT görgetési doboz: a lap
+    // `scroll-padding-bottom`-ja rá nem vonatkozik, külön kell megadni. Az
+    // `overscroll-behavior: contain` nélkül a fiók végén a lap görögne tovább.
+    const fiok = fiokAlapSzabaly()
+    expect(fiok).toMatch(/overflow-y:\s*auto/)
+    expect(fiok).toMatch(/overscroll-behavior:\s*contain/)
+    expect(fiok).toMatch(/scroll-padding-bottom:\s*var\(--kc-consent-offset\)/)
   })
 
   it('a védelem nem írható felül némán: pontosan KÉT lista-szabály van', () => {
@@ -76,8 +94,24 @@ describe('a süti-sáv és a mobil menü', () => {
   it('a sáv továbbra is a lap fölött áll (a rétegsorrend nem változott)', () => {
     // Ha valaki a z-indexszel „oldaná meg" a takarást, a sáv a menü ALÁ
     // kerülne, és a süti-döntés válna elérhetetlenné. A helyes megoldás a
-    // térköz, nem a rétegcsere — ezt rögzítjük.
+    // térköz, nem a rétegcsere — ezt rögzítjük. (A nyitott popovert a
+    // böngésző teszi a felső rétegbe; a z-index a tartalékágnak szól.)
     expect(CONSENT_CSS).toMatch(/z-index:\s*1000/)
-    expect(LAYOUT_CSS).toMatch(/\.kc-nav-mobile__drawer\s*\{[^}]*z-index:\s*80/)
+    expect(fiokAlapSzabaly()).toMatch(/z-index:\s*80/)
+  })
+
+  it('nyitott fióknál a sáv szövege vizuálisan rejtett, a gombok maradnak (popover és tartalék)', () => {
+    const css = CONSENT_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+    for (const nyitott of [
+      'html:has(#kc-mobile-menu:popover-open)',
+      'html:has(.kc-nav-mobile__fallback[open])',
+    ]) {
+      const szabaly = css.match(
+        new RegExp(`${nyitott.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\.kc-consent-banner__text\\s*\\{([^}]*)\\}`),
+      )
+      expect(szabaly?.[1]).toMatch(/position:\s*absolute/)
+      expect(szabaly?.[1]).toMatch(/clip:\s*rect\(0 0 0 0\)/)
+      expect(szabaly?.[1]).not.toMatch(/display:\s*none/)
+    }
   })
 })
