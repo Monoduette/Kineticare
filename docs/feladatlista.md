@@ -118,6 +118,13 @@ Ezekhez nem nyúlunk, amíg a tulajdonos nem dönt:
 - blokkoló ellenőrzés a kódhoz kötött webcímeken (ma csak figyelmeztetés és
   „Visszaállítom …” gomb van, a mentést nem állítja meg);
 - új globális beállítások (Payload globals) a kódban élő szövegekhez.
+- a hero „Kéz / Csukló / Gerinc” címkéi (2026-10-16, mobil halott
+  kattintások): vagy linkké válnak, vagy keret nélküli szöveg lesz belőlük
+  (az elemzés B4 pontja). Ma vezérlőnek látszanak, de nem azok, ezért nyomott
+  állapotot sem kaptak;
+- PostHog `mask_all_text`: az engedélyezőlistás autocapture a `.kc-button`
+  feliratát is küldi, ami CMS-szöveg, és cikk alatti gombnál betegségnevet is
+  tartalmazhat (`docs/statisztika-audit-2026-08-21.md`).
 
 ### 5. Dependabot
 
@@ -139,6 +146,7 @@ kérésre, külön PR-ben (`CLAUDE.md`, TILOS ZÓNÁK 5.).
 | C14     | Offsite mentés: E2E restore drill                                               | Emberi kapu: `DATABASE_URI` repo-secret, `BACKUP_AGE_RECIPIENT`, kézi futás, visszafejtés, restore sorszám-egyeztetéssel (`docs/adatbazis-mentes.md`).                                                                           |
 | C15–C17 | SEO/GEO tartalmi munka, prompt-portfólió, bot-védelem ellenőrzése élesítés után | `docs/seo-geo-llm.md`.                                                                                                                                                                                                           |
 | R1      | Railway legacy Config as Code kivezetése **2026-12-01 előtt**                   | `railway config migrate` előnézet, emberi jóváhagyással `--apply`, utána tiszta `railway config plan` (`docs/deploy-railway.md`).                                                                                                |
+| E1      | A mobilmenü két e2e-tesztje (`tests/e2e/`) a CI-ba                              | Ma kézzel futnak egy `next start` példány ellen. CI-ban a build job után adatbázissal és a Chromiummal kellene futtatni; a Playwright nincs a függőségek között. |
 | R2      | A #292/#293 tartalom-szabályainak éles futtatása (content-job)                  | Nem ellenőriztük innen, lefutott-e: a sín Elrendezés-kitöltése és a „szakembereknek” webcímű oldal létrehozása. A naplóban „MÁR …” sorok jelzik, hogy nincs teendő (`docs/deploy-railway.md`, content-job).                      |
 
 ## Kész 2026 szeptemberében (#283–#307)
