@@ -1,4 +1,4 @@
-import type { PostHog, PostHogConfig } from 'posthog-js'
+import type { CaptureResult, PostHog, PostHogConfig, Properties } from 'posthog-js'
 
 import {
   CONSENT_EVENT,
@@ -118,7 +118,62 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
     // ez elég (posthog-js dead-clicks-autocapture.js: `maskAllText:
     // config.mask_all_text`).
     mask_all_text: true,
+    // M9 A KIMENŐ HATÁRON, MINDEN ESEMÉNYRE. A posthog-js a `$current_url`-t
+    // (és a `$referrer`-t, a `$initial_*` személy-tulajdonságokat) maga
+    // olvassa a címsorból: az `$autocapture`, a `$dead_click`, a
+    // `$pageleave` és az `$opt_in` így a jelszó-visszaállító jegyet is
+    // felküldte volna. A saját `$pageview` eddig is tisztított volt; ez a
+    // horog minden más eseményt is ugyanazon a tisztítón visz át.
+    // https://posthog.com/docs/libraries/js/config (before_send)
+    before_send: sanitizeOutgoingEvent,
   }
+}
+
+/** URL-nek látszó szöveg (abszolút vagy gyökér-relatív, query-vel). */
+const URL_WITH_QUERY = /^(https?:\/\/|\/)[^\s]*\?/
+
+function sanitizeProperties(properties: Properties | undefined): Properties | undefined {
+  if (!properties) {
+    return properties
+  }
+  const clean: Properties = {}
+  for (const [key, value] of Object.entries(properties)) {
+    if (typeof value === 'string' && URL_WITH_QUERY.test(value)) {
+      clean[key] = sanitizeAnalyticsUrl(value)
+    } else if (
+      (key === '$set' || key === '$set_once') &&
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      clean[key] = sanitizeProperties(value as Properties)
+    } else {
+      clean[key] = value
+    }
+  }
+  return clean
+}
+
+/**
+ * A `before_send` horog: minden kimenő esemény URL-jellegű tulajdonságából
+ * kivágja az érzékeny query-paramétereket (./page-url.ts), a többit
+ * (kampány-paraméterek) meghagyja. Eseményt nem dob el.
+ */
+export function sanitizeOutgoingEvent(result: CaptureResult | null): CaptureResult | null {
+  if (!result) {
+    return result
+  }
+  const clean: CaptureResult = {
+    ...result,
+    properties: sanitizeProperties(result.properties) ?? result.properties,
+  }
+  if (result.$set) {
+    clean.$set = sanitizeProperties(result.$set)
+  }
+  if (result.$set_once) {
+    clean.$set_once = sanitizeProperties(result.$set_once)
+  }
+  return clean
 }
 
 /**
@@ -192,37 +247,74 @@ const readyCallbacks = new Set<() => void>()
 let pendingCalls: Array<(client: PostHog) => void> = []
 
 /**
- * Kijelentkezés jele, amíg az SDK nem állt fel (kijelentkezés után a lap
- * teljes újratöltéssel a főoldalra megy, a sor elveszne). A következő init a
- * jelet látva elengedi az előző azonosságot (`reset`). A jel nem személyes
- * adat, csak egy igen/nem.
+ * Az azonosság-művelet (belépés: `identify`, kijelentkezés: `reset`) jele,
+ * amíg az SDK nem állt fel. Belépés és kijelentkezés után is teljes
+ * oldalbetöltés jön (LoginForm/RegisterForm, AccountNav), a memóriabeli sor
+ * tehát elveszne. A következő init a jelet látva pótolja a műveletet. A jel
+ * nem személyes adat: `reset`, vagy `id:` és a Payload users.id (ugyanaz,
+ * amit az identify a PostHognak küld; e-mail és név soha).
  */
-const RESET_PENDING_KEY = 'kc_analytics_reset_pending'
+const IDENTITY_PENDING_KEY = 'kc_analytics_identity_pending'
+
+type IdentityOp = 'reset' | `id:${string}`
 
 /**
- * Ezen a lapon sorba állított kijelentkezés: ilyenkor a jelet a sor viszi, a
- * korábbi (kijelentkezés előtti) események után. Az init csak egy KORÁBBI
- * lapról maradt jelre reagál.
+ * Ezen a lapon sorba állított azonosság-művelet: ilyenkor a jelet a sor viszi,
+ * a korábbi események után. Az init csak egy KORÁBBI lapról maradt jelre
+ * reagál.
  */
-let resetQueued = false
+let identityQueued = false
 
-function markResetPending(): void {
+function markIdentityPending(op: IdentityOp): void {
   try {
-    window.localStorage.setItem(RESET_PENDING_KEY, '1')
+    window.localStorage.setItem(IDENTITY_PENDING_KEY, op)
   } catch {
     // Tiltott tároló: a sor ugyanazon a lapon így is lefut.
   }
 }
 
-/** Visszaadja és törli a kijelentkezés jelét. */
-function takeResetPending(): boolean {
+/** Visszaadja és törli az azonosság-művelet jelét. */
+function takeIdentityPending(): IdentityOp | null {
   try {
-    const pending = window.localStorage.getItem(RESET_PENDING_KEY) === '1'
-    window.localStorage.removeItem(RESET_PENDING_KEY)
-    return pending
+    const op = window.localStorage.getItem(IDENTITY_PENDING_KEY)
+    window.localStorage.removeItem(IDENTITY_PENDING_KEY)
+    return op === 'reset' || op?.startsWith('id:') ? (op as IdentityOp) : null
   } catch {
+    return null
+  }
+}
+
+/** Egy azonosság-művelet végrehajtása a kész kliensen. */
+function applyIdentityOp(client: PostHog, op: IdentityOp): void {
+  if (op === 'reset') {
+    client.reset()
+  } else {
+    client.identify(op.slice('id:'.length))
+  }
+}
+
+/**
+ * Azonosság-művelet: kész kliensen azonnal; az SDK betöltése alatt (vagy
+ * hozzájárulással, de még el sem indult betöltésnél) tartós jellel és a
+ * sorban. Igazat ad, ha lefutott vagy sorba került.
+ */
+function runIdentityOp(op: IdentityOp): boolean {
+  if (typeof window === 'undefined') {
     return false
   }
+  if (initialized && posthog) {
+    applyIdentityOp(posthog, op)
+    return true
+  }
+  if (!isPostHogConfigured() || !hasAnalyticsConsent()) {
+    return false
+  }
+  markIdentityPending(op)
+  identityQueued = withClient((client) => {
+    applyIdentityOp(client, op)
+    takeIdentityPending()
+  })
+  return true
 }
 
 /**
@@ -308,9 +400,11 @@ export function initPostHog(): boolean {
       if (client.has_opted_out_capturing()) {
         client.opt_in_capturing()
       }
-      // Egy korábbi lapon, az SDK megérkezése előtt történt kijelentkezés.
-      if (!resetQueued && takeResetPending()) {
-        client.reset()
+      // Egy korábbi lapon, az SDK megérkezése előtt történt belépés vagy
+      // kijelentkezés (a lap azóta újratöltött, a sora elveszett).
+      const earlierOp = identityQueued ? null : takeIdentityPending()
+      if (earlierOp) {
+        applyIdentityOp(client, earlierOp)
       }
       initialized = true
       startCapturing()
@@ -374,7 +468,7 @@ function captureEvent(event: string, properties?: Record<string, unknown>): void
 /** A sor eldobása (visszavont hozzájárulás, sikertelen betöltés). */
 function dropPendingCalls(): void {
   pendingCalls = []
-  resetQueued = false
+  identityQueued = false
 }
 
 /** A hozzájárulásra várók egyszeri futtatása (a lista ürül). */
@@ -476,7 +570,7 @@ export function captureAnalyticsEvent(
  * mint ahogy a lustán töltött SDK megérkezik).
  */
 export function identifyUser(userId: number | string): boolean {
-  return withClient((client) => client.identify(String(userId)))
+  return runIdentityOp(`id:${String(userId)}`)
 }
 
 /**
@@ -488,23 +582,7 @@ export function identifyUser(userId: number | string): boolean {
  * profilba — ez egyszerre mérési hiba és adatvédelmi hiba.
  */
 export function resetAnalyticsIdentity(): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  if (initialized && posthog) {
-    posthog.reset()
-    return
-  }
-  // Az SDK még nem állt fel ezen a lapon, de egy korábbi lapról már lehet
-  // tárolt azonosság. A kijelentkezés teljes újratöltéssel jár, ezért a sor
-  // mellett tartós jel is kell (lásd RESET_PENDING_KEY).
-  if (isPostHogConfigured() && hasAnalyticsConsent()) {
-    markResetPending()
-    resetQueued = withClient((client) => {
-      client.reset()
-      takeResetPending()
-    })
-  }
+  runIdentityOp('reset')
 }
 
 /**
