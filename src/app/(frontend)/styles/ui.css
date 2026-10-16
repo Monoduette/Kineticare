@@ -388,14 +388,31 @@
   color: var(--kc-color-on-dark-muted);
 }
 
+/* Az összehúzás a találati dobozt is összehúzza: a gomb szélén lenyomott,
+   majd felengedett egér (vagy ujj) már a dobozon kívül esne, és a kattintás a
+   szülőé lenne, azaz új halott kattintás. Nyomva ezért egy láthatatlan
+   felület pontosan kiegyenlíti az összehúzást (1/0,97 ≈ 1,031, oldalanként
+   1,6%), a gomb a teljes eredeti dobozán fogadja a felengedést. A gombokon más
+   `::after` nincs.
+   A kártya NEM húzódik össze, csak a tint jelzi a nyomást: a kártya maga nem
+   link, a benne lévő link (vagy annak az egész kártyát fedő `::after`-je)
+   kapja a kattintást, és a kártya összehúzása ezt a linket húzná ki a
+   felengedés pontja alól. Kiegyenlítő felület itt nem segít, mert a kártyáé
+   lenne, nem a linké, és elnyelné a kattintást. */
 @media (prefers-reduced-motion: no-preference) {
-  .kc-button:active:not(:disabled):not(.kc-button--disabled),
-  .kc-card--interactive:active {
+  .kc-button:active:not(:disabled):not(.kc-button--disabled) {
+    position: relative;
     transform: scale(0.97);
     transition:
       transform var(--kc-motion-press) var(--kc-ease-out),
       background-color var(--kc-motion-press) var(--kc-ease-out),
       color var(--kc-motion-press) var(--kc-ease-out);
+  }
+
+  .kc-button:active:not(:disabled):not(.kc-button--disabled)::after {
+    content: '';
+    position: absolute;
+    inset: -1.6%;
   }
 }
 

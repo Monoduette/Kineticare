@@ -244,9 +244,10 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
 describe('azonnali nyomás-visszajelzés (:active)', () => {
   const fajlok = ['app/(frontend)/styles/ui.css', 'app/(frontend)/styles/layout.css']
   const gyokerek = fajlok.map((fajl) => postcss.parse(olvas(fajl)))
+  // A kártya szándékosan nem húzódik össze (ui.css: a benne lévő linket húzná
+  // ki a felengedés pontja alól), csak a tint jelzi a nyomást.
   const vezerlok = [
     '.kc-button',
-    '.kc-card--interactive',
     '.kc-nav-mobile__toggle',
     '.kc-nav-mobile__link',
     '.kc-nav-mobile__sublink',
@@ -280,12 +281,15 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
     }
   })
 
-  it.each(vezerlok)('%s nem vár dupla koppintásra, és nincs rendszer-villanás', (vezerlo) => {
-    const alap = szabalyok().filter((sz) => sz.szelektorok.includes(vezerlo) && sz.media === null)
-    const torzs = alap.map((sz) => sz.torzs).join(';')
-    expect(torzs).toMatch(/touch-action:\s*manipulation/)
-    expect(torzs).toMatch(/-webkit-tap-highlight-color:\s*transparent/)
-  })
+  it.each([...vezerlok, '.kc-card--interactive'])(
+    '%s nem vár dupla koppintásra, és nincs rendszer-villanás',
+    (vezerlo) => {
+      const alap = szabalyok().filter((sz) => sz.szelektorok.includes(vezerlo) && sz.media === null)
+      const torzs = alap.map((sz) => sz.torzs).join(';')
+      expect(torzs).toMatch(/touch-action:\s*manipulation/)
+      expect(torzs).toMatch(/-webkit-tap-highlight-color:\s*transparent/)
+    },
+  )
 
   it('a nyomás ideje 80 ms (a 0,1 s-os azonnaliság-határ alatt)', () => {
     expect(olvas('app/(frontend)/styles/tokens.css')).toMatch(/--kc-motion-press:\s*80ms;/)

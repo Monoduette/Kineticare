@@ -262,7 +262,9 @@ const PAROK: readonly Par[] = [
   p('kc-button--ghost', 'nyomva', SZIN('text'), SZIN('surface-tint'), 4.5, '1.4.3'),
   p('kc-card--interactive', 'nyomva, másodlagos szöveg', SZIN('text-muted'), SZIN('surface-tint'), 4.5, '1.4.3'),
   p('kc-button--secondary', 'sötét sáv nyomva', SZIN('surface-dark'), SZIN('on-dark-muted'), 4.5, '1.4.3'),
-  p('kc-nav-mobile__toggle', 'nyomva, ikon', SZIN('text'), SZIN('surface-tint'), 3, '1.4.11'),
+  // A layout.css `.kc-nav-mobile__toggle:active` az ikont a fejléc akcentjére
+  // (--kc-header-accent = accent-deeper) színezi, nem ink-re.
+  p('kc-nav-mobile__toggle', 'nyomva, ikon', SZIN('accent-deeper'), SZIN('surface-tint'), 3, '1.4.11'),
   p(
     'kc-button--ghost',
     'sötét sáv hover',

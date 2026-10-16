@@ -116,6 +116,7 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
   const closeRef = useRef<HTMLButtonElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
   const fallbackRef = useRef<HTMLDetailsElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   /** A fiók bezárása a natív állapoton át; a React-állapotot a `toggle` esemény követi. */
   const close = useCallback(() => {
@@ -147,7 +148,22 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
   useEffect(() => {
     const drawer = drawerRef.current
     const fallback = fallbackRef.current
-    const sync = () => setOpen(isDrawerOpen(drawerRef.current, fallbackRef.current))
+    // A `data-open` attribútum a nyitás DOM-nyoma. A popover nyitása csak
+    // állapotot vált (`:popover-open`), attribútumot nem, és a PostHog
+    // halott-kattintás figyelője (posthog-js dead-clicks-autocapture: csak
+    // DOM-mutációt, görgetést és kijelölést néz) mutáció nélkül minden
+    // sikeres hamburger-koppintást halott kattintásnak számolna. A mérés
+    // ugyanis csak a hidratálás után indul, addigra ez a figyelő is él.
+    // A `data-hydrated` a tartalék-ág X gombjának láthatóságát adja (layout.css).
+    const root = rootRef.current
+    const sync = () => {
+      const isOpen = isDrawerOpen(drawerRef.current, fallbackRef.current)
+      if (root) {
+        root.dataset.open = String(isOpen)
+      }
+      setOpen(isOpen)
+    }
+    root?.setAttribute('data-hydrated', '')
     sync()
     drawer?.addEventListener('toggle', sync)
     fallback?.addEventListener('toggle', sync)
@@ -241,7 +257,7 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
   )
 
   return (
-    <div className="kc-nav-mobile">
+    <div className="kc-nav-mobile" ref={rootRef}>
       {/* A nyitás a böngészőé: a `popovertarget` JavaScript nélkül, a
           hidratálás előtt is működik. A kibontott állapotot a böngésző
           maga közli a felolvasóval (HTML-AAM: popovertarget → aria-expanded),
