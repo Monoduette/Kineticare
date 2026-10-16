@@ -112,11 +112,14 @@ nem semleges lett volna. Az `identifyUser` és a GeoIP változatlan.
 halott kattintások méréséhez a tulajdonos kérésére az autocapture csak négy
 vezérlőcsalád kattintását küldi: `.kc-nav-mobile__toggle`, `.kc-button`,
 `.kc-nav-mobile__link`, `.kc-nav-mobile__sublink`
-(`css_selector_allowlist`, ugyanott, ugyanazzal az őr-teszttel). A cikkek és
-az űrlapok szövege így nem megy ki. Nyitott tulajdonosi döntés: a `.kc-button`
-felirata CMS-szöveg, és egy cikk alatti gomb a betegség nevét is tartalmazhatja;
-ha ezt azonosított látogatónál sem akarjuk rögzíteni, a `mask_all_text: true`
-a szöveget elhagyja, az elem osztálya és a link címe megmarad.
+(`css_selector_allowlist`, ugyanott, ugyanazzal az őr-teszttel). A halott
+kattintás (`$dead_click`) viszont külön esemény: a PostHog projekt-beállítása
+kapcsolja, az engedélyezőlistát nem nézi, és bármely elemre jöhet, egy cikk
+bekezdésére vagy a pénztárban visszaírt e-mail-címre is. Ezért a kliens
+`mask_all_text: true`-val indul: egyik esemény sem viszi az elem szövegét
+(`$el_text`), az elem osztálya, helye és a link címe megmarad. Mérve a
+telepített posthog-js 1.430.3 forrásában (dead-clicks-autocapture.js,
+autocapture.js); az őr-teszt ezt is rögzíti.
 
 ## 5. Amit tudatosan KIHAGYUNK
 

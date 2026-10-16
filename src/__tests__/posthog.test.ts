@@ -84,7 +84,7 @@ describe('buildPostHogOptions', () => {
     expect(options.capture_pageleave).toBe(true)
   })
 
-  it('ŐR: a munkamenet-felvétel ki van kapcsolva, az autocapture csak engedélyezőlistával fut', () => {
+  it('ŐR: a munkamenet-felvétel ki van kapcsolva, az autocapture csak engedélyezőlistával fut, elemszöveg nélkül', () => {
     const options = buildPostHogOptions()
     // Mindkettő a posthog-js-ben ALAPBÓL aktív (a felvételt a projekt-oldali
     // kapcsoló, az autocapture-t a kliens dönti el), ezért a kiírt érték a
@@ -103,6 +103,9 @@ describe('buildPostHogOptions', () => {
         '.kc-nav-mobile__sublink',
       ],
     })
+    // A `$dead_click` az engedélyezőlistát nem nézi, bármely elemre jöhet
+    // (egy cikk bekezdésére is). Az elem szövegét csak ez tartja vissza.
+    expect(options.mask_all_text).toBe(true)
   })
 })
 

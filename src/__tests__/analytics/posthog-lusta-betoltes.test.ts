@@ -15,26 +15,45 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *     `checkout_started`) elvész, mert a kliens még nincs kész;
  *  3. a betöltés alatt visszavont hozzájárulás után az SDK mégis elindul, és
  *     a várakozó esemény kimegy.
+ *
+ * A betöltési ablak további szerződései (a 2026-10-16-i átnézés találatai):
+ *  4. a visszavonás alatt keletkezett esemény egy újbóli elfogadás után sem
+ *     megy ki;
+ *  5. a belépő oldal megtekintése (és kampány-paramétere) nem vész el, ha a
+ *     látogató az SDK megérkezése előtt továbblép;
+ *  6. a sorba állított esemény a keletkezési oldalát viszi, nem a kiküldéskorit;
+ *  7. a betöltés alatti belépés azonosít (`identify`);
+ *  8. az SDK megérkezése előtti kijelentkezés a teljes újratöltés után is
+ *     elengedi az azonosságot (`reset`).
  */
 
-const sdk = vi.hoisted(() => ({
-  betoltve: 0,
-  init: vi.fn(),
-  capture: vi.fn(),
-}))
-
-vi.mock('posthog-js', () => {
-  sdk.betoltve += 1
-  return {
-    default: {
-      init: sdk.init,
-      capture: sdk.capture,
-      has_opted_out_capturing: () => false,
-      opt_in_capturing: vi.fn(),
-      opt_out_capturing: vi.fn(),
-    },
+const sdk = vi.hoisted(() => {
+  const allapot = {
+    betoltve: 0,
+    init: vi.fn(),
+    capture: vi.fn(),
+    identify: vi.fn(),
+    reset: vi.fn(),
   }
+  /** A mockolt SDK-modul; a gyár a betöltést számolja. */
+  const modul = () => {
+    allapot.betoltve += 1
+    return {
+      default: {
+        init: allapot.init,
+        capture: allapot.capture,
+        identify: allapot.identify,
+        reset: allapot.reset,
+        has_opted_out_capturing: () => false,
+        opt_in_capturing: vi.fn(),
+        opt_out_capturing: vi.fn(),
+      },
+    }
+  }
+  return Object.assign(allapot, { modul })
 })
+
+vi.mock('posthog-js', () => sdk.modul())
 
 // A kulcsot a posthog-config modul betöltéskor olvassa, ezért az import előtt.
 vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'DUMMY-posthog-teszt-kulcs')
@@ -42,20 +61,31 @@ vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'DUMMY-posthog-teszt-kulcs')
 const {
   CONSENT_STORAGE_KEY,
   captureAnalyticsEvent,
+  capturePageView,
+  identifyUser,
   initPostHog,
   optInToAnalytics,
   optOutOfAnalytics,
   resetPostHogForTests,
+  whenPostHogReady,
 } = await import('@/lib/analytics/posthog')
 
 /** A dinamikus import és az init lépése egy makrotaszkon belül lezajlik. */
 const kivar = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+/** A böngésző címe (a Next útvonalváltása pushState-tel így látszik). */
+function cim(path: string): void {
+  window.history.replaceState(null, '', path)
+}
+
 beforeEach(() => {
   resetPostHogForTests()
   sdk.init.mockClear()
   sdk.capture.mockClear()
+  sdk.identify.mockClear()
+  sdk.reset.mockClear()
   window.localStorage.clear()
+  cim('/')
 })
 
 describe('PostHog SDK: lusta betöltés', () => {
@@ -80,7 +110,10 @@ describe('PostHog SDK: lusta betöltés', () => {
     await kivar()
     expect(sdk.init).toHaveBeenCalledTimes(1)
     expect(sdk.capture).toHaveBeenCalledTimes(1)
-    expect(sdk.capture).toHaveBeenCalledWith('checkout_started', { productId: 3 })
+    expect(sdk.capture).toHaveBeenCalledWith(
+      'checkout_started',
+      expect.objectContaining({ productId: 3 }),
+    )
   })
 
   it('a betöltés alatt visszavont hozzájárulás után az SDK nem indul el, és semmi nem megy ki', async () => {
@@ -92,5 +125,101 @@ describe('PostHog SDK: lusta betöltés', () => {
     await kivar()
     expect(sdk.init).not.toHaveBeenCalled()
     expect(sdk.capture).not.toHaveBeenCalled()
+  })
+
+  it('a visszavonás alatt keletkezett esemény újbóli elfogadás után sem megy ki', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    initPostHog()
+    optOutOfAnalytics()
+    captureAnalyticsEvent('checkout_started', { productId: 3 })
+    optInToAnalytics()
+    captureAnalyticsEvent('checkout_started', { productId: 4 })
+
+    await kivar()
+    expect(sdk.init).toHaveBeenCalledTimes(1)
+    expect(sdk.capture.mock.calls).toEqual([
+      ['checkout_started', expect.objectContaining({ productId: 4 })],
+    ])
+  })
+
+  it('a belépő oldal megtekintése és kampány-paramétere megmarad, ha a látogató a betöltés alatt továbblép', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    cim('/?utm_source=hirlevel')
+    // A layout sorrendje: a PostHogPageView effectje a provider initje ELŐTT
+    // fut, és a route-váltáskor a cleanup visszavonná a sajátját.
+    const visszavon = whenPostHogReady(() => capturePageView('/?utm_source=hirlevel'))
+    initPostHog()
+    visszavon()
+    cim('/kurzusok')
+    whenPostHogReady(() => capturePageView('/kurzusok'))
+
+    await kivar()
+    expect(sdk.capture.mock.calls).toEqual([
+      [
+        '$pageview',
+        {
+          $current_url: '/?utm_source=hirlevel',
+          $pathname: '/',
+          utm_source: 'hirlevel',
+        },
+      ],
+      ['$pageview', { $current_url: '/kurzusok', $pathname: '/kurzusok' }],
+    ])
+  })
+
+  it('a sorba állított esemény a keletkezési oldalát viszi, nem a kiküldéskorit', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    cim('/tudastar/csuklo?utm_campaign=osz&token=DUMMY-JEGY')
+    initPostHog()
+    captureAnalyticsEvent('checkout_started', { productId: 3 })
+    cim('/penztar')
+
+    await kivar()
+    expect(sdk.capture).toHaveBeenCalledWith('checkout_started', {
+      // A jelszó-visszaállító jegy a sorból sem mehet ki (M9).
+      $current_url: `${window.location.origin}/tudastar/csuklo?utm_campaign=osz`,
+      $pathname: '/tudastar/csuklo',
+      utm_campaign: 'osz',
+      productId: 3,
+    })
+  })
+
+  it('a betöltés alatti belépés az SDK megérkezése után azonosít', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    initPostHog()
+    expect(identifyUser(42)).toBe(true)
+    expect(sdk.identify).not.toHaveBeenCalled()
+
+    await kivar()
+    expect(sdk.identify).toHaveBeenCalledExactlyOnceWith('42')
+  })
+
+  it('az SDK megérkezése előtti kijelentkezés a teljes újratöltés után is elengedi az azonosságot, egyszer', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    // 1. lap: az SDK úton van, a látogató kijelentkezik, a lap újratölt
+    // (AccountNav: `window.location.href = '/'`), a csomag sosem érkezik meg.
+    vi.resetModules()
+    vi.doMock('posthog-js', () => new Promise<never>(() => {}))
+    const elsoLap = await import('@/lib/analytics/posthog')
+    elsoLap.initPostHog()
+    elsoLap.resetAnalyticsIdentity()
+    await kivar()
+    expect(sdk.reset).not.toHaveBeenCalled()
+
+    // 2. lap: friss modul, az SDK megérkezik.
+    vi.doMock('posthog-js', () => sdk.modul())
+    vi.resetModules()
+    const masodikLap = await import('@/lib/analytics/posthog')
+    masodikLap.initPostHog()
+    await kivar()
+    expect(sdk.init).toHaveBeenCalledTimes(1)
+    expect(sdk.reset).toHaveBeenCalledTimes(1)
+
+    // 3. lap: a jel elfogyott, a mostani azonosság marad.
+    vi.resetModules()
+    const harmadikLap = await import('@/lib/analytics/posthog')
+    harmadikLap.initPostHog()
+    await kivar()
+    expect(sdk.reset).toHaveBeenCalledTimes(1)
   })
 })

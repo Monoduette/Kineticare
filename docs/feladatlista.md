@@ -121,10 +121,7 @@ Ezekhez nem nyúlunk, amíg a tulajdonos nem dönt:
 - a hero „Kéz / Csukló / Gerinc” címkéi (2026-10-16, mobil halott
   kattintások): vagy linkké válnak, vagy keret nélküli szöveg lesz belőlük
   (az elemzés B4 pontja). Ma vezérlőnek látszanak, de nem azok, ezért nyomott
-  állapotot sem kaptak;
-- PostHog `mask_all_text`: az engedélyezőlistás autocapture a `.kc-button`
-  feliratát is küldi, ami CMS-szöveg, és cikk alatti gombnál betegségnevet is
-  tartalmazhat (`docs/statisztika-audit-2026-08-21.md`).
+  állapotot sem kaptak.
 
 ### 5. Dependabot
 
