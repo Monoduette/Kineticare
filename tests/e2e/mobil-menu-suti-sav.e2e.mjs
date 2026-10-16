@@ -28,6 +28,17 @@ const [playwrightPath, baseUrl] = process.argv.slice(2)
 assert.ok(playwrightPath && baseUrl, 'Használat: node <fájl> <playwright/index.mjs> <alap-URL>')
 const { chromium, devices } = await import(pathToFileURL(path.resolve(playwrightPath)).href)
 
+/**
+ * Csak a vizsgált szerver felé mehet kérés (CLAUDE.md 15.): a PostHog, a
+ * Barion, a Meta és minden más külső hívás elutasítva.
+ */
+async function csakSajatSzerver(context, alapUrl) {
+  const sajat = new URL(alapUrl).origin
+  await context.route('**/*', (route) =>
+    new URL(route.request().url()).origin === sajat ? route.continue() : route.abort(),
+  )
+}
+
 const NEZETEK = [
   { width: 375, height: 667 },
   { width: 320, height: 568 },
@@ -41,12 +52,14 @@ try {
   for (const viewport of NEZETEK) {
     const nev = `${viewport.width}×${viewport.height}`
     const context = await browser.newContext({ ...devices['iPhone SE'], viewport })
+    await csakSajatSzerver(context, baseUrl)
     const page = await context.newPage()
     await page.goto(new URL('/', baseUrl).href, { waitUntil: 'load' })
 
     // A sáv a hidratálás után jelenik meg (a tárolt döntést a kliens olvassa).
     const sav = page.locator('.kc-consent-banner')
     await sav.waitFor({ state: 'visible', timeout: 30_000 })
+    const savMagassagZarva = (await sav.boundingBox())?.height ?? 0
 
     await page.locator('.kc-site-header__bar .kc-nav-mobile__toggle').first().tap()
     const fiok = page.locator('#kc-mobile-menu')
@@ -61,9 +74,46 @@ try {
     const gombok = await page
       .locator('.kc-consent-banner__button')
       .evaluateAll((elemek) => elemek.map((elem) => elem.getBoundingClientRect().top))
-    // Egy sorra csukva: a két döntőgomb egy sorban, a szöveg vizuálisan rejtett.
+    // 1. szerződés: nyitott fióknál a sáv egy sorra csukódik. A két döntőgomb
+    // egy sorban, a magyarázó szöveg vizuálisan rejtett (1×1 px-es doboz, de a
+    // felolvasónak megmarad), és ettől a sáv alacsonyabb, mint zárt fióknál.
     if (gombok.length !== 2 || Math.abs(gombok[0] - gombok[1]) > 1) {
       hibak.push(`${nev}: a sütisáv gombjai nem egy sorban állnak nyitott fióknál`)
+    }
+    const szoveg = await page
+      .locator('.kc-consent-banner__text')
+      .evaluate((elem) => ({
+        ...elem.getBoundingClientRect().toJSON(),
+        van: elem.textContent.trim().length > 0,
+      }))
+    if (!szoveg.van || szoveg.width > 1 || szoveg.height > 1) {
+      hibak.push(
+        `${nev}: nyitott fióknál a sütisáv szövege nem csukódott össze (${Math.round(szoveg.width)}×${Math.round(szoveg.height)} px)`,
+      )
+    }
+    if (!(savMagassag < savMagassagZarva)) {
+      hibak.push(
+        `${nev}: a sütisáv nyitott fióknál nem lett alacsonyabb (${Math.round(savMagassagZarva)} → ${Math.round(savMagassag)} px)`,
+      )
+    }
+
+    // 2. szerződés: a fiók a felső rétegben áll, a sáv FÖLÖTT. A fiók és a sáv
+    // közös területén (a nézetablak alja, a fiók belsejében) a fiók eleme
+    // kapja a koppintást, nem a sávé, pedig a sáv z-indexe 1000.
+    const reteg = await fiok.evaluate((elem) => {
+      const doboz = elem.getBoundingClientRect()
+      const banner = document.querySelector('.kc-consent-banner').getBoundingClientRect()
+      const x = doboz.left + doboz.width / 2
+      const y = Math.max(banner.top, 0) + banner.height / 2
+      const talalt = document.elementFromPoint(x, y)
+      return {
+        fedik: banner.top < window.innerHeight && banner.bottom > 0,
+        fiokE: Boolean(talalt) && elem.contains(talalt),
+        mi: talalt ? `${talalt.tagName.toLowerCase()}.${talalt.className}` : 'semmi',
+      }
+    })
+    if (!reteg.fedik || !reteg.fiokE) {
+      hibak.push(`${nev}: a fiók nem áll a sütisáv fölött; a közös területen: ${reteg.mi}`)
     }
 
     const kapcsolat = fiok.getByRole('link', { name: 'Kapcsolat', exact: true })

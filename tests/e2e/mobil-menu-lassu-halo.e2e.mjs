@@ -32,13 +32,35 @@ const OLDALAK = ['/', '/szolgaltatasok', '/rolunk']
 const NYITASI_HATAR_MS = 500
 const GOMB = '.kc-site-header__bar .kc-nav-mobile__toggle'
 
-/** Nyitva van-e a fiók (popover vagy a <details> tartalék). */
+/**
+ * Nyitva van-e a fiók: popover (`:popover-open`) vagy a `<details>` tartalék.
+ * Ha egyik sincs a lapon (a 2026-10-16 előtti, React-állapotú menü), a régi
+ * fiók saját jele, a `data-open="true"` számít. Így az ellenpróba a régi kódon
+ * is a valódi okból (nem nyílt ki) bukik, nem azért, mert a teszt nem találja
+ * a fiókot. (A doboz láthatósága nem jó jel: a stíluslap megérkezése előtt a
+ * rejtett fiók is a nézetablakban áll.)
+ */
 const NYITVA = () => {
   const fiok = document.getElementById('kc-mobile-menu')
-  if (fiok && typeof fiok.showPopover === 'function') {
+  if (fiok && fiok.hasAttribute('popover') && typeof fiok.showPopover === 'function') {
     return fiok.matches(':popover-open')
   }
-  return Boolean(document.querySelector('.kc-nav-mobile__fallback[open]'))
+  const tartalek = document.querySelector('.kc-nav-mobile__fallback')
+  if (tartalek) {
+    return tartalek.hasAttribute('open')
+  }
+  return document.querySelector('.kc-nav-mobile__drawer')?.getAttribute('data-open') === 'true'
+}
+
+/**
+ * Csak a vizsgált szerver felé mehet kérés (CLAUDE.md 15.): a PostHog, a
+ * Barion, a Meta és minden más külső hívás elutasítva.
+ */
+async function csakSajatSzerver(context, alapUrl) {
+  const sajat = new URL(alapUrl).origin
+  await context.route('**/*', (route) =>
+    new URL(route.request().url()).origin === sajat ? route.continue() : route.abort(),
+  )
 }
 
 const browser = await chromium.launch(
@@ -48,6 +70,7 @@ const hibak = []
 try {
   for (const oldal of OLDALAK) {
     const context = await browser.newContext({ ...devices['iPhone 14'] })
+    await csakSajatSzerver(context, baseUrl)
     const page = await context.newPage()
     const cdp = await context.newCDPSession(page)
     await cdp.send('Network.enable')
