@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import postcss from 'postcss'
+import postcss, { type Rule } from 'postcss'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -289,5 +289,30 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
 
   it('a nyomás ideje 80 ms (a 0,1 s-os azonnaliság-határ alatt)', () => {
     expect(olvas('app/(frontend)/styles/tokens.css')).toMatch(/--kc-motion-press:\s*80ms;/)
+  })
+
+  // A saját kitöltésű elsődleges gombok (ink a sínen, fordított fehér a sötét
+  // sávokon) nyomva a SAJÁT hover-színükön maradnak. A ui.css általános primary
+  // `:active` szabálya (0,4,0) erősebb az alapjuknál, és enélkül accent-kékre
+  // váltaná őket billentyűs (Szóköz) vagy érintéses nyomásnál.
+  it.each([
+    ['app/(frontend)/styles/blocks/services-sin.css', '.kc-services-sin__cta'],
+    [
+      'app/(frontend)/styles/blocks/cta-banner.css',
+      '.kc-section--dark .kc-cta-banner__action .kc-button--primary',
+    ],
+    ['components/courses/promo/promo-course.css', '.kc-promo-hero__button.kc-button--primary'],
+    ['components/courses/promo/promo-course.css', '.kc-promo-closing__button.kc-button--primary'],
+  ])('%s: %s nyomva a hover-színén marad', (fajl, gomb) => {
+    let kozos: Rule | null = null
+    postcss.parse(olvas(fajl)).walkRules((rule) => {
+      const sajat = rule.selectors
+        .map((s) => s.replace(/\s+/g, ' '))
+        .filter((s) => s.startsWith(gomb))
+      if (sajat.some((s) => s.includes(':hover')) && sajat.some((s) => s.includes(':active'))) {
+        kozos = rule
+      }
+    })
+    expect(kozos, `${gomb}: a :hover és az :active egy szabályban`).not.toBeNull()
   })
 })

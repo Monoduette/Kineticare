@@ -241,8 +241,12 @@
   color: var(--kc-color-surface-dark);
 }
 
+/* Nyomva a hover-tónus: a ui.css általános primary `:active` szabálya a
+   fordított gombot accent-kékre váltaná. */
 .kc-promo-hero__button.kc-button--primary:hover:not(:disabled):not(.kc-button--disabled),
-.kc-promo-closing__button.kc-button--primary:hover:not(:disabled):not(.kc-button--disabled) {
+.kc-promo-closing__button.kc-button--primary:hover:not(:disabled):not(.kc-button--disabled),
+.kc-promo-hero__button.kc-button--primary:active:not(:disabled):not(.kc-button--disabled),
+.kc-promo-closing__button.kc-button--primary:active:not(:disabled):not(.kc-button--disabled) {
   background-color: var(--kc-color-surface-tint);
   color: var(--kc-color-surface-dark);
 }

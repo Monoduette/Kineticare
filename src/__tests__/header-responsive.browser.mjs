@@ -498,7 +498,9 @@ try {
         // Fátyol: a fiók dobozán kívüli koppintás zár, a fókusz a hamburgerre
         // tér vissza, és a koppintás NEM ér le a fátyol alatti lapelemre (a
         // fiók modális: APG modális párbeszéd, a háttér nem működtethető). A
-        // lapelem mása egy rögzített gomb a koppintás pontján.
+        // lapelem mása egy rögzített gomb a koppintás pontján, `pointer-events:
+        // auto`-val, mint a film-hero gombjai és a sín mobilpanelje: a lap
+        // `pointer-events`-jének levétele ezt nem védené (öröklődik, felülírható).
         await openDrawer()
         const drawerBox = await page.locator(MOBILE_DRAWER).boundingBox()
         assert.ok(drawerBox && drawerBox.x >= 40, `no backdrop area left of the drawer at ${width}`)
@@ -513,6 +515,7 @@ try {
             top: `${y - 10}px`,
             width: '20px',
             height: '20px',
+            pointerEvents: 'auto',
           })
           under.addEventListener('click', () => {
             under.dataset.clicked = 'true'
@@ -542,6 +545,16 @@ try {
           await assertDrawerState(false, `after backdrop tap at ${width}`)
           if (!backdrop.focusOnHamburger)
             failures.push(`backdrop tap did not return focus to the hamburger at ${width}`)
+        }
+        // A hamburger közvetlen aktiválása nyitott fióknál (felolvasó, kapcsoló-
+        // eszköz: `click()` mutatópozíció nélkül) zár, nem nyit újra.
+        await openDrawer()
+        await page.locator(MOBILE_TOGGLE).evaluate((toggle) => toggle.click())
+        await settle()
+        if (await drawerOpen()) {
+          failures.push(`direct hamburger activation did not close the drawer at ${width}`)
+          await page.locator(MOBILE_CLOSE).click()
+          await waitDrawerClosed()
         }
       }
     }

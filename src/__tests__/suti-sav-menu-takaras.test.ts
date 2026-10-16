@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import postcss, { type AtRule, type Rule } from 'postcss'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -107,11 +108,45 @@ describe('a süti-sáv és a mobil menü', () => {
       'html:has(.kc-nav-mobile__fallback[open])',
     ]) {
       const szabaly = css.match(
-        new RegExp(`${nyitott.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\.kc-consent-banner__text\\s*\\{([^}]*)\\}`),
+        new RegExp(
+          `${nyitott.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\.kc-consent-banner__text\\s*\\{([^}]*)\\}`,
+        ),
       )
       expect(szabaly?.[1]).toMatch(/position:\s*absolute/)
       expect(szabaly?.[1]).toMatch(/clip:\s*rect\(0 0 0 0\)/)
       expect(szabaly?.[1]).not.toMatch(/display:\s*none/)
+    }
+  })
+
+  it('a nyitott fiók lapszintű szabályai csak a fiók sávjában (900 px alatt) élnek', () => {
+    // 900 px fölött a fiók rejtett (`.kc-nav-mobile { display: none }`), de egy
+    // ott nyitva maradt popover `:popover-open` marad. Ha a görgetészár vagy a
+    // sáv-csukás média-feltétel nélkül állna, az asztali lap nem görögne, és a
+    // süti-sáv szövege eltűnne, látható menü nélkül.
+    const nyitottSzabalyok: Rule[] = []
+    for (const css of [LAYOUT_CSS, CONSENT_CSS]) {
+      postcss.parse(css).walkRules((rule) => {
+        if (
+          /^html:has\((#kc-mobile-menu:popover-open|\.kc-nav-mobile__fallback\[open\])\)/.test(
+            rule.selector,
+          )
+        ) {
+          nyitottSzabalyok.push(rule)
+        }
+      })
+    }
+    // Görgetészár a popover- és a tartalékágon, sáv-csukás mindkettőn.
+    expect(nyitottSzabalyok).toHaveLength(4)
+    for (const rule of nyitottSzabalyok) {
+      let szulo = rule.parent
+      let mobilSavban = false
+      while (szulo && szulo.type !== 'root') {
+        if (szulo.type === 'atrule' && (szulo as AtRule).name === 'media') {
+          mobilSavban ||= /max-width:\s*899px/.test((szulo as AtRule).params)
+        }
+        szulo = szulo.parent
+      }
+      expect(mobilSavban, rule.selector).toBe(true)
     }
   })
 })

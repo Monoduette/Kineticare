@@ -1076,6 +1076,9 @@
      tartalomhoz méretezett doboz): ezt itt felülírjuk. A rejtést a böngésző
      végzi (a nem nyitott popover `display: none`), ezért a
      `display` csak a nyitott állapot szabályaiban áll. */
+  /* A fiók szélessége a fátyol-gombnak (lent) is kell: az a fiók mellett ér
+     véget, nem alatta. */
+  --kc-nav-drawer-width: min(20rem, 85vw);
   position: fixed;
   inset-block: 0;
   inset-inline-start: auto;
@@ -1083,7 +1086,7 @@
   z-index: 80;
   display: none;
   flex-direction: column;
-  width: min(20rem, 85vw);
+  width: var(--kc-nav-drawer-width);
   max-width: none;
   height: auto;
   max-height: none;
@@ -1113,23 +1116,20 @@
     pointer-events: auto;
   }
 
-  /* A fátyol a popover saját `::backdrop`-ja (márka-sötét, 50%). A böngésző
-     alapstílusa a popover backdropján `pointer-events: none !important`, tehát
-     a fátyolra koppintás átmenne az alatta lévő linkre. Ezért nyitott fióknál
-     a lap (body) nem fogad mutatóeseményt, a fiók igen (fent): a fátyolra eső
-     koppintás így a gyökérelemet éri, a MobileNav arra zár. Mérve Chromium
-     141-ben (header-responsive.browser.mjs). */
+  /* A fátyol SZÍNE a popover saját `::backdrop`-ja (márka-sötét, 50%). A
+     böngésző alapstílusa a backdropon `pointer-events: none !important`, tehát
+     a koppintást nem ő fogja el, hanem a fiókon belüli fátyol-gomb (lent). */
   .kc-nav-mobile__drawer::backdrop {
     background-color: rgb(16 36 62 / 0.5);
   }
 
-  html:has(#kc-mobile-menu:popover-open) body {
-    pointer-events: none;
-  }
-
-  /* Görgetészár CSS-ből: amíg a fiók nyitva, a lap nem görög. */
-  html:has(#kc-mobile-menu:popover-open) {
-    overflow: hidden;
+  /* Görgetészár CSS-ből: amíg a fiók nyitva, a lap nem görög. Csak a fiók
+     sávjában: 900 px fölött a fiók rejtett (`.kc-nav-mobile`), egy ott
+     nyitva maradt popover nem zárolhatja a lapot. */
+  @media (max-width: 899px) {
+    html:has(#kc-mobile-menu:popover-open) {
+      overflow: hidden;
+    }
   }
 
   .kc-nav-mobile__fallback {
@@ -1137,18 +1137,44 @@
   }
 }
 
+/* ---- A fátyol koppintási felülete -----------------------------------------
+   Egy `popovertargetaction="hide"` gomb a fiókban, a nézetablak fiók melletti
+   részén. A popover része, tehát a felső rétegben a lap minden eleme fölött
+   áll: a fátyolra koppintás zár, és sosem ér le az alatta lévő linkre, akkor
+   sem, ha az `pointer-events: auto`-t kér (a film-hero gombjai, a sín
+   mobilpanelje). JavaScript nélkül is zár (a böngésző kezeli). A
+   felolvasónak és a Tabnak nem létezik (`aria-hidden`, `tabindex="-1"`): a
+   fiókot a saját „Menü bezárása” gombja és az Escape zárja. APG, Dialog
+   (Modal): a modális réteg mögötti tartalom nem működtethető.
+   https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/ */
+.kc-nav-mobile__scrim {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inset-inline-end: var(--kc-nav-drawer-width);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  cursor: default;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* A beúszás csak mozgást engedő beállításnál; a zárás azonnali. A nyitott
    állapot (`:popover-open`) a koppintás pillanatában igaz, a mozgás nem
-   késlelteti. */
+   késlelteti. A fiók a jobb szélét mozgatja, nem `transform`-ot kap: a
+   transzformált elem a rögzített leszármazottjainak tartalmazó blokkja lenne,
+   és a beúszás alatt a fátyol-gomb a fiókra zsugorodna. */
 @supports selector(:popover-open) {
   @media (prefers-reduced-motion: no-preference) {
     .kc-nav-mobile__drawer:popover-open {
-      transition: transform var(--kc-motion-base) var(--kc-ease-out);
+      transition: inset-inline-end var(--kc-motion-base) var(--kc-ease-out);
     }
 
     @starting-style {
       .kc-nav-mobile__drawer:popover-open {
-        transform: translateX(100%);
+        inset-inline-end: calc(-1 * var(--kc-nav-drawer-width));
       }
     }
   }
@@ -1192,8 +1218,15 @@
     background-color: rgb(16 36 62 / 0.5);
   }
 
-  html:has(.kc-nav-mobile__fallback[open]) {
-    overflow: hidden;
+  /* Popover nélkül a fátyol-gomb nem zárna; itt a summary fátyla zár. */
+  .kc-nav-mobile__scrim {
+    display: none;
+  }
+
+  @media (max-width: 899px) {
+    html:has(.kc-nav-mobile__fallback[open]) {
+      overflow: hidden;
+    }
   }
 }
 

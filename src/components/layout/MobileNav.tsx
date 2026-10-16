@@ -10,9 +10,10 @@ import { NavAnchor } from './NavAnchor'
 
 /** A fiókban Tab-bal bejárható vezérlők (a rejtett, 0 méretű elemek nélkül). */
 function drawerTabbables(drawer: HTMLElement): HTMLElement[] {
-  return [...drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')].filter(
-    (element) => element.getClientRects().length > 0,
-  )
+  // A fátyol-gomb (`tabindex="-1"`) nem Tab-állomás, a csapda sem számol vele.
+  return [
+    ...drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]):not([tabindex="-1"])'),
+  ].filter((element) => element.getClientRects().length > 0)
 }
 
 /**
@@ -94,7 +95,9 @@ function isDrawerOpen(drawer: HTMLElement | null, fallback: HTMLDetailsElement |
  *   szélességen bezár, kezeli az Escape-et és a fókuszcsapdát. Nyitó
  *   `onClick` nincs, a hidratálás előtti koppintás is nyit.
  * A görgetés zárolása és a fátyol CSS (`html:has(...:popover-open)`,
- * `::backdrop`), nem `body.style.overflow`.
+ * `::backdrop`), nem `body.style.overflow`. A fátyolra koppintást a fiókon
+ * belüli, `popovertargetaction="hide"` fátyol-gomb fogja el: zár, és nem
+ * engedi le a koppintást az alatta lévő linkre (JavaScript nélkül is).
  *
  * - A fiók tartalma: fiók-belépő + a CMS-menü. Külön időpont-gomb a fiók
  *   alján NINCS (2026-09-07, tulajdonosi döntés): a „Kapcsolat” menüpont
@@ -165,7 +168,7 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
     close()
   }, [close, pathname])
 
-  // Escape + fókuszcsapda + fátyolra koppintás + a fókusz beléptetése.
+  // Escape + fókuszcsapda + asztali zárás + a fókusz beléptetése.
   useEffect(() => {
     if (!open) {
       return
@@ -207,22 +210,17 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
       close()
     }
     desktop.addEventListener('change', onDesktop)
-    // Fátyolra koppintás: a popover backdropja átengedi a mutatót, ezért a CSS
-    // nyitott fióknál a lapot (body) kiveszi a találatból (layout.css). A
-    // koppintás így a gyökérelemet éri, nem az alatta lévő linket; minden, a
-    // fiókon kívüli kattintás zár (a manual popover magától nem zár).
-    const onBackdrop = (event: MouseEvent) => {
-      if (!drawer || !(event.target instanceof Node) || drawer.contains(event.target)) return
-      if (fallbackRef.current?.contains(event.target)) return
-      closeAndRestoreFocus()
+    // A hidratálás előtt kinyitott fiók már asztali szélességen is lehet (a
+    // telefon közben elfordult): ott rejtett, tehát nem maradhat nyitva.
+    if (desktop.matches) {
+      close()
+    } else {
+      closeRef.current?.focus()
     }
-    document.addEventListener('click', onBackdrop)
-    closeRef.current?.focus()
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('focusin', onFocusIn)
       desktop.removeEventListener('change', onDesktop)
-      document.removeEventListener('click', onBackdrop)
     }
   }, [close, closeAndRestoreFocus, open])
 
@@ -277,6 +275,19 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
         popover="manual"
         ref={drawerRef}
       >
+        {/* A fátyol koppintási felülete (layout.css `.kc-nav-mobile__scrim`):
+            a fiók melletti sávot fedi, a natív `hide` zár vele, JavaScript
+            nélkül is. A felolvasónak és a Tabnak nem létezik; a fiók saját
+            bezáró gombja és az Escape az akadálymentes út. */}
+        <button
+          aria-hidden="true"
+          className="kc-nav-mobile__scrim"
+          onClick={closeAndRestoreFocus}
+          popoverTarget={MOBILE_MENU_ID}
+          popoverTargetAction="hide"
+          tabIndex={-1}
+          type="button"
+        />
         <div className="kc-nav-mobile__drawer-header">
           <span className="kc-nav-mobile__drawer-title">Menü</span>
           <button

@@ -1034,9 +1034,13 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
         'miatt a gyűrű a LAPRA esik (fehér az inken 15,63:1, paperen 14,79:1).',
     },
     {
-      szelektor: '.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled)',
+      szelektor:
+        '.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled), ' +
+        '.kc-services-sin__cta:active:not(:disabled):not(.kc-button--disabled)',
       felulir: null,
-      indok: 'Ua.: hover-kitöltés a gombon, a gyűrű az offset miatt a lapra esik.',
+      indok:
+        'Ua.: hover- és nyomott kitöltés a gombon (nyomva is ink, nem accent), ' +
+        'a gyűrű az offset miatt a lapra esik.',
     },
   ]
 

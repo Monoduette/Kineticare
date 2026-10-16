@@ -165,7 +165,12 @@
   color: var(--kc-color-navy-900);
 }
 
-.kc-section--dark .kc-cta-banner__action .kc-button--primary:hover {
+/* Nyomva a hover-tónus (a ui.css általános primary `:active` szabálya
+   accent-kékre váltaná a fordított gombot). */
+.kc-section--dark .kc-cta-banner__action .kc-button--primary:hover,
+.kc-section--dark
+  .kc-cta-banner__action
+  .kc-button--primary:active:not(:disabled):not(.kc-button--disabled) {
   background-color: var(--kc-color-blue-100);
   color: var(--kc-color-navy-900);
 }
