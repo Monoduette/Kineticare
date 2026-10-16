@@ -1360,6 +1360,34 @@
   background-color: var(--kc-header-accent-soft);
 }
 
+/* Azonnali nyomás-visszajelzés, a hidratálás előtt is (2026-10-16). Forrás,
+   kontraszt és indoklás: ui.css „Azonnali nyomás-visszajelzés”. A gomb
+   nyomott háttere a tint (ink ikon a tinten 13,53:1, a 3:1-es nem-szöveges
+   küszöb felett), a menüpontok nyomott állapota az alábbi, meglévő szabályoké. */
+.kc-nav-mobile__toggle,
+.kc-nav-mobile__link,
+.kc-nav-mobile__sublink {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.kc-nav-mobile__toggle:active {
+  background-color: var(--kc-color-surface-tint);
+  color: var(--kc-header-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kc-nav-mobile__toggle:active,
+  .kc-nav-mobile__link:active,
+  .kc-nav-mobile__sublink:active {
+    transform: scale(0.97);
+    transition:
+      transform var(--kc-motion-press) var(--kc-ease-out),
+      background-color var(--kc-motion-press) var(--kc-ease-out),
+      color var(--kc-motion-press) var(--kc-ease-out);
+  }
+}
+
 /* ---- Lábléc --------------------------------------------------------------- */
 /**
  * A landing `.kc-footer` nyelve: óriás, aláhúzott serif „Kapcsolat" link,

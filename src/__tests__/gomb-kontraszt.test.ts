@@ -256,6 +256,13 @@ const PAROK: readonly Par[] = [
   p('kc-button--secondary', 'sötét sáv', SZIN('on-dark'), SZIN('surface-dark'), 4.5, '1.4.3'),
   p('kc-button--ghost', 'alap', SZIN('primary'), SZIN('bg'), 4.5, '1.4.3'),
   p('kc-button--ghost', 'alap / tint', SZIN('primary'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  // --- nyomott (:active) állapotok, 2026-10-16 (ui.css „Azonnali nyomás-visszajelzés”) ---
+  p('kc-button--primary', 'nyomva', SZIN('on-primary'), SZIN('accent-deeper'), 4.5, '1.4.3'),
+  p('kc-button--secondary', 'nyomva', SZIN('text'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  p('kc-button--ghost', 'nyomva', SZIN('text'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  p('kc-card--interactive', 'nyomva, másodlagos szöveg', SZIN('text-muted'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  p('kc-button--secondary', 'sötét sáv nyomva', SZIN('surface-dark'), SZIN('on-dark-muted'), 4.5, '1.4.3'),
+  p('kc-nav-mobile__toggle', 'nyomva, ikon', SZIN('text'), SZIN('surface-tint'), 3, '1.4.11'),
   p(
     'kc-button--ghost',
     'sötét sáv hover',
@@ -926,6 +933,11 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       szelektor: '.kc-button--primary:hover:not(:disabled):not(.kc-button--disabled)',
       felulir: null,
       indok: 'Ua.: hover-kitöltés, a fókuszgyűrű az offset miatt a lapra esik.',
+    },
+    {
+      szelektor: '.kc-button--primary:active:not(:disabled):not(.kc-button--disabled)',
+      felulir: null,
+      indok: 'Ua.: nyomott kitöltés (2026-10-16), a fókuszgyűrű az offset miatt a lapra esik.',
     },
     {
       szelektor: '.kc-category-filter__chip--active, .kc-category-filter__chip--active:hover',

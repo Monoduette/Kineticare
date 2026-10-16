@@ -232,3 +232,62 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
     expect(szabaly).toMatch(/border-color:\s*var\(--kc-color-focus\)/)
   })
 })
+
+/**
+ * ŐR (2026-10-16, mobil halott kattintások): a nyomott állapot CSS-ből,
+ * a hidratálás előtt is látszik, és a 0,97-es összehúzás KIZÁRÓLAG mozgást
+ * engedő beállításnál fut (WCAG 2.2 SC 2.3.3; ui.css „Azonnali
+ * nyomás-visszajelzés”). Hihető regresszió: a transform kikerül a
+ * `prefers-reduced-motion: no-preference` blokkból, vagy egy átírás elhagyja a
+ * `touch-action: manipulation`-t, és a böngésző újra vár a dupla koppintásra.
+ */
+describe('azonnali nyomás-visszajelzés (:active)', () => {
+  const fajlok = ['app/(frontend)/styles/ui.css', 'app/(frontend)/styles/layout.css']
+  const gyokerek = fajlok.map((fajl) => postcss.parse(olvas(fajl)))
+  const vezerlok = [
+    '.kc-button',
+    '.kc-card--interactive',
+    '.kc-nav-mobile__toggle',
+    '.kc-nav-mobile__link',
+    '.kc-nav-mobile__sublink',
+  ]
+
+  const szabalyok = () => {
+    const lista: { szelektorok: string[]; media: string | null; torzs: string }[] = []
+    for (const gyoker of gyokerek) {
+      gyoker.walkRules((rule) => {
+        const szulo = rule.parent
+        lista.push({
+          szelektorok: rule.selectors,
+          media: szulo?.type === 'atrule' && 'params' in szulo ? String(szulo.params) : null,
+          torzs: rule.nodes.map((node) => node.toString()).join(';'),
+        })
+      })
+    }
+    return lista
+  }
+
+  it.each(vezerlok)('%s lenyomva 0,97-re húzódik, csak mozgást engedő beállításnál', (vezerlo) => {
+    const osszehuzo = szabalyok().filter(
+      (sz) =>
+        sz.szelektorok.some((s) => s.startsWith(vezerlo) && s.includes(':active')) &&
+        /transform:\s*scale\(0\.97\)/.test(sz.torzs),
+    )
+    expect(osszehuzo.length).toBeGreaterThan(0)
+    for (const sz of osszehuzo) {
+      expect(sz.media).toBe('(prefers-reduced-motion: no-preference)')
+      expect(sz.torzs).toMatch(/var\(--kc-motion-press\)/)
+    }
+  })
+
+  it.each(vezerlok)('%s nem vár dupla koppintásra, és nincs rendszer-villanás', (vezerlo) => {
+    const alap = szabalyok().filter((sz) => sz.szelektorok.includes(vezerlo) && sz.media === null)
+    const torzs = alap.map((sz) => sz.torzs).join(';')
+    expect(torzs).toMatch(/touch-action:\s*manipulation/)
+    expect(torzs).toMatch(/-webkit-tap-highlight-color:\s*transparent/)
+  })
+
+  it('a nyomás ideje 80 ms (a 0,1 s-os azonnaliság-határ alatt)', () => {
+    expect(olvas('app/(frontend)/styles/tokens.css')).toMatch(/--kc-motion-press:\s*80ms;/)
+  })
+})
