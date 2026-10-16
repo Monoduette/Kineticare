@@ -84,14 +84,25 @@ describe('buildPostHogOptions', () => {
     expect(options.capture_pageleave).toBe(true)
   })
 
-  it('ŐR: a munkamenet-felvétel és az autocapture KIFEJEZETTEN ki van kapcsolva', () => {
+  it('ŐR: a munkamenet-felvétel ki van kapcsolva, az autocapture csak engedélyezőlistával fut', () => {
     const options = buildPostHogOptions()
     // Mindkettő a posthog-js-ben ALAPBÓL aktív (a felvételt a projekt-oldali
-    // kapcsoló, az autocapture-t a kliens dönti el), ezért a `false` érték
-    // KIÍRÁSA a védelem. Ha valaki törli a sort, a viselkedés némán megfordul:
-    // ez az őr ezért nem a hiányt, hanem a KIMONDOTT false-t követeli meg.
+    // kapcsoló, az autocapture-t a kliens dönti el), ezért a kiírt érték a
+    // védelem. Ha valaki törli a sort, a viselkedés némán megfordul.
     expect(options.disable_session_recording).toBe(true)
-    expect(options.autocapture).toBe(false)
+    // Az autocapture 2026-10-16 óta csak a menü és a `.kc-button` gombok
+    // kattintását küldi (tulajdonosi kérés). A posthog-js-ben az üres vagy
+    // hiányzó lista MINDENT enged, és az elem szövegét is felküldi, ezért a
+    // pontos lista a szerződés: `true`, egy bővebb lista vagy egy elhagyott
+    // engedélyezőlista panasz-szöveget is az elemzésbe vihetne.
+    expect(options.autocapture).toEqual({
+      css_selector_allowlist: [
+        '.kc-nav-mobile__toggle',
+        '.kc-button',
+        '.kc-nav-mobile__link',
+        '.kc-nav-mobile__sublink',
+      ],
+    })
   })
 })
 

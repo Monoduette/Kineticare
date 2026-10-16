@@ -236,7 +236,10 @@ export function NewsletterForm({ formId, turnstileSiteKey }: NewsletterFormProps
                 required
                 type="checkbox"
               />
-              <label className="kc-newsletter__consent-label" htmlFor="kc-newsletter-consent">
+              <label
+                className="kc-newsletter__consent-label ph-no-deadclick"
+                htmlFor="kc-newsletter-consent"
+              >
                 {NEWSLETTER_CONSENT_TEXT.before}
                 <Link href={PRIVACY_POLICY_PATH}>{NEWSLETTER_CONSENT_TEXT.linkLabel}</Link>
                 {NEWSLETTER_CONSENT_TEXT.after}{' '}

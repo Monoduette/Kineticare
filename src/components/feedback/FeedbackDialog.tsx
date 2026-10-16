@@ -233,7 +233,7 @@ export function FeedbackDialog({ onClose, oldal, kuldo }: FeedbackDialogProps) {
               {VISSZAJELZES_MIT_CSINALTAL_CIMKE}
             </label>
             <textarea
-              className="kc-field__input kc-visszajelzes__mezo"
+              className="kc-field__input kc-visszajelzes__mezo ph-no-deadclick"
               disabled={kuldesFolyamatban}
               id={mitCsinaltalId}
               name="mitCsinaltal"
@@ -259,6 +259,7 @@ export function FeedbackDialog({ onClose, oldal, kuldo }: FeedbackDialogProps) {
               className={[
                 'kc-field__input',
                 'kc-visszajelzes__mezo',
+                'ph-no-deadclick',
                 mezoHiba === null ? '' : 'kc-field__input--error',
               ]
                 .filter(Boolean)

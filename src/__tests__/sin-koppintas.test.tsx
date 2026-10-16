@@ -175,3 +175,34 @@ describe('sinCimkeKattintas (asztali fülek)', () => {
     expect(radiok).toHaveLength(3)
   })
 })
+
+describe('a panelek data-active jelzője (PostHog halott kattintás)', () => {
+  /**
+   * A fülváltás tisztán CSS, DOM-változás nélkül: a PostHog az ilyen koppintást
+   * halottnak veszi. A jelző írása a valódi váltás DOM-nyoma; ha a figyelő
+   * eltűnik, a sín koppintásai újra halott kattintásként jelennek meg.
+   */
+  it('a szerver az első panelt jelöli aktívnak, címke-kattintás után a kiválasztott sor az aktív', async () => {
+    const { fieldset, cimkek } = sinDom()
+    if (!fieldset) throw new Error('hiányzó sín-elem')
+    const panelek = () =>
+      [...document.querySelectorAll<HTMLElement>('article.kc-services-sin__panel')].map(
+        (panel) => panel.dataset.active,
+      )
+    expect(panelek()).toEqual(['true', 'false', 'false'])
+
+    const tarolo = document.createElement('div')
+    document.body.append(tarolo)
+    const gyoker = createRoot(tarolo)
+    await act(async () => {
+      gyoker.render(createElement(SinKoppintasIgazito, { fieldsetId: fieldset.id }))
+    })
+    cimkek[2]
+      ?.querySelector('.kc-services-sin__rail-title')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(panelek()).toEqual(['false', 'false', 'true'])
+    await act(async () => {
+      gyoker.unmount()
+    })
+  })
+})

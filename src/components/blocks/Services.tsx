@@ -128,13 +128,20 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
       variant={variant}
     >
       <div className="kc-board__inner">
+        {/* A sín vezérlői (rádió, címke, mobil jelölőnégyzet) tisztán CSS-sel
+            váltanak: a koppintásra nincs DOM-változás, ezért a PostHog halott
+            kattintásnak venné. A `ph-no-deadclick` ezeket kiveszi a halott
+            kattintások közül (a posthog-js a kattintott elemet és az őseit
+            nézi; a címke koppintása a rádión is kattintást vált ki). A panelek
+            `data-active` attribútuma pedig rádióváltáskor valódi DOM-változást
+            ad (SinKoppintasIgazito). */}
         <fieldset className="kc-services-sin" id={fieldsetId}>
           <legend className="kc-visually-hidden">Szolgáltatás</legend>
           {rows.map((row, index) => {
             const inputId = `${groupName}-${index}`
             return (
               <input
-                className="kc-visually-hidden kc-services-sin__input"
+                className="kc-visually-hidden kc-services-sin__input ph-no-deadclick"
                 defaultChecked={index === 0}
                 id={inputId}
                 key={`input-${row.id ?? inputId}`}
@@ -165,7 +172,7 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
               <div className="kc-services-sin__rail">
                 {rows.map((row, index) => (
                   <label
-                    className="kc-services-sin__rail-label"
+                    className="kc-services-sin__rail-label ph-no-deadclick"
                     htmlFor={`${groupName}-${index}`}
                     key={`rail-${row.id ?? index}`}
                   >
@@ -219,18 +226,22 @@ function RailPanel({
   const toggleId = `${groupName}-mobil-${index}`
 
   return (
-    <article aria-labelledby={headingId} className="kc-services-sin__panel">
+    <article
+      aria-labelledby={headingId}
+      className="kc-services-sin__panel"
+      data-active={index === 0 ? 'true' : 'false'}
+    >
       {/* Mobilon (< 900 px) a sor saját nyitója: egyszerre több sor is nyitva
           maradhat (GOV.UK Accordion: „an accordion can show multiple sections
           at a time, unlike tabs”), és a nyitás-csukás a CSS grid-sor
           átmenete. Asztalon rejtett: ott a fenti rádiós fülek váltanak. */}
       <input
-        className="kc-visually-hidden kc-services-sin__nyito-jelolo"
+        className="kc-visually-hidden kc-services-sin__nyito-jelolo ph-no-deadclick"
         defaultChecked={index === 0}
         id={toggleId}
         type="checkbox"
       />
-      <label className="kc-services-sin__mobil-cimke" htmlFor={toggleId}>
+      <label className="kc-services-sin__mobil-cimke ph-no-deadclick" htmlFor={toggleId}>
         <RailLabelContent index={index} row={row} />
       </label>
       <div className="kc-services-sin__nyithato">

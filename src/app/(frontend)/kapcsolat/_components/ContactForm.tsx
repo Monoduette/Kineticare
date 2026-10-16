@@ -234,6 +234,7 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
           className={[
             'kc-field__input',
             'kc-contact-form__textarea',
+            'ph-no-deadclick',
             errors.message ? 'kc-field__input--error' : '',
           ]
             .filter(Boolean)

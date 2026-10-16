@@ -90,23 +90,40 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
     // INDULÁSKOR letiltja, tehát a projekt-beállítástól függetlenül érvényes.
     // Ez a kettő közül a szigorúbb — szándékosan.
     disable_session_recording: true,
-    // AUTOCAPTURE KIKAPCSOLVA — tulajdonosi döntés (2026-08-21):
-    // „kikapcsoljuk, ne bonyolítsuk". A posthog-js alapból BEkapcsolva
-    // hagyja, tehát ezt ki KELL írni; a hallgatás itt nem semleges.
+    // AUTOCAPTURE CSAK ENGEDÉLYEZŐLISTÁVAL — tulajdonosi kérés (2026-10-16,
+    // a mobil halott kattintások javítása). A 2026-08-21-i „kikapcsoljuk”
+    // döntés oka az volt, hogy az autocapture MINDEN kattintást felküld az
+    // elem szövegével együtt, így panasz- és állapot-szövegek is bekerülhettek
+    // volna az elemzésbe. Ez az ok ma is áll, ezért nem kapcsoljuk vissza
+    // általánosan: a `css_selector_allowlist` miatt csak a lenti négy
+    // vezérlőcsalád kattintása megy ki (a posthog-js a kattintott elemet és
+    // az őseit veti össze a listával). Mind a négy rögzített felületi szöveg:
+    // menüpont, a menü kapcsolója és a `.kc-button` gombok, amelyek felirata
+    // a CTA-szótárból vagy a CMS-ből jön, sosem a látogató beviteléből
+    // (ellenőrizve: egyik `.kc-button` sem jelenít meg nevet vagy e-mailt).
     //
-    // MIÉRT: az oldal 12 üzleti eseményt küld, mindet EGYETLEN, szándékosan
-    // megírt burkolón keresztül (captureAnalyticsEvent) — vagyis pontosan
-    // tudjuk, mi megy ki és milyen mezőkkel. Az autocapture ehhez képest
-    // minden kattintást és mezőváltást felküld, és az elem SZÖVEGÉT is
-    // magával viszi. Egy kézrehabilitációs oldalon ez olyan panasz-
-    // és állapot-szövegeket sodorhatna be az elemzésbe, amelyekre nincs
-    // jogalapunk (a mezők ÉRTÉKÉT a posthog-js maszkolja, a köréjük írt
-    // címkéket és gombfeliratokat viszont nem). A haszon ezzel szemben
-    // nulla lenne: nem az ismeretlen kattintásokat keressük, hanem a már
-    // megnevezett tölcsér-lépéseket mérjük.
-    autocapture: false,
+    // MIÉRT KELL: a halott kattintás arányához viszonyítási alap kell. A
+    // PostHog a `$dead_click` eseményt külön küldi; az engedélyezett
+    // `$autocapture` kattintások adják a nevezőt (hány koppintás érte a menüt
+    // összesen), így mérhető, hogy a javítás után csökken-e az arány.
+    // https://posthog.com/docs/product-analytics/autocapture
+    autocapture: {
+      css_selector_allowlist: [...AUTOCAPTURE_SELECTOR_ALLOWLIST],
+    },
   }
 }
+
+/**
+ * Az autocapture engedélyezőlistája (a sorrend és a tartalom a tulajdonosi
+ * kérésé, 2026-10-16). Új elem csak akkor kerülhet ide, ha a felirata rögzített
+ * felületi szöveg, nem a látogató bevitele vagy személyes adata.
+ */
+const AUTOCAPTURE_SELECTOR_ALLOWLIST = [
+  '.kc-nav-mobile__toggle',
+  '.kc-button',
+  '.kc-nav-mobile__link',
+  '.kc-nav-mobile__sublink',
+] as const
 
 let initialized = false
 

@@ -108,6 +108,16 @@ alapértelmezése BEkapcsolt autocapture — mérve a telepített csomagban
 `…,token:"",autocapture:!0,cross_subdomain_cookie:…`). A hallgatás itt tehát
 nem semleges lett volna. Az `identifyUser` és a GeoIP változatlan.
 
+**Állapot (2026-10-16): az autocapture engedélyezőlistával vissza.** A mobil
+halott kattintások méréséhez a tulajdonos kérésére az autocapture csak négy
+vezérlőcsalád kattintását küldi: `.kc-nav-mobile__toggle`, `.kc-button`,
+`.kc-nav-mobile__link`, `.kc-nav-mobile__sublink`
+(`css_selector_allowlist`, ugyanott, ugyanazzal az őr-teszttel). A cikkek és
+az űrlapok szövege így nem megy ki. Nyitott tulajdonosi döntés: a `.kc-button`
+felirata CMS-szöveg, és egy cikk alatti gomb a betegség nevét is tartalmazhatja;
+ha ezt azonosított látogatónál sem akarjuk rögzíteni, a `mask_all_text: true`
+a szöveget elhagyja, az elem osztálya és a link címe megmarad.
+
 ## 5. Amit tudatosan KIHAGYUNK
 
 | Kihagyva | Miért |
