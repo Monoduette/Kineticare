@@ -294,6 +294,18 @@ export function ScrollScrub({
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches
     const smallViewport = window.matchMedia('(max-width: 860px)')
+    // HIDRATÁLÁS ÉS SÁVSZÉLESSÉG (2026-10-16, a mobil halott kattintások
+    // javítása). Mobilon a ~0,9 MB-os klip ugyanazon a lassú hálózaton
+    // versenyzett a JS-csomaggal, és a hidratálás (vele a menü) késett. A
+    // mobil nézet (a fejléc 900 px-es határa alatt) ezért csak a posztert
+    // mutatja, klipet nem tölt le: ugyanaz a viselkedés, mint csökkentett
+    // mozgásnál. Asztalon a letöltés a böngésző első tétlen pillanatában
+    // indul (requestIdleCallback; ahol nincs, például Safariban, 1,5 mp után),
+    // nem a hidratálással versenyezve. Addig a klip első kockája, a poszter
+    // látszik, tehát a lap képe nem változik.
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback
+    const posterOnly = window.matchMedia('(max-width: 899px)')
+    let idleReady = false
     const usesMobileMedia = () => scrollScrubUsesMobileMedia(window.innerWidth, window.innerHeight)
     const usesMobileVideoTuning = () => coarsePointer || smallViewport.matches
     const sourceFor = (segment: RuntimeSegment) =>
@@ -349,7 +361,10 @@ export function ScrollScrub({
       mobileMedia = usesMobileMedia()
 
       for (const segment of runtime) {
-        if (segment.loadedSource && segment.loadedSource !== sourceFor(segment)) {
+        if (
+          segment.loadedSource &&
+          (posterOnly.matches || segment.loadedSource !== sourceFor(segment))
+        ) {
           unloadClip(segment)
         }
         const rect = segment.band.getBoundingClientRect()
@@ -376,6 +391,8 @@ export function ScrollScrub({
       const source = sourceFor(segment)
       if (
         reduceMotion ||
+        posterOnly.matches ||
+        !idleReady ||
         destroyed ||
         segment.loading ||
         segment.ready ||
@@ -647,11 +664,25 @@ export function ScrollScrub({
       passive: true,
     })
 
+    const onIdle = () => {
+      idleReady = true
+      dirty = true
+    }
+    const idleHandle =
+      typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(onIdle)
+        : undefined
+    const idleTimer = idleHandle === undefined ? window.setTimeout(onIdle, 1500) : undefined
+
     layout()
     frame = window.requestAnimationFrame(tick)
 
     return () => {
       destroyed = true
+      if (idleHandle !== undefined) {
+        window.cancelIdleCallback(idleHandle)
+      }
+      window.clearTimeout(idleTimer)
       controllerRef.current = null
       window.cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScroll)

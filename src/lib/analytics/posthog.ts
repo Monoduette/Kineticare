@@ -1,5 +1,4 @@
-import posthog from 'posthog-js'
-import type { PostHogConfig } from 'posthog-js'
+import type { PostHog, PostHogConfig } from 'posthog-js'
 
 import {
   CONSENT_EVENT,
@@ -128,6 +127,31 @@ const AUTOCAPTURE_SELECTOR_ALLOWLIST = [
 let initialized = false
 
 /**
+ * A böngésző-SDK, LUSTÁN betöltve (2026-10-16, a mobil halott kattintások
+ * javítása). A `posthog-js` a főoldal első betöltésének legnagyobb JS-csomagja
+ * volt (mérve: ~95 KB tömörítve, ~294 KB kibontva, a teljes ~290 KB-ból), és
+ * minden látogatónál letöltődött és lefutott a React-hidratálás előtt, akkor
+ * is, ha a látogató nem járult hozzá a méréshez (ilyenkor az SDK semmit nem
+ * csinál). Most csak tárolt vagy frissen adott hozzájárulás után töltődik,
+ * külön csomagként, a hidratálás után. A dinamikus `import()` a Next.js
+ * hivatalos lusta-betöltési útja nem React-kódra:
+ * https://nextjs.org/docs/app/guides/lazy-loading#loading-external-libraries
+ */
+let posthog: PostHog | null = null
+let sdkLoad: Promise<PostHog> | null = null
+
+function loadSdk(): Promise<PostHog> {
+  sdkLoad ??= import('posthog-js').then((module) => {
+    posthog = module.default
+    return module.default
+  })
+  return sdkLoad
+}
+
+/** Elindult-e az init (a betöltés folyamatban vagy kész). */
+let initStarted = false
+
+/**
  * Aktív-e a rögzítés: inicializált kliens, amelyen nincs érvényben opt-out.
  * Opt-out után az init megmarad, de a posthog-js a capture-t eldobja, ezért
  * a várakozó kérések ilyenkor is várnak az újbóli bekapcsolásig.
@@ -140,13 +164,22 @@ let capturing = false
  * MIÉRT KELL. A React a gyerek-komponensek effectjeit a szülőé ELŐTT futtatja,
  * ezért a PostHogPageView és a TrackEvent az első betöltéskor még az init
  * előtt hívna capture-t, és az no-op lenne. Ugyanez történik, ha a látogató
- * az oldalon belül, a bannerben adja meg a hozzájárulást. A várakozó kérések
- * az init (vagy egy opt-out utáni újbóli bekapcsolás) után egyszer lefutnak; a kérő komponens a visszaadott függvénnyel
- * visszavonja a sajátját (route-váltás, unmount), így csak az aktuális oldal
- * eseménye megy ki. Hozzájárulás nélkül az init nem fut le, tehát ilyenkor
- * semmi nem megy ki.
+ * az oldalon belül, a bannerben adja meg a hozzájárulást, és amíg a lustán
+ * betöltött SDK úton van. A várakozó kérések az init (vagy egy opt-out utáni
+ * újbóli bekapcsolás) után egyszer lefutnak; a kérő komponens a visszaadott
+ * függvénnyel visszavonja a sajátját (route-váltás, unmount), így csak az
+ * aktuális oldal eseménye megy ki. Hozzájárulás nélkül az init nem fut le,
+ * tehát ilyenkor semmi nem megy ki.
  */
 const readyCallbacks = new Set<() => void>()
+
+/**
+ * A hozzájárulás UTÁN, de az SDK megérkezése ELŐTT hívott közvetlen
+ * capture-ök (például egy koppintásra küldött `checkout_started`). Az SDK
+ * megérkezésekor egyszer lefutnak; ha közben visszavonták a hozzájárulást,
+ * eldobjuk őket (sosem mennek ki).
+ */
+let pendingCalls: Array<(client: PostHog) => void> = []
 
 /**
  * A callback azonnal lefut, ha a rögzítés aktív, különben amikor azzá válik.
@@ -163,27 +196,67 @@ export function whenPostHogReady(callback: () => void): () => void {
   }
 }
 
-/** PostHog inicializálása (idempotens; csak konfigurált + hozzájárulás esetén). */
+/**
+ * PostHog inicializálása (idempotens; csak konfigurált + hozzájárulás esetén).
+ * Igazat ad, ha az init elindult vagy már kész; a tényleges `posthog.init` az
+ * SDK megérkezése után fut.
+ */
 export function initPostHog(): boolean {
-  if (initialized) {
+  if (initialized || initStarted) {
     return true
   }
   if (!isPostHogConfigured() || !hasAnalyticsConsent()) {
     return false
   }
-  posthog.init(POSTHOG_KEY, buildPostHogOptions())
-  // Ide csak tárolt 'granted' hozzájárulással jutunk. Ha a látogató korábban
-  // elutasított, az SDK a saját opt-outját tartósan tárolja, és újratöltés
-  // után is azzal indul. Ilyenkor a várakozó eseményeket (lent) elnyelné, a
-  // banner későbbi opt_in_capturing hívása pedig már későn jönne. Ezért az
-  // SDK állapotát itt a tárolt döntéshez igazítjuk; $opt_in eseményt csak
-  // ekkor küld, nem minden betöltéskor.
-  if (posthog.has_opted_out_capturing()) {
-    posthog.opt_in_capturing()
-  }
-  initialized = true
-  startCapturing()
+  initStarted = true
+  void loadSdk().then(
+    (client) => {
+      // A betöltés alatt visszavont hozzájárulás: az SDK nem indul el, a
+      // várakozó hívások eldobódnak, egy későbbi elfogadás újraindít.
+      if (!hasAnalyticsConsent()) {
+        initStarted = false
+        pendingCalls = []
+        return
+      }
+      client.init(POSTHOG_KEY, buildPostHogOptions())
+      // Ide csak tárolt 'granted' hozzájárulással jutunk. Ha a látogató
+      // korábban elutasított, az SDK a saját opt-outját tartósan tárolja, és
+      // újratöltés után is azzal indul. Ilyenkor a várakozó eseményeket (lent)
+      // elnyelné, a banner későbbi opt_in_capturing hívása pedig már későn
+      // jönne. Ezért az SDK állapotát itt a tárolt döntéshez igazítjuk;
+      // $opt_in eseményt csak ekkor küld, nem minden betöltéskor.
+      if (client.has_opted_out_capturing()) {
+        client.opt_in_capturing()
+      }
+      initialized = true
+      startCapturing()
+    },
+    () => {
+      // A csomag nem töltődött be (hálózat, blokkoló): a mérés marad ki, a
+      // felület nem. Egy későbbi hozzájárulás-esemény újrapróbálja.
+      initStarted = false
+      sdkLoad = null
+      pendingCalls = []
+    },
+  )
   return true
+}
+
+/**
+ * Közvetlen SDK-hívás: kész kliensen azonnal, a betöltés alatt sorba állítva,
+ * hozzájárulás nélkül (init nélkül) sehogy.
+ */
+function withClient(call: (client: PostHog) => void): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  if (initialized && posthog) {
+    call(posthog)
+    return
+  }
+  if (initStarted) {
+    pendingCalls.push(call)
+  }
 }
 
 /** A rögzítés aktív; a várakozó kérések egyszer lefutnak. */
@@ -193,6 +266,13 @@ function startCapturing(): void {
   readyCallbacks.clear()
   for (const callback of pending) {
     callback()
+  }
+  const calls = pendingCalls
+  pendingCalls = []
+  if (posthog) {
+    for (const call of calls) {
+      call(posthog)
+    }
   }
 }
 
@@ -208,7 +288,7 @@ export function isPostHogInitialized(): boolean {
  * eseményt — ezt a provider consent-figyelője hívja.
  */
 export function enableAnalyticsCapture(): boolean {
-  if (initialized) {
+  if (initialized && posthog) {
     posthog.opt_in_capturing()
     startCapturing()
     return true
@@ -222,7 +302,10 @@ export function enableAnalyticsCapture(): boolean {
  * initPostHog consent-kapuja tiltja, amíg a tárolt állapot 'denied'.
  */
 export function disableAnalyticsCapture(): void {
-  if (initialized) {
+  // Betöltés közben: a várakozó hívások eldobódnak, és az SDK megérkezésekor
+  // a hozzájárulás-ellenőrzés (initPostHog) meg sem indítja a klienst.
+  pendingCalls = []
+  if (initialized && posthog) {
     posthog.opt_out_capturing()
     capturing = false
   }
@@ -261,17 +344,14 @@ export function captureAnalyticsEvent(
   event: AnalyticsEventName,
   properties?: Record<string, unknown>,
 ): void {
-  if (!initialized || typeof window === 'undefined') {
-    return
-  }
-  posthog.capture(event, properties)
+  withClient((client) => client.capture(event, properties))
 }
 
 /**
  * identify: Payload users.id stringként; e-mail/név/IP nem mehet. person_profiles identified_only.
  */
 export function identifyUser(userId: number | string): boolean {
-  if (!initialized || typeof window === 'undefined') {
+  if (!initialized || !posthog || typeof window === 'undefined') {
     return false
   }
   posthog.identify(String(userId))
@@ -287,10 +367,7 @@ export function identifyUser(userId: number | string): boolean {
  * profilba — ez egyszerre mérési hiba és adatvédelmi hiba.
  */
 export function resetAnalyticsIdentity(): void {
-  if (!initialized || typeof window === 'undefined') {
-    return
-  }
-  posthog.reset()
+  withClient((client) => client.reset())
 }
 
 /**
@@ -305,10 +382,7 @@ export function resetAnalyticsIdentity(): void {
  * rövid, gépi címkét (pl. 'checkout-submit'), nem a felhasználó bevitelét.
  */
 export function captureAnalyticsException(error: unknown, context: string): void {
-  if (!initialized || typeof window === 'undefined') {
-    return
-  }
-  posthog.captureException(error, { kc_context: context })
+  withClient((client) => client.captureException(error, { kc_context: context }))
 }
 
 /**
@@ -323,15 +397,14 @@ export function buildPageViewProperties(url: string): { $current_url: string } {
 
 /** $pageview rögzítése a route-váltás figyelőből. */
 export function capturePageView(url: string): void {
-  if (!initialized || typeof window === 'undefined') {
-    return
-  }
-  posthog.capture('$pageview', buildPageViewProperties(url))
+  withClient((client) => client.capture('$pageview', buildPageViewProperties(url)))
 }
 
 /** Tesztelési segéd: az init-zárolt állapot visszaállítása. */
 export function resetPostHogForTests(): void {
   initialized = false
+  initStarted = false
   capturing = false
   readyCallbacks.clear()
+  pendingCalls = []
 }

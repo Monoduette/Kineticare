@@ -124,6 +124,11 @@ describe('köszönőoldal — lapcím (állapot, nem siker)', () => {
       url: 'http://localhost:3000/fizetes/koszonom?order=SYNTHETIC-123',
     })
     vi.stubGlobal('window', browser)
+    // A Next Link-je és Script-je `self`-et olvas (`self.requestIdleCallback`).
+    // Korábban a statikusan importált posthog-js állította `globalThis`-re
+    // (mellékhatásként); a lusta betöltés óta (2026-10-16) itt adjuk meg
+    // ugyanígy, `requestIdleCallback` nélkül (a Next ilyenkor setTimeout-ot használ).
+    vi.stubGlobal('self', globalThis)
     vi.stubGlobal('document', browser.document)
     vi.stubGlobal('navigator', browser.navigator)
     vi.stubGlobal('HTMLElement', browser.HTMLElement)
@@ -660,6 +665,11 @@ describe('köszönőoldal — egyetlen, végig élő állapot-régió (WCAG 2.2 
     fakeTimers.clearTimeout = (id) =>
       globalThis.clearTimeout(id as ReturnType<typeof globalThis.setTimeout>)
     vi.stubGlobal('window', browser)
+    // A Next Link-je és Script-je `self`-et olvas (`self.requestIdleCallback`).
+    // Korábban a statikusan importált posthog-js állította `globalThis`-re
+    // (mellékhatásként); a lusta betöltés óta (2026-10-16) itt adjuk meg
+    // ugyanígy, `requestIdleCallback` nélkül (a Next ilyenkor setTimeout-ot használ).
+    vi.stubGlobal('self', globalThis)
     vi.stubGlobal('document', browser.document)
     vi.stubGlobal('navigator', browser.navigator)
     vi.stubGlobal('HTMLElement', browser.HTMLElement)

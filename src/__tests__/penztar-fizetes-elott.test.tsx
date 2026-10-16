@@ -117,6 +117,11 @@ async function openBrowser(
     ;(browser as unknown as { turnstile: unknown }).turnstile = options.turnstile
   }
   vi.stubGlobal('window', browser)
+  // A Next Link-je és Script-je `self`-et olvas (`self.requestIdleCallback`).
+  // Korábban a statikusan importált posthog-js állította `globalThis`-re
+  // (mellékhatásként); a lusta betöltés óta (2026-10-16) itt adjuk meg
+  // ugyanígy, `requestIdleCallback` nélkül (a Next ilyenkor setTimeout-ot használ).
+  vi.stubGlobal('self', globalThis)
   vi.stubGlobal('document', browser.document)
   vi.stubGlobal('navigator', browser.navigator)
   vi.stubGlobal('HTMLElement', browser.HTMLElement)
