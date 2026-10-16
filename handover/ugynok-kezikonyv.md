@@ -487,6 +487,15 @@ További scriptek: lásd a 11. szakaszt.
 - Teszt írása, módosítása, átnézése vagy átfésülése előtt:
   `.claude/skills/teszt-audit/SKILL.md` (írási kapu, ellenpróba,
   megtartási mérce; alrendszer-kampányhoz a `CAMPAIGN.md`).
+- Böngészős próbák (nincsenek a CI-ban, kézzel futnak, a telepített
+  Playwright-modul útvonalával; opcionális `KC_BROWSER_EXECUTABLE`):
+  - `src/__tests__/*.browser.mjs`: izolált komponens, szerver nélkül
+    (például `header-responsive.browser.mjs`: a fejléc és a natív mobilmenü);
+  - `tests/e2e/*.e2e.mjs`: `next build` + `next start` példány ellen,
+    adatbázissal (`node <fájl> <playwright/index.mjs> <alap-URL>`).
+    `mobil-menu-lassu-halo`: lassított profilon az első koppintás 500 ms-on
+    belül nyitja a menüt; `mobil-menu-suti-sav`: nyitott fiók és látható
+    sütisáv mellett a „Kapcsolat” kattintható.
 
 ### 4.4 Felületi munka kötelező menete
 
