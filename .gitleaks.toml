@@ -97,4 +97,10 @@ regexes = [
   # access_grants indoklást.
   '''1ee2706533540957de5180c89f03612499f784765d33915e8a5163cfecd531d1''',
   '''5b8e87e1c05c4ae94e9812c42912ebb8693ddb7dc2637d3bd560a3a504ad7e13''',
+  # G3-manifest: a Payload-generált `20261017_070411_payload_3_90_auth_es_tranzakcio`
+  # .ts/.json pár LF-normalizált sha256-a. Nem credential: a kulcsban álló
+  # `auth` szó és a 64 hex együtt váltja ki a generic-api-key heurisztikát.
+  # Lásd a fenti access_grants indoklást.
+  '''8975ad13445bca1fdc9d159dd3cc828e2501976b01fd727003ed7a5d80e406e9''',
+  '''2ae675125012b38036a95efcbc6451abf8522b1c8a3a7575ae048162a51d15c8''',
 ]
