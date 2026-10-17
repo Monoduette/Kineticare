@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   extractArticleBody,
   inlineNodes,
   markdownToLexical,
 } from '../lib/tudastar/markdown-to-lexical'
+import { logger } from '../lib/logger'
 import { tablaSorokSzetvalasztasa } from '../lib/tudastar/tabla-sorok'
 import { richText, textNode, type BlockNode } from '../scripts/restore-legacy-content'
 import { javitsdTudastarTablaSorokat, type TablaSorokPayload } from '../scripts/apply-owner-content'
@@ -238,6 +239,55 @@ describe('tablaSorokSzetvalasztasa: a tárolt táblázat-sorok', () => {
     ])
   })
 
+  it('részben egybeolvadt futam (két sor egy listában) nem táblázat: nem ír, jelenti a futamot és az egybeolvadt listát', () => {
+    const regi = richText([
+      lista(['Lehetőség: Otthon', 'Tény: pihenés', 'Lehetőség: Gyógytorna', 'Tény: torna']),
+      lista(['Lehetőség: Sín', 'Tény: éjjel']),
+    ])
+    const eredmeny = tablaSorokSzetvalasztasa(regi)
+    expect(eredmeny.content).toBeNull()
+    expect(eredmeny.sorok).toBe(0)
+    expect(eredmeny.egyebFutamok).toHaveLength(1)
+    expect(eredmeny.egybeolvadt).toEqual([
+      'gyökér: a 1. csomópont listájában több táblázat-sor cellái állnak (4 tétel)',
+    ])
+  })
+
+  it('üres első fejlécű tábla egybeolvadt sorai is felismerhetők (fejléc nélküli tétel a fejlécesek között)', () => {
+    const regi = richText([
+      lista(['Hol érzed?', 'Hüvelyk: a tövénél', 'Mi a jellegzetes?', 'Hüvelyk: markolás']),
+    ])
+    const eredmeny = tablaSorokSzetvalasztasa(regi)
+    expect(eredmeny.content).toBeNull()
+    expect(eredmeny.egybeolvadt).toHaveLength(1)
+    // Az ép, üres első fejlécű sor nem egybeolvadt.
+    expect(
+      tablaSorokSzetvalasztasa(richText([lista(['Hol érzed?', 'Hüvelyk: a tövénél'])])).egybeolvadt,
+    ).toEqual([])
+  })
+
+  it('egy teljesen egybeolvadt tábla (egyetlen lista) nem futam, de jelentve van', () => {
+    const regi = richText([
+      bekezdes('Előtte.'),
+      lista(['Tünet: zsibbadás', 'Teendő: pihentetés', 'Tünet: fájdalom', 'Teendő: hűtés']),
+    ])
+    const eredmeny = tablaSorokSzetvalasztasa(regi)
+    expect(eredmeny.content).toBeNull()
+    expect(eredmeny.egyebFutamok).toEqual([])
+    expect(eredmeny.egybeolvadt).toHaveLength(1)
+  })
+
+  it('bullet és number lista egymás mellett nem futam: nincs jelentés', () => {
+    const regi = richText([
+      lista(['Tünet: zsibbadás', 'Teendő: pihentetés']),
+      lista(['Lépés: egy'], 'number'),
+    ])
+    const eredmeny = tablaSorokSzetvalasztasa(regi)
+    expect(eredmeny.content).toBeNull()
+    expect(eredmeny.egyebFutamok).toEqual([])
+    expect(eredmeny.egybeolvadt).toEqual([])
+  })
+
   it('eltérő fejlécű sorok (két külön tábla egymás után) sem számítanak egy táblázatnak', () => {
     const regi = richText([
       lista(['Tünet: zsibbadás', 'Teendő: pihentetés']),
@@ -264,6 +314,7 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
       _status: string
       content: unknown
       legutobbi?: string
+      piszkozatTartalom?: unknown
     }>
     pages: Array<{
       id: number
@@ -271,6 +322,7 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
       _status: string
       content: unknown
       legutobbi?: string
+      piszkozatTartalom?: unknown
     }>
   }) {
     const update = vi.fn<
@@ -281,14 +333,35 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
         data: { _status: string; content: unknown }
       }) => Promise<object>
     >(async () => ({}))
+    // A valódi Payload: a `draft` nélküli find a KÖZZÉTETT fő rekordot adja, a
+    // `draft: true` findByID a legutóbbi verziót (ami félkész piszkozat is
+    // lehet). A csonk ezt kikényszeríti: fordított használatra dob.
     const payload = {
-      find: vi.fn(async ({ collection }: { collection: 'posts' | 'pages' }) => ({
-        docs: dokumentumok[collection],
-      })),
-      findByID: vi.fn(async ({ collection, id }: { collection: 'posts' | 'pages'; id: number }) => {
-        const doc = dokumentumok[collection].find((d) => d.id === id)
-        return { _status: doc?.legutobbi ?? doc?._status, updatedAt: null }
-      }),
+      find: vi.fn(
+        async ({ collection, draft }: { collection: 'posts' | 'pages'; draft?: boolean }) => {
+          if (draft === true) throw new Error('a fő rekord lekérdezése draft nélkül kell')
+          return { docs: dokumentumok[collection] }
+        },
+      ),
+      findByID: vi.fn(
+        async ({
+          collection,
+          id,
+          draft,
+        }: {
+          collection: 'posts' | 'pages'
+          id: number
+          draft?: boolean
+        }) => {
+          if (draft !== true) throw new Error('a legutóbbi verzió olvasása draft: true-val kell')
+          const doc = dokumentumok[collection].find((d) => d.id === id)
+          return {
+            _status: doc?.legutobbi ?? doc?._status,
+            updatedAt: null,
+            content: doc?.piszkozatTartalom ?? doc?.content,
+          }
+        },
+      ),
       update,
     } as unknown as TablaSorokPayload
     return { payload, update }
@@ -320,7 +393,17 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
     )
   })
 
-  it('közzé nem tett piszkozat mellett nem ír, hangosan hibával zár', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const egybeolvadt = () =>
+    richText([
+      lista(['Tünet: zsibbadás', 'Teendő: pihentetés', 'Tünet: fájdalom', 'Teendő: hűtés']),
+    ])
+
+  it('közzé nem tett, még ép piszkozat mellett nem ír, hibával zár, és a piszkozat elvetését vagy közzétételét kéri', async () => {
+    const hibaKem = vi.spyOn(logger, 'error').mockImplementation(() => {})
     const { payload, update } = csonk({
       posts: [
         {
@@ -336,6 +419,44 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
     const eredmeny = await javitsdTudastarTablaSorokat(payload, false)
     expect(eredmeny).toEqual({ modositasok: 0, kihagyasok: 0, hiba: true, irt: [] })
     expect(update).not.toHaveBeenCalled()
+    const uzenet = String(hibaKem.mock.calls.at(-1)?.[0])
+    expect(uzenet).toContain('a táblázat még ép')
+    expect(uzenet).not.toContain('NE tedd közzé')
+  })
+
+  it('a 3.90 szerkesztőjében mentett (már egybeolvadt) piszkozatnál a közzétételt TILTJA, az elvetést kéri', async () => {
+    const hibaKem = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const { payload, update } = csonk({
+      posts: [
+        {
+          id: 7,
+          title: 'Ínhüvelygyulladás',
+          _status: 'published',
+          content: tablas(),
+          legutobbi: 'draft',
+          piszkozatTartalom: egybeolvadt(),
+        },
+      ],
+      pages: [],
+    })
+    const eredmeny = await javitsdTudastarTablaSorokat(payload, false)
+    expect(eredmeny.hiba).toBe(true)
+    expect(update).not.toHaveBeenCalled()
+    const uzenet = String(hibaKem.mock.calls.at(-1)?.[0])
+    expect(uzenet).toContain('VESD EL a piszkozatot, NE tedd közzé')
+    expect(uzenet).not.toContain('tedd közzé)')
+  })
+
+  it('a már egybeolvadt táblázatot hangos kihagyásként jelenti, nem írja át, és nem „nincs teendő”', async () => {
+    const hibaKem = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const { payload, update } = csonk({
+      posts: [{ id: 8, title: 'Befagyott váll', _status: 'published', content: egybeolvadt() }],
+      pages: [],
+    })
+    const eredmeny = await javitsdTudastarTablaSorokat(payload, false)
+    expect(eredmeny).toEqual({ modositasok: 0, kihagyasok: 1, hiba: false, irt: [] })
+    expect(update).not.toHaveBeenCalled()
+    expect(String(hibaKem.mock.calls.at(-1)?.[0])).toContain('már egybeolvadt táblázat-sorok')
   })
 
   it('nem táblázat-alakú szomszédos listát hangos kihagyásként jelent, írás nélkül', async () => {

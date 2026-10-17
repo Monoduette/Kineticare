@@ -248,11 +248,27 @@ oszlop fejléce üres). A nem táblázat-alakú szomszédos listákat a job hang
 kihagyásként jelenti, és nem bántja. Csak közzétett, piszkozat nélküli
 dokumentumba ír (ugyanaz a szabály, mint az ÁSZF-javításnál).
 
-Futtatás: `npm run content:owner` (próbafutás), majd
-`OWNER_CONTENT_CONFIRM=igen npm run content:owner`; élesben a content-job
-service. Őr: `src/__tests__/tudastar-tabla-sorok.test.ts` (a régi alak a
-szerkesztőben egybeolvad, a szétválasztott nem; a régi alakból pontosan a
-fordító szerkezete lesz).
+Már egybeolvadt sorokat (egy listában több sor cellái: a sor címének
+fejléce ismétlődik, vagy üres első fejlécű táblánál fejléc nélküli tétel áll a
+fejlécesek között) a job nem bánt és nem is „javít”: hangos kihagyásként
+jelenti, a sorhatárokat az adminban kézzel, a `docs/cikkek/` markdown alapján
+kell helyreállítani. Ha egy dokumentumnak közzé nem tett piszkozata van, a
+job nem ír, és a napló megmondja, mi a teendő: a 3.90 szerkesztőjében mentett
+piszkozatot (benne a tábla már egybeolvadt) EL KELL VETNI, nem közzétenni.
+
+Futtatás helyben: `npm run content:owner` (próbafutás), majd
+`OWNER_CONTENT_CONFIRM=igen npm run content:owner`. Élesben a content-job
+service (`docs/deploy-railway.md` 7.1): a job az ÖSSZES tulajdonosi szabályt
+futtatja, ezért (1) előbb a próbafutás naplója: „MÓDOSÍTANÁ” sor csak a
+`tudastar-tabla-sorok` tételeknél állhat (a sín Elrendezés-szabály például
+egy tudatos Tábla-választást visszaírna Sínre); (2) `OWNER_CONTENT_CONFIRM=igen`
+és ÚJ deploy ugyanarra a teljes commit-SHA-ra (a `redeploy` a régi snapshotot
+futtatja, az új szabály nélkül); (3) a kapu AZONNAL vissza `nem`-re, különben
+a következő automatikus deploy újra élesben fut; (4) ellenőrző próbafutás: a
+tételek eltűnnek, a cikkek a nyilvános oldalon soronként tagoltak. Őr:
+`src/__tests__/tudastar-tabla-sorok.test.ts` (a régi alak a szerkesztőben
+egybeolvad, a szétválasztott nem; a régi alakból pontosan a fordító
+szerkezete lesz; a részben vagy teljesen egybeolvadt lista nem sor).
 
 ## 7. Újrafuttatható
 

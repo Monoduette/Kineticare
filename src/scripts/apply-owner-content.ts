@@ -6261,7 +6261,7 @@ async function olvasdLegutobbiVerziot(
   payload: Pick<Payload, 'findByID'>,
   collection: 'pages' | 'products' | 'posts',
   id: number,
-): Promise<{ updatedAt?: string | null; _status?: string | null } | undefined> {
+): Promise<{ updatedAt?: string | null; _status?: string | null; content?: unknown } | undefined> {
   try {
     return await payload.findByID({ collection, id, depth: 0, draft: true, overrideAccess: true })
   } catch (error) {
@@ -6460,12 +6460,20 @@ export async function javitsdTudastarTablaSorokat(
       const javitas = tablaSorokSzetvalasztasa(
         content as Parameters<typeof tablaSorokSzetvalasztasa>[0],
       )
-      const kihagyasok: JavitasLepes[] = javitas.egyebFutamok.map((hely) => ({
-        szabaly,
-        uzenet: `${cimke}: egymás melletti listák`,
-        indok: `${hely}; nem táblázat-alak, a szerkesztő egybefűzné, ember döntsön (szándékos-e, vagy bekezdés kell közéjük)`,
-        hangos: true,
-      }))
+      const kihagyasok: JavitasLepes[] = [
+        ...javitas.egybeolvadt.map((hely) => ({
+          szabaly,
+          uzenet: `${cimke}: már egybeolvadt táblázat-sorok`,
+          indok: `${hely}; a szerkesztő mentése a sorokat egy listába fűzte, gépi szétválasztás nincs: a sorhatárokat az adminban kézzel, a docs/cikkek/ markdown alapján kell helyreállítani`,
+          hangos: true,
+        })),
+        ...javitas.egyebFutamok.map((hely) => ({
+          szabaly,
+          uzenet: `${cimke}: egymás melletti listák`,
+          indok: `${hely}; nem táblázat-alak, a szerkesztő egybefűzné, ember döntsön (szándékos-e, vagy bekezdés kell közéjük)`,
+          hangos: true,
+        })),
+      ]
       if (javitas.content === null) {
         naplozdLepeseket({ modositasok: [], kihagyasok }, dryRun)
         eredmeny.kihagyasok += kihagyasok.length
@@ -6487,11 +6495,30 @@ export async function javitsdTudastarTablaSorokat(
       if (!kozzetett) {
         naplozdLepeseket({ modositasok: [], kihagyasok }, dryRun)
         eredmeny.kihagyasok += kihagyasok.length
+        // A piszkozat közzététele itt NEM út: ha a piszkozatot a 3.90
+        // szerkesztője mentette, benne a táblázat sorai már egy listába
+        // olvadtak, és a közzététel pont azt az adatvesztést okozná, amit a
+        // szabály elhárít (utána a job futamot sem találna, és „nincs teendő”-t
+        // adna). A piszkozat tartalmát ezért megnézzük, és aszerint szólunk.
+        const piszkozatTartalom = legutobbi.content
+        const piszkozatbanEgybeolvadt =
+          piszkozatTartalom !== null &&
+          typeof piszkozatTartalom === 'object' &&
+          tablaSorokSzetvalasztasa(
+            piszkozatTartalom as Parameters<typeof tablaSorokSzetvalasztasa>[0],
+          ).egybeolvadt.length > 0
+        const tanacs = piszkozatbanEgybeolvadt
+          ? 'A piszkozatban a táblázat sorai MÁR EGY LISTÁBA olvadtak: az adminban (Verziók) VESD EL a piszkozatot, NE tedd közzé, majd futtasd újra a jobot.'
+          : 'A piszkozatban a táblázat még ép: az adminban (Verziók) vesd el a piszkozatot (vagy ha szándékos javítást tartalmaz, tedd közzé), majd futtasd újra a jobot.'
         logger.error(
           `Tartalom-javítás: ${cimke} táblázat-sorainak szétválasztása ${
             dryRun ? 'éles futásban KIMARADNA' : 'KIMARADT'
-          }: a dokumentumnak közzé nem tett piszkozata van, vagy nincs közzétéve. Az adminban (Verziók) előbb tedd közzé vagy vesd el a piszkozatot, majd futtasd újra. Addig a cikket NE szerkeszd: az első mentés a táblázat sorait egy listába olvasztaná.`,
-          { publikaltAllapot: doc._status ?? null, legutobbiAllapot: legutobbi._status ?? null },
+          }: a dokumentumnak közzé nem tett piszkozata van, vagy nincs közzétéve. ${tanacs} Addig a dokumentumot NE mentsd a szerkesztőben: a mentés a táblázat sorait egy listába olvasztaná.`,
+          {
+            publikaltAllapot: doc._status ?? null,
+            legutobbiAllapot: legutobbi._status ?? null,
+            piszkozatbanEgybeolvadt,
+          },
         )
         eredmeny.hiba = true
         continue

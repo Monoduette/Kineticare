@@ -23,6 +23,13 @@ import type { BlockNode, RichTextContent } from '../../scripts/restore-legacy-co
  * az oszlopból jön. Egy táblázatot közvetlenül követő, nem táblázat-alakú
  * lista a futamot nem táblázattá teszi: azt a szerkesztő a szétválasztás után
  * is az utolsó sor listájával fűzné egybe, ezért ott ember dönt.
+ *
+ * Már egybeolvadt sorok (a 3.88 szerkesztője egy sor szerkezeti szerkesztésekor
+ * a sortól lefelé, a 3.90 szerkesztője betöltéskor az egész táblát egy listába
+ * fűzi) nem sorok: egy listában a sor címének fejléce csak egyszer állhat, és
+ * üres első fejlécű táblánál csak az első tétel lehet fejléc nélküli. Az ilyen
+ * listát az átalakítás nem bántja, de külön jelenti (`egybeolvadt`): a
+ * sorhatárokat csak ember vagy a markdown-forrás állíthatja helyre.
  */
 
 const FORMAT_BOLD = 1
@@ -50,9 +57,27 @@ function fejlec(tetel: Csomopont): string | null {
 }
 
 /**
+ * Egy `bullet` lista, amelyben már több táblázat-sor olvadt össze: a sor
+ * címének fejléce a tételek között újra előfordul, vagy (üres első fejlécű
+ * táblánál) az első tételen túl is áll fejléc nélküli tétel a fejléces tételek
+ * között. Ezt a szerkesztő egybefűzése hagyja hátra; gépi szétválasztása nem
+ * biztonságos.
+ */
+function sorEgybeolvadt(node: Csomopont): boolean {
+  if (node.type !== 'list' || node.listType !== 'bullet') return false
+  const tetelek = (node.children ?? []) as Csomopont[]
+  if (tetelek.length < 2) return false
+  const fejlecek = tetelek.map(fejlec)
+  if (!fejlecek.some((f) => f !== null)) return false
+  const cim = fejlecek[0]
+  if (cim !== null) return fejlecek.slice(1).includes(cim)
+  return fejlecek.slice(1).some((f) => f === null)
+}
+
+/**
  * A régi fordító táblázat-sora: `bullet` lista, amelyben az első tétel a sor
  * első cellája (a fejléc nevével, ha az első oszlop fejléce nem üres), a
- * többi tétel pedig csupa „Fejléc: érték”.
+ * többi tétel pedig csupa „Fejléc: érték”, és egyetlen sor (nem egybeolvadt).
  */
 function tablaSor(node: Csomopont): boolean {
   if (node.type !== 'list' || node.listType !== 'bullet') return false
@@ -61,7 +86,8 @@ function tablaSor(node: Csomopont): boolean {
   return (
     tetelek.length > 0 &&
     tetelek.some((tetel) => fejlec(tetel) !== null) &&
-    tetelek.slice(1).every((tetel) => fejlec(tetel) !== null)
+    tetelek.slice(1).every((tetel) => fejlec(tetel) !== null) &&
+    !sorEgybeolvadt(node)
   )
 }
 
@@ -129,6 +155,12 @@ export interface TablaSorokEredmeny {
    * de gépi döntés nincs: ember nézze meg.
    */
   egyebFutamok: string[]
+  /**
+   * Már egybeolvadt táblázat-sorok helye: egy listában több sor cellái. A
+   * szerkesztő egybefűzésének nyoma; a sorhatárokat csak ember vagy a
+   * markdown-forrás (`docs/cikkek/`) állíthatja helyre.
+   */
+  egybeolvadt: string[]
 }
 
 /** Egymás melletti, azonos típusú listák futamai egy gyermeklistában. */
@@ -155,9 +187,16 @@ function futamok(gyerekek: readonly Csomopont[]): Array<{ kezdet: number; veg: n
 function atalakit(
   gyerekek: readonly BlockNode[],
   ut: string,
-  eredmeny: { sorok: number; egyebFutamok: string[]; valtozott: boolean },
+  eredmeny: { sorok: number; egyebFutamok: string[]; egybeolvadt: string[]; valtozott: boolean },
 ): BlockNode[] {
   const csomopontok = gyerekek as readonly Csomopont[]
+  csomopontok.forEach((node, index) => {
+    if (sorEgybeolvadt(node)) {
+      eredmeny.egybeolvadt.push(
+        `${ut}: a ${index + 1}. csomópont listájában több táblázat-sor cellái állnak (${(node.children ?? []).length} tétel)`,
+      )
+    }
+  })
   const tablaFutamok = new Set<number>()
   for (const futam of futamok(csomopontok)) {
     const sorokSzama = futam.veg - futam.kezdet + 1
@@ -202,7 +241,12 @@ function atalakit(
  * `content: null`-t ad.
  */
 export function tablaSorokSzetvalasztasa(content: RichTextContent): TablaSorokEredmeny {
-  const eredmeny = { sorok: 0, egyebFutamok: [] as string[], valtozott: false }
+  const eredmeny = {
+    sorok: 0,
+    egyebFutamok: [] as string[],
+    egybeolvadt: [] as string[],
+    valtozott: false,
+  }
   const gyerekek = atalakit(content.root.children, 'gyökér', eredmeny)
   return {
     content: eredmeny.valtozott
@@ -210,5 +254,6 @@ export function tablaSorokSzetvalasztasa(content: RichTextContent): TablaSorokEr
       : null,
     sorok: eredmeny.sorok,
     egyebFutamok: eredmeny.egyebFutamok,
+    egybeolvadt: eredmeny.egybeolvadt,
   }
 }
