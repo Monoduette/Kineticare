@@ -100,7 +100,12 @@ try {
         null,
         { timeout: 5_000 },
       )
-      .catch(() => null)
+      // Csak a várakozás lejárta jelent hiányt; a többszörös találat (strict
+      // mód) vagy a navigáció közbeni hiba a saját üzenetével bukjon.
+      .catch((hiba) => {
+        if (hiba instanceof Error && hiba.name === 'TimeoutError') return null
+        throw hiba
+      })
     if (!szoveg) {
       hibak.push(`${nev}: a sütisáv magyarázó szövege hiányzik a DOM-ból`)
     } else if (!szoveg.van || szoveg.width > 1 || szoveg.height > 1) {
