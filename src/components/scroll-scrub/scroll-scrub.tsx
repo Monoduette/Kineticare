@@ -305,7 +305,7 @@ export function ScrollScrub({
     // nem a hidratálással versenyezve. Addig a klip első kockája, a poszter
     // látszik, tehát a lap képe nem változik.
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback
-    const posterOnly = window.matchMedia('(max-width: 899px)')
+    const posterOnly = window.matchMedia('(max-width: 899px), (max-height: 480px)')
     /** Statikus olvasó elrendezés: csökkentett mozgás vagy a mobil poszter-mód. */
     const staticLayout = () => reduceMotion || posterOnly.matches
     let idleReady = false
@@ -373,6 +373,23 @@ export function ScrollScrub({
         const rect = segment.band.getBoundingClientRect()
         segment.start = rect.top + pageY - rootTop
         segment.end = segment.start + rect.height
+      }
+      // A tűzött jelenet-szöveg kiterjedése a pin tetejétől az alsó
+      // térközéig. Ha ez a sütisávval együtt nem fér a nézetbe, a pin az
+      // aljával tapad (scroll-scrub.css `--ss-pin-need`). Csak tűzött (sticky)
+      // elrendezésben: a statikus olvasó elrendezésben a pin relatív, ott az
+      // eltolás elcsúsztatná.
+      for (const pin of root.querySelectorAll<HTMLElement>('.scroll-scrub__chapter-pin')) {
+        pin.style.removeProperty('--ss-pin-need')
+        const copy = pin.querySelector<HTMLElement>('.scroll-scrub__copy')
+        const style = getComputedStyle(pin)
+        if (copy && style.position === 'sticky') {
+          const need =
+            copy.getBoundingClientRect().bottom -
+            pin.getBoundingClientRect().top +
+            parseFloat(style.paddingBottom)
+          pin.style.setProperty('--ss-pin-need', `${Math.ceil(need)}px`)
+        }
       }
       total = Math.max(runtime.at(-1)?.end ?? viewportHeight, viewportHeight)
       dirty = true
@@ -678,6 +695,13 @@ export function ScrollScrub({
     const idleTimer = idleHandle === undefined ? window.setTimeout(onIdle, 1500) : undefined
 
     layout()
+    // A webfont a kezdeti mérés után is megérkezhet, és a jelenet-szöveg
+    // magasságát (`--ss-pin-need`) is megváltoztatja.
+    void document.fonts?.ready.then(() => {
+      if (!destroyed) {
+        layout()
+      }
+    })
     frame = window.requestAnimationFrame(tick)
 
     return () => {

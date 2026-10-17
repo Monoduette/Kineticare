@@ -44,10 +44,11 @@ const FILM_POSTER_MOBILE = '/media/film/one-hand-header-v1-mobile-poster.webp'
  * A 2,5 alatti érték a két úszó feliratnak már nem hagyna olvasási sávot
  * (lásd CAPTION_MID / CAPTION_END: a sávok egymást a CAPTION_FADE hosszán
  * belül érintenék), ezért 3,0 a rövidebb, de még olvasható érték.
- * 2026-10-16 óta mindez csak 900 px felett érvényes: alatta a filmhős a
- * csökkentett mozgás statikus elrendezését kapja (egy képernyős fejezet, a
- * feliratok listában a főszöveg után, klip nélkül; scroll-scrub.css és
- * scroll-scrub.tsx `posterOnly`), a 390×844-es mérés tehát a korábbi állapoté.
+ * 2026-10-16 óta mindez csak 900 px felett és 480 px-nél magasabb nézetben
+ * érvényes: alatta a filmhős a csökkentett mozgás statikus elrendezését kapja
+ * (egy képernyős fejezet, a feliratok listában a főszöveg után, klip nélkül;
+ * scroll-scrub.css és scroll-scrub.tsx `posterOnly`), a 390×844-es mérés
+ * tehát a korábbi állapoté.
  *
  * Források: NN/g, Scrolljacking 101 (a görgetés-eltérítés a felhasználó
  * tempóját veszi el; ha marad, legyen rövid és kiszámítható):

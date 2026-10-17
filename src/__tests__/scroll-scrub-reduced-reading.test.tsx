@@ -27,7 +27,11 @@ describe('reduced-motion static reading', () => {
   it('a mobil poszter-mód (900 px alatt) ugyanezt a statikus elrendezést kapja', () => {
     // A scroll-scrub.tsx `posterOnly` (max-width: 899px) klipet nem tölt; a
     // filmsáv ezért nem maradhat három képernyő magas egy álló kép fölött.
-    expect(reduced.params.split(',').map((query) => query.trim())).toContain('(max-width: 899px)')
+    const queries = reduced.params.split(',').map((query) => query.trim())
+    expect(queries).toContain('(max-width: 899px)')
+    // Legfeljebb 480 px magas nézetben (fekvő telefon) a tűzött jelenet-szöveg
+    // nem fér el, a CTA kattinthatatlan lenne.
+    expect(queries).toContain('(max-height: 480px)')
   })
 
   it('keeps the main copy and its scrim fully visible before and after the old handoff', () => {
