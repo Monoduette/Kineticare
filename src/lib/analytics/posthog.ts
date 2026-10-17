@@ -123,7 +123,7 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
     // web-vitals-adatok beágyazott URL-jeit) maga olvassa a címsorból: az
     // `$autocapture`, a `$dead_click`, a `$pageleave` és az `$opt_in` így a
     // jelszó-visszaállító jegyet is felküldte volna. Ez a horog minden
-    // eseményt, bármilyen mélységben, a meglévő tisztítón visz át. A nem
+    // eseményt, a beágyazott értékeivel együtt, a meglévő tisztítón visz át. A nem
     // esemény útvonalakat (`/flags`, tartós tárolás) a címsor init előtti
     // tisztítása fedi (scrubSensitiveQueryFromAddressBar).
     // https://posthog.com/docs/libraries/js/config (before_send)
@@ -134,21 +134,28 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
 /** URL-nek látszó szöveg (abszolút vagy gyökér-relatív, query-vel). */
 const URL_WITH_QUERY = /^(https?:\/\/|\/)[^\s]*\?/
 
-/** A beágyazás mélységének felső korlátja (a PostHog-tulajdonságok sekélyek). */
+/**
+ * A beágyazás mélységének felső korlátja. A posthog-js 1.430.3 eseményei
+ * legfeljebb három szint mélyek (`$web_vitals`), a korlát ennek bő többszöröse.
+ */
 const SANITIZE_MAX_DEPTH = 8
 
 /**
- * Egy tulajdonság-érték tisztítása, bármilyen mélységben: az URL-jellegű
+ * Egy tulajdonság-érték tisztítása, a mélységi korlátig: az URL-jellegű
  * szöveg és az URL-jellegű objektum-KULCS is (a `$$heatmap` adatát a
  * posthog-js a nyers `location.href` kulcs alatt küldi, a `$web_vitals`
- * mérőszámai beágyazott `$current_url`-t visznek).
+ * mérőszámai beágyazott `$current_url`-t visznek). A korlátnál mélyebb
+ * objektum kimarad (`null`), nem tisztítatlanul megy ki.
  */
 function sanitizeValue(value: unknown, depth: number): unknown {
   if (typeof value === 'string') {
     return URL_WITH_QUERY.test(value) ? sanitizeAnalyticsUrl(value) : value
   }
-  if (depth >= SANITIZE_MAX_DEPTH || value === null || typeof value !== 'object') {
+  if (value === null || typeof value !== 'object') {
     return value
+  }
+  if (depth >= SANITIZE_MAX_DEPTH) {
+    return null
   }
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeValue(item, depth + 1))
@@ -177,8 +184,9 @@ function sanitizeProperties(properties: Properties | undefined): Properties | un
  * a `before_send` nem látja őket. Ha a jegy már az init előtt eltűnik a
  * címből, egyik útvonalon sem mehet ki. Csak hozzájárulással, az SDK
  * betöltése előtt fut. A visszaállító űrlap a jegyet a szervertől kapja
- * (prop), tehát működik tovább; a lap újratöltése után viszont az e-mailes
- * linket kell újra megnyitni. A Next.js útválasztója a `history` példányán
+ * (prop), tehát működik tovább, és a lapfül munkamenet-tárolójában
+ * megjegyzi, így a lap újratöltése után is visszaáll (ResetPasswordRestore).
+ * A Next.js útválasztója a `history` példányán
  * figyeli a `replaceState`-et; az eredeti (prototípus) hívás csak a címsort
  * írja át, így a lap nem renderel újra, és nem megy ki második `$pageview`.
  */
@@ -340,6 +348,26 @@ function applyIdentityOp(client: PostHog, op: IdentityOp): void {
 }
 
 /**
+ * Az SDK rögzítési állapotának igazítása a 'granted' döntéshez, a függő
+ * azonosság-jellel együtt. A `reset` az `opt_in_capturing` ELŐTT fut: az
+ * `$opt_in` eseményt a posthog-js azonnal, a tárolt azonossággal küldi, és
+ * így a következő látogató hozzájárulása nem a kijelentkezett felhasználó
+ * profiljára megy. Az `identify` UTÁNA fut, mert opt-out alatt a posthog-js
+ * a `$identify` eseményt eldobná.
+ */
+function syncGrantedCapture(client: PostHog, earlierOp: IdentityOp | null): void {
+  if (earlierOp === 'reset') {
+    applyIdentityOp(client, earlierOp)
+  }
+  if (client.has_opted_out_capturing()) {
+    client.opt_in_capturing()
+  }
+  if (earlierOp && earlierOp !== 'reset') {
+    applyIdentityOp(client, earlierOp)
+  }
+}
+
+/**
  * Azonosság-művelet: kész kliensen azonnal; az SDK betöltése alatt (vagy
  * hozzájárulással, de még el sem indult betöltésnél) tartós jellel és a
  * sorban. Igazat ad, ha lefutott vagy sorba került.
@@ -349,22 +377,16 @@ function runIdentityOp(op: IdentityOp): boolean {
     return false
   }
   if (!hasAnalyticsConsent()) {
-    // Hozzájárulás nélkül nincs azonosítás (a `/flags` kérés a users.id-t is
-    // vinné). A kijelentkezés viszont akkor is elengedi a tárolt azonosságot:
-    // a futó kliensen a `reset()` a saját opt-outját is törli (posthog-js:
-    // „Consent is user state, so reset() clears it”), ezért utána rögtön
-    // vissza kell állítani, különben a `$pageleave` kimenne. SDK nélkül a
-    // `reset` jel marad a következő (hozzájárulásos) initre, és felülírja egy
-    // korábbi belépés jelét, hogy a gépet a következő ember ne a régi
+    // Hozzájárulás nélkül az SDK-hoz nem nyúlunk: az `identify` és a
+    // `reset()` is hálózati kérést indít (a `reset()` a feature flageket
+    // újratölti, a `/flags` kérést pedig az opt-out nem állítja meg;
+    // posthog-js 1.430.3 posthog-core.js `_reset`). A kijelentkezés ezért
+    // csak a `reset` jelet írja. Ez felülírja egy korábbi belépés jelét, és a
+    // következő hozzájáruláskor (initPostHog, enableAnalyticsCapture) az
+    // `$opt_in` előtt lefut, hogy a gépet a következő ember ne a régi
     // felhasználóként folytassa.
     if (op === 'reset') {
-      if (initialized && posthog) {
-        posthog.reset()
-        posthog.opt_out_capturing()
-        capturing = false
-      } else {
-        markIdentityPending('reset')
-      }
+      markIdentityPending('reset')
     }
     return false
   }
@@ -460,16 +482,10 @@ export function initPostHog(): boolean {
       // újratöltés után is azzal indul. Ilyenkor a várakozó eseményeket (lent)
       // elnyelné, a banner későbbi opt_in_capturing hívása pedig már későn
       // jönne. Ezért az SDK állapotát itt a tárolt döntéshez igazítjuk;
-      // $opt_in eseményt csak ekkor küld, nem minden betöltéskor.
-      if (client.has_opted_out_capturing()) {
-        client.opt_in_capturing()
-      }
-      // Egy korábbi lapon, az SDK megérkezése előtt történt belépés vagy
-      // kijelentkezés (a lap azóta újratöltött, a sora elveszett).
-      const earlierOp = identityQueued ? null : takeIdentityPending()
-      if (earlierOp) {
-        applyIdentityOp(client, earlierOp)
-      }
+      // $opt_in eseményt csak ekkor küld, nem minden betöltéskor. A korábbi
+      // lapon (az SDK megérkezése előtt vagy hozzájárulás nélkül) történt
+      // belépés vagy kijelentkezés jele ugyanitt fut le, a sora elveszett.
+      syncGrantedCapture(client, identityQueued ? null : takeIdentityPending())
       initialized = true
       startCapturing()
     },
@@ -570,7 +586,8 @@ export function isPostHogInitialized(): boolean {
  */
 export function enableAnalyticsCapture(): boolean {
   if (initialized && posthog) {
-    posthog.opt_in_capturing()
+    // Ugyanezen a lapon, a visszavonás alatt történt kijelentkezés jele.
+    syncGrantedCapture(posthog, takeIdentityPending())
     startCapturing()
     return true
   }

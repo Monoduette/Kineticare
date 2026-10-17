@@ -25,15 +25,32 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *  7. a betöltés alatti belépés azonosít (`identify`);
  *  8. az SDK megérkezése előtti kijelentkezés a teljes újratöltés után is
  *     elengedi az azonosságot (`reset`).
+ *
+ * Az azonosság és a hozzájárulás sorrendje (a 2026-10-17-i átnézés):
+ *  9. visszavont hozzájárulás mellett a kijelentkezés az SDK-hoz nem nyúl (a
+ *     `reset()` a `/flags` kérést az opt-out ellenére is kiküldené), csak a
+ *     jelet írja;
+ * 10. a függő `reset` a következő hozzájárulásnál az `opt_in_capturing` ELŐTT
+ *     fut, mert az `$opt_in` a tárolt azonossággal megy ki; a függő
+ *     `identify` UTÁNA, mert opt-out alatt az SDK eldobná.
  */
 
 const sdk = vi.hoisted(() => {
+  /** Az SDK azonosság- és rögzítés-hívásai, sorrendben. */
+  const hivasok: string[] = []
   const allapot = {
     betoltve: 0,
+    /** Az SDK tartósan tárolt opt-outja (posthog-js: a saját tárolójában). */
+    optedOut: false,
+    hivasok,
     init: vi.fn(),
     capture: vi.fn(),
-    identify: vi.fn(),
-    reset: vi.fn(),
+    identify: vi.fn((id: string) => {
+      hivasok.push(`identify:${id}`)
+    }),
+    reset: vi.fn(() => {
+      hivasok.push('reset')
+    }),
   }
   /** A mockolt SDK-modul; a gyár a betöltést számolja. */
   const modul = () => {
@@ -44,9 +61,15 @@ const sdk = vi.hoisted(() => {
         capture: allapot.capture,
         identify: allapot.identify,
         reset: allapot.reset,
-        has_opted_out_capturing: () => false,
-        opt_in_capturing: vi.fn(),
-        opt_out_capturing: vi.fn(),
+        has_opted_out_capturing: () => allapot.optedOut,
+        opt_in_capturing: () => {
+          allapot.optedOut = false
+          hivasok.push('opt_in')
+        },
+        opt_out_capturing: () => {
+          allapot.optedOut = true
+          hivasok.push('opt_out')
+        },
       },
     }
   }
@@ -66,6 +89,7 @@ const {
   initPostHog,
   optInToAnalytics,
   optOutOfAnalytics,
+  resetAnalyticsIdentity,
   resetPostHogForTests,
   whenPostHogReady,
 } = await import('@/lib/analytics/posthog')
@@ -84,6 +108,8 @@ beforeEach(() => {
   sdk.capture.mockClear()
   sdk.identify.mockClear()
   sdk.reset.mockClear()
+  sdk.optedOut = false
+  sdk.hivasok.length = 0
   window.localStorage.clear()
   cim('/')
 })
@@ -221,5 +247,52 @@ describe('PostHog SDK: lusta betöltés', () => {
     harmadikLap.initPostHog()
     await kivar()
     expect(sdk.reset).toHaveBeenCalledTimes(1)
+  })
+
+  it('visszavont hozzájárulás mellett a kijelentkezés az SDK-hoz nem nyúl; az újbóli elfogadás a reset után kapcsol be', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    initPostHog()
+    await kivar()
+    identifyUser(42)
+    optOutOfAnalytics()
+    sdk.hivasok.length = 0
+
+    resetAnalyticsIdentity()
+    expect(sdk.hivasok).toEqual([])
+
+    optInToAnalytics()
+    expect(sdk.hivasok).toEqual(['reset', 'opt_in'])
+  })
+
+  it('a korábbi lapon hozzájárulás nélkül történt kijelentkezés a következő initnél az $opt_in előtt fut', async () => {
+    // Az SDK a korábbi elutasítást és a régi azonosságot tartósan tárolja.
+    sdk.optedOut = true
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'denied')
+    resetAnalyticsIdentity()
+    expect(sdk.hivasok).toEqual([])
+
+    // A következő látogató ugyanazon a gépen elfogadja a sütisávot.
+    optInToAnalytics()
+    await kivar()
+    expect(sdk.hivasok).toEqual(['reset', 'opt_in'])
+  })
+
+  it('a korábbi lapról függő belépés tárolt opt-out mellett a bekapcsolás után azonosít', async () => {
+    sdk.optedOut = true
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    // 1. lap: belépés, az SDK sosem érkezik meg, a lap újratölt.
+    vi.resetModules()
+    vi.doMock('posthog-js', () => new Promise<never>(() => {}))
+    const elsoLap = await import('@/lib/analytics/posthog')
+    elsoLap.initPostHog()
+    expect(elsoLap.identifyUser(42)).toBe(true)
+
+    // 2. lap: az SDK megérkezik.
+    vi.doMock('posthog-js', () => sdk.modul())
+    vi.resetModules()
+    const masodikLap = await import('@/lib/analytics/posthog')
+    masodikLap.initPostHog()
+    await kivar()
+    expect(sdk.hivasok).toEqual(['opt_in', 'identify:42'])
   })
 })
