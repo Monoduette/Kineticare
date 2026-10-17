@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { ResetPasswordForm } from '@/components/auth/ResetPasswordForm'
+import { ResetPasswordRestore } from '@/components/auth/ResetPasswordRestore'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { DEFAULT_AUTH_RETURN_URL, forgotPasswordHref, sanitizeReturnUrl } from '@/lib/return-url'
 import { buildPrivatePageMetadata } from '@/lib/seo'
@@ -39,13 +40,15 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
         {token ? (
           <ResetPasswordForm returnUrl={returnUrl} token={token} />
         ) : (
-          <div className="kc-auth-error" role="alert">
-            <p>
-              Hiányzik a visszaállító token a hivatkozásból, ezért nem tudjuk megnyitni az űrlapot.
-              Indítsd újra a visszaállítást, és a friss linkkel próbáld meg ismét.
-            </p>
-            <Link href={forgotPasswordHref(returnUrl)}>{ctaLabel('password-reset-start')}</Link>
-          </div>
+          <ResetPasswordRestore returnUrl={returnUrl}>
+            <div className="kc-auth-error" role="alert">
+              <p>
+                Hiányzik a visszaállító token a hivatkozásból, ezért nem tudjuk megnyitni az
+                űrlapot. Indítsd újra a visszaállítást, és a friss linkkel próbáld meg ismét.
+              </p>
+              <Link href={forgotPasswordHref(returnUrl)}>{ctaLabel('password-reset-start')}</Link>
+            </div>
+          </ResetPasswordRestore>
         )}
       </Container>
     </Section>

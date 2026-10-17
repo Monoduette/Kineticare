@@ -30,6 +30,15 @@
   font-weight: var(--kc-font-weight-bold);
 }
 
+/* A token nélküli visszaállító lap: amíg a kliens meg nem nézte, van-e a
+   lapfülben megjegyzett jegy (ResetPasswordRestore), a hibaüzenet nem
+   villanhat fel az űrlap előtt. Szkript nélkül látszik. */
+@media (scripting: enabled) {
+  .kc-reset-restore:not([data-checked]) {
+    visibility: hidden;
+  }
+}
+
 .kc-auth-error {
   padding: var(--kc-space-3) var(--kc-space-4);
   border: 1px solid var(--kc-color-danger);
