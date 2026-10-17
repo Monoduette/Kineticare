@@ -1062,19 +1062,20 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })) as unknown as Doc
     productIds.push(copy.id)
 
-    // Payload 3.90-től (GHSA-vc4h-q48j-5hcx) a duplikálás a munkatárs által nem
-    // írható mezőt nem tölti a forrásból: a másolat ár-pipája üres, nem a
-    // tulajdonos kivett pipája. A szerződés mindkét úton ugyanaz: a munkatárs
-    // közzététele után sem lesz élő, ingyenes kurzus.
-    const result = await save(copy.id, staff, { _status: 'published' })
+    // Payload 3.90.2-től (GHSA-vc4h-q48j-5hcx) a duplikálás a munkatárs által
+    // nem írható mezőt (T-011: az ár-mezők owner-only create/update) nem tölti a
+    // forrásból: a másolat ár-pipája és ára üres, nem a tulajdonos kivett
+    // pipája. A saját create-őrünk (validatePriceInHUFEnabled) ezen az úton
+    // már nem kap értéket; a határát a product-price-guards egységteszt őrzi.
+    const copyRow = await mainRow(copy.id)
+    expect(copyRow.priceInHUFEnabled).toBeNull()
+    expect(copyRow.priceInHUF).toBeNull()
+    // A munkatárs közzéteheti, de ár nélküli, élő kurzus lesz belőle: nem
+    // ingyenes, és nem is vásárolható; az árat a tulajdonos adja meg.
+    expect(await save(copy.id, staff, { _status: 'published' })).toBe('OK')
     const row = await mainRow(copy.id)
-    expect(row._status === 'published' && row.priceInHUFEnabled === false).toBe(false)
-    if (result !== 'OK') {
-      expect(result).toContainEqual({
-        path: 'priceInHUFEnabled',
-        message: OWNER_ONLY_CHANGE_MESSAGE,
-      })
-    }
+    expect(row._status).toBe('published')
+    expect(row.priceInHUFEnabled).toBeNull()
     expect((await claimAsStranger(copy.id, 'dup2')).status).toBe('course-not-available')
   }, 120_000)
 
@@ -1108,16 +1109,15 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       }
     }
 
-    // Payload 3.90-től a másolat a tulajdonos kivett pipáját nem örökli (lásd
-    // BRK-D1): az azonnal közzétett másolat vagy elutasítást kap, vagy élő, de
-    // nem ingyenes sor lesz.
+    // Payload 3.90.2-től a másolat a tulajdonos kivett pipáját nem örökli
+    // (lásd BRK-D1): az azonnal közzétett másolat élő, de ár nélküli sor.
     const live = await duplicateAsStaff(false)
-    if (Array.isArray(live)) {
-      expect(live).toContainEqual({ path: 'priceInHUFEnabled', message: OWNER_ONLY_CHANGE_MESSAGE })
-    } else {
-      expect((await mainRow(live.id)).priceInHUFEnabled).not.toBe(false)
-      expect((await claimAsStranger(live.id, 'dup-live')).status).toBe('course-not-available')
-    }
+    if (Array.isArray(live)) throw new Error(`a másolat elutasítva: ${JSON.stringify(live)}`)
+    const liveRow = await mainRow(live.id)
+    expect(liveRow._status).toBe('published')
+    expect(liveRow.priceInHUFEnabled).toBeNull()
+    expect(liveRow.priceInHUF).toBeNull()
+    expect((await claimAsStranger(live.id, 'dup-live')).status).toBe('course-not-available')
     // Az admin Másolás gombja (piszkozat-másolat) a munkatársnak is működik
     // (külön forrásról: az élő másolat már elfoglalta a másolati cikkszámot).
     const draftSource = await createPublished('dup-source-draft')
@@ -1382,7 +1382,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
    * sorához mérné, amelyben már a tulajdonos elütött ára áll. A soha nem
    * közzétett kurzus első áras közzététele ezért a tulajdonosé.
    */
-  it('PR #305 rev2 (BRK305-3): a munkatárs piszkozat-másolata nem viszi élesbe a tulajdonos meg nem erősített 7 950 Ft-os ár-piszkozatát; a tulajdonos közzéteheti', async () => {
+  it('PR #305 rev2 (BRK305-3): a munkatárs piszkozat-másolata nem viszi élesbe a tulajdonos meg nem erősített 7 950 Ft-os ár-piszkozatát; az árat a tulajdonos adja meg és teszi közzé', async () => {
     const id = await createPublished('brk3-dup-source')
     await autosave(id, owner, { priceInHUF: 7_950 })
     const copy = (await payload.duplicate({
@@ -1395,16 +1395,26 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })) as unknown as Doc
     productIds.push(copy.id)
 
-    // Payload 3.90-től a másolat a tulajdonos ár-piszkozatát nem örökli (a
-    // munkatárs nem írhatja az ár-mezőt, GHSA-vc4h-q48j-5hcx); ha mégis
-    // örökölné (a 3.88-as út), a munkatárs közzététele elutasítást kap. A
-    // szerződés: a 7 950 Ft a munkatárs közzétételével nem élesedik.
-    const result = await save(copy.id, staff, { _status: 'published' })
+    // Payload 3.90.2-től a másolat a tulajdonos ár-piszkozatát nem örökli (a
+    // munkatárs nem írhatja az ár-mezőt, GHSA-vc4h-q48j-5hcx): a 7 950 Ft nem
+    // kerül a másolatra, így a munkatárs közzététele sem élesítheti. Az
+    // örökölt ár esetét (a 3.88-as út) a product-price-guards egységteszt
+    // őrzi a saját határunkon.
+    expect((await mainRow(copy.id)).priceInHUF).toBeNull()
+    expect(await save(copy.id, staff, { _status: 'published' })).toBe('OK')
+    expect((await mainRow(copy.id)).priceInHUF).toBeNull()
+
+    // A tulajdonos megadja az árat, és közzéteszi.
+    expect(
+      await save(copy.id, owner, {
+        _status: 'published',
+        priceInHUFEnabled: true,
+        priceInHUF: 79_500,
+      }),
+    ).toBe('OK')
     const row = await mainRow(copy.id)
-    expect(row._status === 'published' && row.priceInHUF === 7_950).toBe(false)
-    if ((await mainRow(copy.id)).priceInHUF === 7_950) {
-      expect(result).toContainEqual({ path: 'priceInHUF', message: OWNER_ONLY_CHANGE_MESSAGE })
-    }
+    expect(row._status).toBe('published')
+    expect(row.priceInHUF).toBe(79_500)
   }, 120_000)
 
   it('PR #305 rev2 (BRK305-3, `?draft=false`): a munkatárs azonnal közzétett másolata sem viszi élesbe a tulajdonos ár-piszkozatát', async () => {
@@ -1427,12 +1437,11 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       if (!Array.isArray(errors)) throw error
       result = errors.map(({ path, message }) => ({ path, message }))
     }
-    // Lásd az előző esetet: vagy elutasítás, vagy élő sor a 7 950 Ft nélkül.
-    if (Array.isArray(result)) {
-      expect(result).toContainEqual({ path: 'priceInHUF', message: OWNER_ONLY_CHANGE_MESSAGE })
-    } else {
-      expect((await mainRow(result.id)).priceInHUF).not.toBe(7_950)
-    }
+    // Lásd az előző esetet: élő, ár nélküli sor, a 7 950 Ft nélkül.
+    if (Array.isArray(result)) throw new Error(`a másolat elutasítva: ${JSON.stringify(result)}`)
+    const row = await mainRow(result.id)
+    expect(row._status).toBe('published')
+    expect(row.priceInHUF).toBeNull()
   }, 120_000)
 
   /*
