@@ -32,10 +32,22 @@
 
 /* A token nélküli visszaállító lap: amíg a kliens meg nem nézte, van-e a
    lapfülben megjegyzett jegy (ResetPasswordRestore), a hibaüzenet nem
-   villanhat fel az űrlap előtt. Szkript nélkül látszik. */
+   villanhat fel az űrlap előtt. Szkript nélkül azonnal látszik; ha a szkript
+   engedélyezett, de a kliens nem áll fel (elbukó csomagletöltés), 2 mp után
+   akkor is előjön, hogy a lap ne maradjon zsákutca. */
+@keyframes kc-reset-restore-reveal {
+  from {
+    visibility: hidden;
+  }
+
+  to {
+    visibility: visible;
+  }
+}
+
 @media (scripting: enabled) {
   .kc-reset-restore:not([data-checked]) {
-    visibility: hidden;
+    animation: kc-reset-restore-reveal 0s linear 2s both;
   }
 }
 

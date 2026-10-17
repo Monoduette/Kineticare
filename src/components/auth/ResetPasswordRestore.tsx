@@ -30,7 +30,8 @@ export interface ResetPasswordRestoreProps {
  * felhasználónak nem kell újra megnyitnia az e-mailt.
  *
  * Amíg a tárolót nem olvastuk (szerver, hidratálás), a hibaüzenet helyet
- * foglal, de nem látszik (auth.css, `scripting: enabled`), így nem villan fel.
+ * foglal, de nem látszik (auth.css, `scripting: enabled`), így nem villan fel;
+ * ha a kliens nem áll fel, a hibaüzenet 2 mp után akkor is előjön.
  */
 export function ResetPasswordRestore({ returnUrl, children }: ResetPasswordRestoreProps) {
   const token = useSyncExternalStore(subscribe, readRememberedResetToken, serverSnapshot)
