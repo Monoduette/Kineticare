@@ -37,7 +37,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *     opt-outot törli, a szüneteltetett kérés-sort viszont csak az `opt_in`
  *     indítja el;
  * 11. a betöltés alatti belépés a korábbi lapról maradt `reset` jelet nem
- *     nyelheti el.
+ *     nyelheti el: akkor sem, ha a lap az SDK előtt továbblép, a letöltés
+ *     elbukik, vagy közben visszavonják és újra megadják a hozzájárulást
+ *     (2026-10-17, 5. kritikus kör).
  */
 
 const sdk = vi.hoisted(() => {
@@ -327,5 +329,63 @@ describe('PostHog SDK: lusta betöltés', () => {
     megerkezik()
     await kivar()
     expect(sdk.hivasok).toEqual(['reset', 'opt_in', 'identify:77'])
+  })
+
+  /** Korábbi lap: hozzájárulás nélküli kijelentkezés, az SDK opt-outot tárol. */
+  function kijelentkezesHozzajarulasNelkul(): void {
+    sdk.optedOut = true
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'denied')
+    resetAnalyticsIdentity()
+  }
+
+  it.each([
+    [
+      'a lap az SDK előtt továbblép (LoginForm: teljes betöltés)',
+      () => new Promise<never>(() => {}),
+    ],
+    ['az SDK letöltése elbukik', () => Promise.reject(new Error('blokkolt csomag'))],
+  ])(
+    'a betöltés alatti belépés a korábbi lapról függő resetet a következő lapra is átviszi: %s',
+    async (_eset, elsoSdk) => {
+      kijelentkezesHozzajarulasNelkul()
+      // Ez a lap: elfogadás és belépés az SDK előtt; az SDK nem áll fel.
+      vi.resetModules()
+      vi.doMock('posthog-js', elsoSdk)
+      const belepoLap = await import('@/lib/analytics/posthog')
+      belepoLap.optInToAnalytics()
+      expect(belepoLap.identifyUser(77)).toBe(true)
+      await kivar()
+
+      // A következő lap: az SDK megérkezik.
+      vi.doMock('posthog-js', () => sdk.modul())
+      vi.resetModules()
+      const kovetkezoLap = await import('@/lib/analytics/posthog')
+      kovetkezoLap.initPostHog()
+      await kivar()
+      expect(sdk.hivasok).toEqual(['reset', 'opt_in', 'identify:77'])
+    },
+  )
+
+  it('a betöltés alatti belépés, visszavonás és újbóli elfogadás után a korábbi lapról függő reset az $opt_in előtt fut', async () => {
+    kijelentkezesHozzajarulasNelkul()
+    let megerkezik: () => void = () => {}
+    const kapu = new Promise<void>((resolve) => {
+      megerkezik = resolve
+    })
+    vi.resetModules()
+    vi.doMock('posthog-js', async () => {
+      await kapu
+      return sdk.modul()
+    })
+    const lap = await import('@/lib/analytics/posthog')
+    lap.optInToAnalytics()
+    lap.identifyUser(77)
+    // A visszavonás a függő belépést eldobja, a kijelentkezést nem.
+    lap.optOutOfAnalytics()
+    lap.optInToAnalytics()
+
+    megerkezik()
+    await kivar()
+    expect(sdk.hivasok).toEqual(['reset', 'opt_in'])
   })
 })

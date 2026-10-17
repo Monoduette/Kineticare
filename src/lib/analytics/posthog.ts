@@ -138,7 +138,8 @@ const URL_WITH_QUERY = /^(https?:\/\/|\/)[^\s]*\?/
  * A beágyazás mélységének felső korlátja. A posthog-js 1.430.3 legmélyebb
  * ismert eseménye az `$exception` (öt szint:
  * `$exception_list[].stacktrace.frames[]`); a korlát ennél három szinttel több.
- * A korlát alá csökkentése a hibakövetés adatait csendben `null`-ra cserélné.
+ * Öt vagy kisebb korlát (a veremkeret-objektum mélysége) a hibakövetés
+ * veremkereteit csendben `null`-ra cserélné.
  */
 const SANITIZE_MAX_DEPTH = 8
 
@@ -307,12 +308,55 @@ let pendingCalls: Array<(client: PostHog) => void> = []
  * amíg az SDK nem állt fel. Belépés és kijelentkezés után is teljes
  * oldalbetöltés jön (LoginForm/RegisterForm, AccountNav), a memóriabeli sor
  * tehát elveszne. A következő init a jelet látva pótolja a műveletet. A jel
- * nem személyes adat: `reset`, vagy `id:` és a Payload users.id (ugyanaz,
- * amit az identify a PostHognak küld; e-mail és név soha).
+ * nem személyes adat: `reset`, `id:` és a Payload users.id (ugyanaz, amit az
+ * identify a PostHognak küld; e-mail és név soha), vagy a kettő együtt
+ * (`reset+id:`).
  */
 const IDENTITY_PENDING_KEY = 'kc_analytics_identity_pending'
 
 type IdentityOp = 'reset' | `id:${string}`
+
+/**
+ * A függő azonosság: egy még le nem futott kijelentkezés és egy még le nem
+ * futott belépés. A kettő együtt is függhet: a betöltés alatti belépés nem
+ * írhatja felül a korábbi lapról maradt kijelentkezést, mert a belépés után a
+ * lap azonnal továbblép (LoginForm), és a következő lapon a `reset` nélkül az
+ * `$opt_in` a kijelentkezett felhasználó profiljára menne.
+ */
+interface PendingIdentity {
+  readonly reset: boolean
+  readonly id: string | null
+}
+
+const RESET_AND_ID = 'reset+id:'
+
+function parsePendingIdentity(value: string | null): PendingIdentity | null {
+  if (value === 'reset') {
+    return { reset: true, id: null }
+  }
+  if (value?.startsWith(RESET_AND_ID) && value.length > RESET_AND_ID.length) {
+    return { reset: true, id: value.slice(RESET_AND_ID.length) }
+  }
+  if (value?.startsWith('id:') && value.length > 'id:'.length) {
+    return { reset: false, id: value.slice('id:'.length) }
+  }
+  return null
+}
+
+function writePendingIdentity(pending: PendingIdentity): void {
+  try {
+    if (pending.id === null && !pending.reset) {
+      window.localStorage.removeItem(IDENTITY_PENDING_KEY)
+    } else {
+      window.localStorage.setItem(
+        IDENTITY_PENDING_KEY,
+        pending.id === null ? 'reset' : `${pending.reset ? 'reset+' : ''}id:${pending.id}`,
+      )
+    }
+  } catch {
+    // Tiltott tároló: a sor ugyanazon a lapon így is lefut.
+  }
+}
 
 /**
  * Ezen a lapon sorba állított azonosság-művelet: ilyenkor a jelet a sor viszi,
@@ -321,33 +365,39 @@ type IdentityOp = 'reset' | `id:${string}`
  */
 let identityQueued = false
 
+/**
+ * A művelet jele. A kijelentkezés a függő belépést elveti (az már nem
+ * érvényes), a belépés a függő kijelentkezést megtartja.
+ */
 function markIdentityPending(op: IdentityOp): void {
-  try {
-    window.localStorage.setItem(IDENTITY_PENDING_KEY, op)
-  } catch {
-    // Tiltott tároló: a sor ugyanazon a lapon így is lefut.
+  if (op === 'reset') {
+    writePendingIdentity({ reset: true, id: null })
+    return
   }
+  writePendingIdentity({
+    reset: peekIdentityPending()?.reset ?? false,
+    id: op.slice('id:'.length),
+  })
 }
 
-/** Az azonosság-művelet jele, törlés nélkül. */
-function peekIdentityPending(): IdentityOp | null {
+/** A függő azonosság, törlés nélkül. */
+function peekIdentityPending(): PendingIdentity | null {
   try {
-    const op = window.localStorage.getItem(IDENTITY_PENDING_KEY)
-    return op === 'reset' || op?.startsWith('id:') ? (op as IdentityOp) : null
+    return parsePendingIdentity(window.localStorage.getItem(IDENTITY_PENDING_KEY))
   } catch {
     return null
   }
 }
 
-/** Visszaadja és törli az azonosság-művelet jelét. */
-function takeIdentityPending(): IdentityOp | null {
+/** Visszaadja és törli a függő azonosságot. */
+function takeIdentityPending(): PendingIdentity | null {
+  const pending = peekIdentityPending()
   try {
-    const op = window.localStorage.getItem(IDENTITY_PENDING_KEY)
     window.localStorage.removeItem(IDENTITY_PENDING_KEY)
-    return op === 'reset' || op?.startsWith('id:') ? (op as IdentityOp) : null
   } catch {
-    return null
+    // Tiltott tároló: nincs mit törölni.
   }
+  return pending
 }
 
 /** Egy azonosság-művelet végrehajtása a kész kliensen. */
@@ -373,16 +423,16 @@ function applyIdentityOp(client: PostHog, op: IdentityOp): void {
  * `opt_in_capturing` el nem indítja. Nélküle az események csak a lap
  * elhagyásakor mennének ki, vagy el is vesznének.
  */
-function syncGrantedCapture(client: PostHog, earlierOp: IdentityOp | null): void {
+function syncGrantedCapture(client: PostHog, pending: PendingIdentity | null): void {
   const optedOut = client.has_opted_out_capturing()
-  if (earlierOp === 'reset') {
-    applyIdentityOp(client, earlierOp)
+  if (pending?.reset) {
+    client.reset()
   }
   if (optedOut) {
     client.opt_in_capturing()
   }
-  if (earlierOp && earlierOp !== 'reset') {
-    applyIdentityOp(client, earlierOp)
+  if (pending?.id) {
+    client.identify(pending.id)
   }
 }
 
@@ -400,7 +450,7 @@ function runIdentityOp(op: IdentityOp): boolean {
     // `reset()` is hálózati kérést indít (a `reset()` a feature flageket
     // újratölti, a `/flags` kérést pedig az opt-out nem állítja meg;
     // posthog-js 1.430.3 posthog-core.js `_reset`). A kijelentkezés ezért
-    // csak a `reset` jelet írja. Ez felülírja egy korábbi belépés jelét, és a
+    // csak a `reset` jelet írja. Ez elveti egy korábbi belépés jelét, és a
     // következő hozzájáruláskor (initPostHog, enableAnalyticsCapture) az
     // `$opt_in` előtt lefut, hogy a gépet a következő ember ne a régi
     // felhasználóként folytassa.
@@ -481,11 +531,6 @@ export function initPostHog(): boolean {
     return false
   }
   scrubSensitiveQueryFromAddressBar()
-  // Egy korábbi lapról maradt `reset` jel. A betöltés alatti belépés a jelet
-  // a saját `id:` jelével felülírja (a sor viszi), a kijelentkezett
-  // felhasználó azonosságát viszont attól még el kell engedni az `$opt_in`
-  // előtt.
-  const resetFromEarlierPage = peekIdentityPending() === 'reset'
   initStarted = true
   // A hozzájárulásra várók most az SDK-sorba kerülnek, a keletkezési
   // oldalukkal (lásd readyCallbacks): a betöltés alatti route-váltás már nem
@@ -509,9 +554,13 @@ export function initPostHog(): boolean {
       // $opt_in eseményt csak ekkor küld, nem minden betöltéskor. A korábbi
       // lapon (az SDK megérkezése előtt vagy hozzájárulás nélkül) történt
       // belépés vagy kijelentkezés jele ugyanitt fut le, a sora elveszett.
+      // Ha ezen a lapon is van sorba állított azonosság-művelet, a belépést a
+      // sor viszi (a korábbi események után); a függő kijelentkezés viszont az
+      // `$opt_in` előtt fut.
+      const pending = identityQueued ? peekIdentityPending() : takeIdentityPending()
       syncGrantedCapture(
         client,
-        identityQueued ? (resetFromEarlierPage ? 'reset' : null) : takeIdentityPending(),
+        identityQueued ? { reset: pending?.reset ?? false, id: null } : pending,
       )
       initialized = true
       startCapturing()
@@ -632,13 +681,11 @@ export function disableAnalyticsCapture(): void {
   dropPendingCalls()
   // Egy függő belépés-jel visszavonás után nem élhet tovább: egy későbbi
   // hozzájárulás különben a régi felhasználóként azonosítaná a gépet. A
-  // `reset` jel marad (az csak elenged).
-  try {
-    if (window.localStorage.getItem(IDENTITY_PENDING_KEY)?.startsWith('id:')) {
-      window.localStorage.removeItem(IDENTITY_PENDING_KEY)
-    }
-  } catch {
-    // Tiltott tároló: nincs mit törölni.
+  // függő `reset` marad (az csak elenged), akkor is, ha egy belépés-jellel
+  // együtt állt.
+  const pending = peekIdentityPending()
+  if (pending?.id) {
+    writePendingIdentity({ reset: pending.reset, id: null })
   }
   if (initialized && posthog) {
     posthog.opt_out_capturing()
