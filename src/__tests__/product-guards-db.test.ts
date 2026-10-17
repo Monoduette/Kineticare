@@ -625,9 +625,15 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     // nélküli: a Payload a hiányzó `deletedAt`-et a legutóbbi verzióból tölti.
     const craftedTrash = (id: number) =>
       save(id, staff, { deletedAt: new Date().toISOString(), _status: 'published' })
+    // Payload 3.90-től a lomtárban álló sor közzététele validált mentés: az
+    // őr már itt elutasítja a piszkozat árát, a sor piszkozat és lomtárban
+    // marad. A lenti visszaállítási szerződés ugyanaz.
     const publishWhileTrashed = async (id: number) => {
       expect(await save(id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
-      return saveWhere(id, staff, { _status: 'published' }, { trashed: true })
+      const published = await saveWhere(id, staff, { _status: 'published' }, { trashed: true })
+      return published === 'OK'
+        ? 'OK'
+        : (expect(published).toEqual([expect.stringContaining('Ár (Ft)')]), 'OK')
     }
     const cases = [
       { key: 'trash-pub-5', draft: { priceInHUF: 5 }, field: 'Ár (Ft)', trash: craftedTrash },
@@ -1056,11 +1062,19 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })) as unknown as Doc
     productIds.push(copy.id)
 
-    expect(await save(copy.id, staff, { _status: 'published' })).toContainEqual({
-      path: 'priceInHUFEnabled',
-      message: OWNER_ONLY_CHANGE_MESSAGE,
-    })
-    expect((await mainRow(copy.id))._status).toBe('draft')
+    // Payload 3.90-től (GHSA-vc4h-q48j-5hcx) a duplikálás a munkatárs által nem
+    // írható mezőt nem tölti a forrásból: a másolat ár-pipája üres, nem a
+    // tulajdonos kivett pipája. A szerződés mindkét úton ugyanaz: a munkatárs
+    // közzététele után sem lesz élő, ingyenes kurzus.
+    const result = await save(copy.id, staff, { _status: 'published' })
+    const row = await mainRow(copy.id)
+    expect(row._status === 'published' && row.priceInHUFEnabled === false).toBe(false)
+    if (result !== 'OK') {
+      expect(result).toContainEqual({
+        path: 'priceInHUFEnabled',
+        message: OWNER_ONLY_CHANGE_MESSAGE,
+      })
+    }
     expect((await claimAsStranger(copy.id, 'dup2')).status).toBe('course-not-available')
   }, 120_000)
 
@@ -1072,18 +1086,21 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     const id = await createPublished('dup-source')
     await autosave(id, owner, { priceInHUFEnabled: false })
 
-    async function duplicateAsStaff(draft: boolean): Promise<'OK' | ErrorEntry[]> {
+    async function duplicateAsStaff(
+      draft: boolean,
+      source: number = id,
+    ): Promise<Doc | ErrorEntry[]> {
       try {
         const copy = (await payload.duplicate({
           collection: 'products',
-          id,
+          id: source,
           draft,
           data: { _status: draft ? 'draft' : 'published' },
           overrideAccess: false,
           user: asUser(staff),
         })) as unknown as Doc
         productIds.push(copy.id)
-        return 'OK'
+        return copy
       } catch (error) {
         const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
         if (!Array.isArray(errors)) throw error
@@ -1091,12 +1108,21 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       }
     }
 
-    expect(await duplicateAsStaff(false)).toContainEqual({
-      path: 'priceInHUFEnabled',
-      message: OWNER_ONLY_CHANGE_MESSAGE,
-    })
-    // Az admin Másolás gombja (piszkozat-másolat) a munkatársnak is működik.
-    expect(await duplicateAsStaff(true)).toBe('OK')
+    // Payload 3.90-től a másolat a tulajdonos kivett pipáját nem örökli (lásd
+    // BRK-D1): az azonnal közzétett másolat vagy elutasítást kap, vagy élő, de
+    // nem ingyenes sor lesz.
+    const live = await duplicateAsStaff(false)
+    if (Array.isArray(live)) {
+      expect(live).toContainEqual({ path: 'priceInHUFEnabled', message: OWNER_ONLY_CHANGE_MESSAGE })
+    } else {
+      expect((await mainRow(live.id)).priceInHUFEnabled).not.toBe(false)
+      expect((await claimAsStranger(live.id, 'dup-live')).status).toBe('course-not-available')
+    }
+    // Az admin Másolás gombja (piszkozat-másolat) a munkatársnak is működik
+    // (külön forrásról: az élő másolat már elfoglalta a másolati cikkszámot).
+    const draftSource = await createPublished('dup-source-draft')
+    await autosave(draftSource, owner, { priceInHUFEnabled: false })
+    expect(Array.isArray(await duplicateAsStaff(true, draftSource))).toBe(false)
   }, 120_000)
   /**
    * PR #305 (Codex P1): a legutóbb közzétett ár ismeretlen. A tulajdonos a
@@ -1368,26 +1394,23 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       user: asUser(staff),
     })) as unknown as Doc
     productIds.push(copy.id)
-    expect((await mainRow(copy.id)).priceInHUF).toBe(7_950)
 
-    expect(await save(copy.id, staff, { _status: 'published' })).toContainEqual({
-      path: 'priceInHUF',
-      message: OWNER_ONLY_CHANGE_MESSAGE,
-    })
-    expect((await mainRow(copy.id))._status).toBe('draft')
-
-    expect(await save(copy.id, owner, { _status: 'published' })).toBe('OK')
+    // Payload 3.90-től a másolat a tulajdonos ár-piszkozatát nem örökli (a
+    // munkatárs nem írhatja az ár-mezőt, GHSA-vc4h-q48j-5hcx); ha mégis
+    // örökölné (a 3.88-as út), a munkatárs közzététele elutasítást kap. A
+    // szerződés: a 7 950 Ft a munkatárs közzétételével nem élesedik.
+    const result = await save(copy.id, staff, { _status: 'published' })
     const row = await mainRow(copy.id)
-    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
-      _status: 'published',
-      priceInHUF: 7_950,
-    })
+    expect(row._status === 'published' && row.priceInHUF === 7_950).toBe(false)
+    if ((await mainRow(copy.id)).priceInHUF === 7_950) {
+      expect(result).toContainEqual({ path: 'priceInHUF', message: OWNER_ONLY_CHANGE_MESSAGE })
+    }
   }, 120_000)
 
   it('PR #305 rev2 (BRK305-3, `?draft=false`): a munkatárs azonnal közzétett másolata sem viszi élesbe a tulajdonos ár-piszkozatát', async () => {
     const id = await createPublished('brk3-dup-live-source')
     await autosave(id, owner, { priceInHUF: 7_950 })
-    let result: 'OK' | ErrorEntry[]
+    let result: Doc | ErrorEntry[]
     try {
       const copy = (await payload.duplicate({
         collection: 'products',
@@ -1398,13 +1421,18 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         user: asUser(staff),
       })) as unknown as Doc
       productIds.push(copy.id)
-      result = 'OK'
+      result = copy
     } catch (error) {
       const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
       if (!Array.isArray(errors)) throw error
       result = errors.map(({ path, message }) => ({ path, message }))
     }
-    expect(result).toContainEqual({ path: 'priceInHUF', message: OWNER_ONLY_CHANGE_MESSAGE })
+    // Lásd az előző esetet: vagy elutasítás, vagy élő sor a 7 950 Ft nélkül.
+    if (Array.isArray(result)) {
+      expect(result).toContainEqual({ path: 'priceInHUF', message: OWNER_ONLY_CHANGE_MESSAGE })
+    } else {
+      expect((await mainRow(result.id)).priceInHUF).not.toBe(7_950)
+    }
   }, 120_000)
 
   /*

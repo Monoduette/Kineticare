@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import sharp from 'sharp'
-import type { Payload, PayloadRequest } from 'payload'
+import type { FileToSave, Payload, PayloadRequest } from 'payload'
 import { generateFileData } from '../../node_modules/payload/dist/uploads/generateFileData.js'
 import { Media as MediaCollection } from '../collections/Media'
 
@@ -28,6 +28,15 @@ import {
   mediaRecoverySnapshot,
   mediaRecoveryProcessingConfig,
 } from '../lib/media-recovery-provenance'
+
+/**
+ * A Payload 3.90-től a mentendő fájl vagy bájtokat (`buffer`), vagy egy
+ * ideiglenes forrásfájlt (`sourcePath`) visz (payload/dist/uploads/types
+ * `FileToSave`). A teszt mindkettőt a Payload mentésével azonosan kezeli.
+ */
+function fileBytes(file: FileToSave): Buffer {
+  return 'buffer' in file ? file.buffer : readFileSync(file.sourcePath)
+}
 
 /**
  * A deploykor elveszett képek önjavítása (src/lib/media-restore.ts) — a DB-t
@@ -396,12 +405,12 @@ describe('owner-review team média helyreállítása, DB és élő szolgáltatá
     const expected = await generate({ uploadEdits: { focalPoint } })
     const centered = await generate({ uploadEdits: { focalPoint: { x: 50, y: 50 } } })
     const og = (result: typeof expected) =>
-      result.files.find((entry) => entry.path.endsWith('-1200x630.webp'))!.buffer
+      fileBytes(result.files.find((entry) => entry.path.endsWith('-1200x630.webp'))!)
     expect(og(expected)).not.toEqual(og(centered))
     update.mockImplementation(async (args) => {
       const options = args as { data: Partial<Media>; req?: { query: PayloadRequest['query'] } }
       const result = await generate(options.req?.query ?? {}, options.data)
-      for (const entry of result.files) writeFileSync(entry.path, entry.buffer)
+      for (const entry of result.files) writeFileSync(entry.path, fileBytes(entry))
       expect(result.data.focalX).toBe(focalPoint.x)
       expect(result.data.focalY).toBe(focalPoint.y)
       return doc
@@ -418,7 +427,7 @@ describe('owner-review team média helyreállítása, DB és élő szolgáltatá
       og(expected),
     )
     expect(readFileSync(path.join(dir, file))).toEqual(
-      expected.files.find((entry) => entry.path === path.join(dir, file))!.buffer,
+      fileBytes(expected.files.find((entry) => entry.path === path.join(dir, file))!),
     )
   })
 
