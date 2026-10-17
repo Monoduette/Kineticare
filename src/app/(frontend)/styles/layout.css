@@ -1440,8 +1440,9 @@
 /* Az összehúzás a találati dobozt is összehúzza: az egér felengedése (vagy
    az ujj) a gomb szélén már a dobozon kívül esne, és a kattintás a szülőé
    lenne. Ezért nyomva egy, az összehúzást pontosan kiegyenlítő láthatatlan
-   felület (1/0,97 ≈ 1,031, oldalanként 1,6%) tartja a teljes eredeti
-   dobozt. A tartalék-ág summary-ja (`<details>`) nem húzódik össze, lásd fent. */
+   felület (1/0,97 ≈ 1,031, oldalanként 1,6%, plusz ráhagyás a tört pixeles
+   kerekítésre) tartja a teljes eredeti dobozt; csak a lenyomott elemé és csak
+   a lenyomás alatt él, más elem kattintását nem veheti el. A tartalék-ág summary-ja (`<details>`) nem húzódik össze, lásd fent. */
 @media (prefers-reduced-motion: no-preference) {
   .kc-nav-mobile__toggle:not(summary):active,
   .kc-nav-mobile__link:active,
@@ -1459,7 +1460,7 @@
   .kc-nav-mobile__sublink:active::after {
     content: '';
     position: absolute;
-    inset: -1.6%;
+    inset: calc(-2% - 4px);
   }
 }
 

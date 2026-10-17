@@ -391,16 +391,24 @@
 /* Az összehúzás a találati dobozt is összehúzza: a gomb szélén lenyomott,
    majd felengedett egér (vagy ujj) már a dobozon kívül esne, és a kattintás a
    szülőé lenne, azaz új halott kattintás. Nyomva ezért egy láthatatlan
-   felület pontosan kiegyenlíti az összehúzást (1/0,97 ≈ 1,031, oldalanként
-   1,6%), a gomb a teljes eredeti dobozán fogadja a felengedést. A gombokon más
-   `::after` nincs.
+   felület kiegyenlíti az összehúzást: 1/0,97 ≈ 1,031, oldalanként 1,6%, plusz
+   a 2 px-es keret, mert az abszolút `::after` a belső (padding) dobozhoz
+   igazodik, plusz ráhagyás a tört pixeles kerekítésre (mérve: 1,6% + 2 px
+   mellett a gomb alsó szélén 0,3–0,6 px fedetlen maradt). A felület csak a
+   lenyomott gombé és csak a lenyomás alatt él, tehát más elem kattintását nem
+   veheti el: a túlfedés csak azt jelenti, hogy a gombon kezdett, a széle
+   mellett befejezett nyomás is a gombé marad.
+   KIVÉTEL a kártyát fedő gomb (`.kc-mycourse__cta`, /kurzusaim): annak saját,
+   az egész kártyát fedő `::after`-je van. A `transform` és a `position:
+   relative` is a gombhoz kötné ezt a réteget, és a kártyára (borítókép, cím)
+   eső koppintás elveszne; ezért ez a gomb nem húzódik össze, csak színt vált.
    A kártya NEM húzódik össze, csak a tint jelzi a nyomást: a kártya maga nem
    link, a benne lévő link (vagy annak az egész kártyát fedő `::after`-je)
    kapja a kattintást, és a kártya összehúzása ezt a linket húzná ki a
    felengedés pontja alól. Kiegyenlítő felület itt nem segít, mert a kártyáé
    lenne, nem a linké, és elnyelné a kattintást. */
 @media (prefers-reduced-motion: no-preference) {
-  .kc-button:active:not(:disabled):not(.kc-button--disabled) {
+  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-mycourse__cta) {
     position: relative;
     transform: scale(0.97);
     transition:
@@ -409,10 +417,10 @@
       color var(--kc-motion-press) var(--kc-ease-out);
   }
 
-  .kc-button:active:not(:disabled):not(.kc-button--disabled)::after {
+  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-mycourse__cta)::after {
     content: '';
     position: absolute;
-    inset: -1.6%;
+    inset: calc(-2% - 4px);
   }
 }
 
