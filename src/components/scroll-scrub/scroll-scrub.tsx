@@ -141,6 +141,9 @@ type ThemeStyle = CSSProperties & Record<`--ss-${string}`, string | number>
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value))
 
+/** Ráhagyás a tűzött jelenet-szöveg (a CTA) alja és a sütisáv teteje között, px. */
+const PIN_CTA_GAP = 16
+
 const smoothstep = (value: number) => {
   const x = clamp(value)
   return x * x * (3 - 2 * x)
@@ -294,6 +297,21 @@ export function ScrollScrub({
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches
     const smallViewport = window.matchMedia('(max-width: 860px)')
+    // HIDRATÁLÁS ÉS SÁVSZÉLESSÉG (2026-10-16, a mobil halott kattintások
+    // javítása). Mobilon a ~0,9 MB-os klip ugyanazon a lassú hálózaton
+    // versenyzett a JS-csomaggal, és a hidratálás (vele a menü) késett. A
+    // mobil nézet (a fejléc 900 px-es határa alatt) ezért csak a posztert
+    // mutatja, klipet nem tölt le, és a csökkentett mozgás statikus olvasó
+    // elrendezését kapja (scroll-scrub.css: egy képernyős fejezet, úszó
+    // feliratok helyett a főszöveg utáni lista). Asztalon a letöltés a böngésző első tétlen pillanatában
+    // indul (requestIdleCallback; ahol nincs, például Safariban, 1,5 mp után),
+    // nem a hidratálással versenyezve. Addig a klip első kockája, a poszter
+    // látszik, tehát a lap képe nem változik.
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback
+    const posterOnly = window.matchMedia('(max-width: 899px), (max-height: 480px)')
+    /** Statikus olvasó elrendezés: csökkentett mozgás vagy a mobil poszter-mód. */
+    const staticLayout = () => reduceMotion || posterOnly.matches
+    let idleReady = false
     const usesMobileMedia = () => scrollScrubUsesMobileMedia(window.innerWidth, window.innerHeight)
     const usesMobileVideoTuning = () => coarsePointer || smallViewport.matches
     const sourceFor = (segment: RuntimeSegment) =>
@@ -341,6 +359,25 @@ export function ScrollScrub({
       delete segment.layer.dataset.videoFailed
     }
 
+    // A tűzött jelenet-szöveg kiterjedése a pin tetejétől a szöveg aljáig,
+    // egy kis ráhagyással. Ha ez a sütisávval együtt nem fér a nézetbe, a pin
+    // éppen annyival tapad feljebb, hogy a CTA a sáv fölé kerüljön
+    // (scroll-scrub.css `--ss-pin-need`). A pin alsó térköze nem számít: azzal
+    // a pin akkor is felcsúszna, amikor a CTA már látszik, és a cím
+    // fölöslegesen a fejléc alá kerülne. Csak tűzött (sticky) elrendezésben; a
+    // statikus elrendezést a CSS `top: 0` is védi.
+    const measurePinNeed = () => {
+      for (const pin of root.querySelectorAll<HTMLElement>('.scroll-scrub__chapter-pin')) {
+        pin.style.removeProperty('--ss-pin-need')
+        const copy = pin.querySelector<HTMLElement>('.scroll-scrub__copy')
+        if (copy && getComputedStyle(pin).position === 'sticky') {
+          const need =
+            copy.getBoundingClientRect().bottom - pin.getBoundingClientRect().top + PIN_CTA_GAP
+          pin.style.setProperty('--ss-pin-need', `${Math.ceil(need)}px`)
+        }
+      }
+    }
+
     const layout = () => {
       const pageY = window.scrollY || window.pageYOffset
       rootTop = root.getBoundingClientRect().top + pageY
@@ -349,13 +386,17 @@ export function ScrollScrub({
       mobileMedia = usesMobileMedia()
 
       for (const segment of runtime) {
-        if (segment.loadedSource && segment.loadedSource !== sourceFor(segment)) {
+        if (
+          segment.loadedSource &&
+          (posterOnly.matches || segment.loadedSource !== sourceFor(segment))
+        ) {
           unloadClip(segment)
         }
         const rect = segment.band.getBoundingClientRect()
         segment.start = rect.top + pageY - rootTop
         segment.end = segment.start + rect.height
       }
+      measurePinNeed()
       total = Math.max(runtime.at(-1)?.end ?? viewportHeight, viewportHeight)
       dirty = true
     }
@@ -376,6 +417,8 @@ export function ScrollScrub({
       const source = sourceFor(segment)
       if (
         reduceMotion ||
+        posterOnly.matches ||
+        !idleReady ||
         destroyed ||
         segment.loading ||
         segment.ready ||
@@ -501,7 +544,7 @@ export function ScrollScrub({
           outside = y - segment.end
         }
         let opacity = smoothstep(1 - outside / Math.max(crossfade, 1))
-        if (reduceMotion) {
+        if (staticLayout()) {
           opacity = outside === 0 ? 1 : 0
         }
 
@@ -537,7 +580,7 @@ export function ScrollScrub({
       // mozgásnál az úszó változat helyett a főszöveg utáni lista olvasható.
       for (const [index, caption] of captionList.entries()) {
         const node = captionNodes[index]
-        const opacity = reduceMotion ? 0 : captionOpacity(progress, caption.from, caption.to)
+        const opacity = staticLayout() ? 0 : captionOpacity(progress, caption.from, caption.to)
         node.style.opacity = String(opacity)
         node.setAttribute('aria-hidden', opacity < 0.05 ? 'true' : 'false')
       }
@@ -547,7 +590,7 @@ export function ScrollScrub({
       // viszont el kell venni, különben a láthatatlan gombok elfognák az
       // egérmutatót a film fölött.
       if (copyNodes.length > 0) {
-        const opacity = sceneCopyOpacity(progress, copyHandoff, reduceMotion)
+        const opacity = sceneCopyOpacity(progress, copyHandoff, staticLayout())
         for (const node of copyNodes) {
           node.style.opacity = String(opacity)
           node.style.pointerEvents = opacity < 0.05 ? 'none' : ''
@@ -560,7 +603,7 @@ export function ScrollScrub({
         // tehát a kontraszt a kiúszás közben sem csökken.
         root.style.setProperty(
           '--ss-copy-scrim',
-          String(sceneCopyOpacity(progress, copyHandoff + CAPTION_FADE, reduceMotion)),
+          String(sceneCopyOpacity(progress, copyHandoff + CAPTION_FADE, staticLayout())),
         )
       }
     }
@@ -605,6 +648,10 @@ export function ScrollScrub({
     }
     const onResize = () => {
       if (coarsePointer && window.innerWidth === layoutWidth && usesMobileMedia() === mobileMedia) {
+        // Érintőképernyőn a csak magasságváltozás (címsor, osztott képernyő) a
+        // szakaszokat nem méri újra, a pin magassága viszont a nézettel nő vagy
+        // fogy: a CTA-hoz kellő tapadás ezért friss mérést kap.
+        measurePinNeed()
         return
       }
       layout()
@@ -637,6 +684,10 @@ export function ScrollScrub({
 
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', onResize)
+    // Érintőképernyőn a csak magasságváltozást az onResize kihagyja; a
+    // poszter-mód határának átlépésekor (például osztott képernyő) viszont a
+    // tűzés és a `--ss-pin-need` mérése is változik.
+    posterOnly.addEventListener('change', layout)
     window.addEventListener('orientationchange', layout)
     window.addEventListener('pointerdown', onFirstGesture, {
       once: true,
@@ -647,15 +698,37 @@ export function ScrollScrub({
       passive: true,
     })
 
+    const onIdle = () => {
+      idleReady = true
+      dirty = true
+    }
+    const idleHandle =
+      typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(onIdle)
+        : undefined
+    const idleTimer = idleHandle === undefined ? window.setTimeout(onIdle, 1500) : undefined
+
     layout()
+    // A webfont a kezdeti mérés után is megérkezhet, és a jelenet-szöveg
+    // magasságát (`--ss-pin-need`) is megváltoztatja.
+    void document.fonts?.ready.then(() => {
+      if (!destroyed) {
+        layout()
+      }
+    })
     frame = window.requestAnimationFrame(tick)
 
     return () => {
       destroyed = true
+      if (idleHandle !== undefined) {
+        window.cancelIdleCallback(idleHandle)
+      }
+      window.clearTimeout(idleTimer)
       controllerRef.current = null
       window.cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
+      posterOnly.removeEventListener('change', layout)
       window.removeEventListener('orientationchange', layout)
       window.removeEventListener('pointerdown', onFirstGesture)
       window.removeEventListener('touchstart', onFirstGesture)

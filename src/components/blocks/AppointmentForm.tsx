@@ -305,6 +305,7 @@ export function AppointmentForm({
           className={[
             'kc-field__input',
             'kc-appointment__textarea',
+            'ph-no-deadclick',
             errors.reason ? 'kc-field__input--error' : '',
           ]
             .filter(Boolean)
@@ -345,7 +346,7 @@ export function AppointmentForm({
                   <input
                     aria-describedby="kc-appointment-availability-hint"
                     checked={values.availability.includes(felirat)}
-                    className="kc-appointment__checkbox"
+                    className="kc-appointment__checkbox ph-no-deadclick"
                     disabled={disabled}
                     id={optionId}
                     name="appointmentAvailability"
@@ -389,7 +390,7 @@ export function AppointmentForm({
             aria-describedby={errors.consentHealth ? 'kc-appointment-consent-error' : undefined}
             aria-invalid={errors.consentHealth ? true : undefined}
             checked={values.consentHealth}
-            className="kc-appointment__checkbox"
+            className="kc-appointment__checkbox ph-no-deadclick"
             disabled={disabled}
             id="kc-appointment-consent"
             name="consentHealth"

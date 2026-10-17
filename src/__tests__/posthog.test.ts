@@ -84,14 +84,28 @@ describe('buildPostHogOptions', () => {
     expect(options.capture_pageleave).toBe(true)
   })
 
-  it('ŐR: a munkamenet-felvétel és az autocapture KIFEJEZETTEN ki van kapcsolva', () => {
+  it('ŐR: a munkamenet-felvétel ki van kapcsolva, az autocapture csak engedélyezőlistával fut, elemszöveg nélkül', () => {
     const options = buildPostHogOptions()
     // Mindkettő a posthog-js-ben ALAPBÓL aktív (a felvételt a projekt-oldali
-    // kapcsoló, az autocapture-t a kliens dönti el), ezért a `false` érték
-    // KIÍRÁSA a védelem. Ha valaki törli a sort, a viselkedés némán megfordul:
-    // ez az őr ezért nem a hiányt, hanem a KIMONDOTT false-t követeli meg.
+    // kapcsoló, az autocapture-t a kliens dönti el), ezért a kiírt érték a
+    // védelem. Ha valaki törli a sort, a viselkedés némán megfordul.
     expect(options.disable_session_recording).toBe(true)
-    expect(options.autocapture).toBe(false)
+    // Az autocapture 2026-10-16 óta csak a menü és a `.kc-button` gombok
+    // kattintását küldi (tulajdonosi kérés). A posthog-js-ben az üres vagy
+    // hiányzó lista MINDENT enged, és az elem szövegét is felküldi, ezért a
+    // pontos lista a szerződés: `true`, egy bővebb lista vagy egy elhagyott
+    // engedélyezőlista panasz-szöveget is az elemzésbe vihetne.
+    expect(options.autocapture).toEqual({
+      css_selector_allowlist: [
+        '.kc-nav-mobile__toggle',
+        '.kc-button',
+        '.kc-nav-mobile__link',
+        '.kc-nav-mobile__sublink',
+      ],
+    })
+    // A `$dead_click` az engedélyezőlistát nem nézi, bármely elemre jöhet
+    // (egy cikk bekezdésére is). Az elem szövegét csak ez tartja vissza.
+    expect(options.mask_all_text).toBe(true)
   })
 })
 
@@ -119,5 +133,66 @@ describe('M9 — a $pageview URL-je a capture-határon megtisztítva', () => {
     expect(
       buildPageViewProperties('/jelszo-visszaallitas?token=DUMMY-JEGY&utm_source=hirlevel'),
     ).toEqual({ $current_url: '/jelszo-visszaallitas?utm_source=hirlevel' })
+  })
+})
+
+describe('M9 — a before_send minden eseményt a beágyazott értékeivel együtt tisztít', () => {
+  const JEGY = 'DUMMY-JEGY'
+  const cim = `https://kineticare.hu/jelszo-visszaallitas?token=${JEGY}&utm_source=hirlevel`
+  const tiszta = 'https://kineticare.hu/jelszo-visszaallitas?utm_source=hirlevel'
+
+  function kuldes(event: string, properties: Record<string, unknown>): string {
+    const beforeSend = buildPostHogOptions().before_send
+    if (typeof beforeSend !== 'function') {
+      throw new Error('A before_send horog hiányzik')
+    }
+    const result = beforeSend({ uuid: 'u', event, properties } as Parameters<typeof beforeSend>[0])
+    return JSON.stringify(result)
+  }
+
+  it('a $$heatmap adatából a címkulcsban álló jegy kivágva, az utm megmarad', () => {
+    const kimenet = kuldes('$$heatmap', { $heatmap_data: { [cim]: [{ x: 1, y: 2 }] } })
+    expect(kimenet).not.toContain(JEGY)
+    expect(kimenet).toContain(JSON.stringify(tiszta))
+  })
+
+  it('a $web_vitals beágyazott URL-jeiből a jegy kivágva', () => {
+    const kimenet = kuldes('$web_vitals', {
+      $web_vitals_LCP_event: {
+        name: 'LCP',
+        value: 1200,
+        $current_url: cim,
+        attribution: { url: cim, navigationEntry: { name: cim } },
+      },
+    })
+    expect(kimenet).not.toContain(JEGY)
+    expect(kimenet.split(JSON.stringify(tiszta))).toHaveLength(4)
+  })
+
+  it('a tömbökben, beágyazott tömbökben is tisztít', () => {
+    const kimenet = kuldes('egyedi', { lista: [cim, [{ k: cim }]] })
+    expect(kimenet).not.toContain(JEGY)
+    expect(kimenet.split(JSON.stringify(tiszta))).toHaveLength(3)
+  })
+
+  it('az $exception öt szint mély veremkerete változatlanul kimegy', () => {
+    const kivetel = {
+      $exception_list: [
+        {
+          type: 'Error',
+          stacktrace: { frames: [{ filename: 'app.js', lineno: 1, function: 'f' }] },
+        },
+      ],
+    }
+    expect(JSON.parse(kuldes('$exception', kivetel)).properties).toEqual(kivetel)
+  })
+
+  it('a mélységi korlátnál mélyebb objektum kimarad, nem tisztítatlanul megy ki', () => {
+    let melyen: Record<string, unknown> = { url: cim, [cim]: 1 }
+    for (let i = 0; i < 12; i += 1) {
+      melyen = { n: melyen }
+    }
+    const kimenet = kuldes('egyedi', { melyen })
+    expect(kimenet).not.toContain(JEGY)
   })
 })

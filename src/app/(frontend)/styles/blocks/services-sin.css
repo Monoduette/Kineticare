@@ -532,7 +532,10 @@
   color: var(--kc-color-on-dark);
 }
 
-.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled) {
+/* Nyomva is az ink család marad (a ui.css általános primary `:active`
+   szabálya accent-kékre váltaná); a visszajelzést az összehúzás adja. */
+.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled),
+.kc-services-sin__cta:active:not(:disabled):not(.kc-button--disabled) {
   background-color: var(--kc-color-surface-dark);
   border-color: var(--kc-color-surface-dark);
   color: var(--kc-color-on-dark);

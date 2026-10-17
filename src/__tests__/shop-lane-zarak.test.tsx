@@ -311,8 +311,14 @@ describe('Shop — consent-kapu: nincs /ingest vagy gtag a hozzájárulás előt
     const init = fuggvenyTorzs(olvas('src/lib/analytics/posthog.ts'), 'initPostHog')
     expect(init).toMatch(/isPostHogConfigured\(\)/)
     expect(init).toMatch(/hasAnalyticsConsent\(\)/)
-    expect(init.indexOf('hasAnalyticsConsent')).toBeLessThan(init.indexOf('posthog.init'))
-    expect(init.indexOf('return false')).toBeLessThan(init.indexOf('posthog.init'))
+    // 2026-10-16 óta az SDK lustán töltődik (loadSdk), az init a betöltés után
+    // fut: a hozzájárulás-kapu a LETÖLTÉS és az init előtt is áll.
+    const sdkBetoltes = init.indexOf('loadSdk(')
+    const sdkInit = init.search(/\.init\(POSTHOG_KEY/)
+    expect(sdkBetoltes).toBeGreaterThan(-1)
+    expect(sdkInit).toBeGreaterThan(sdkBetoltes)
+    expect(init.indexOf('hasAnalyticsConsent')).toBeLessThan(sdkBetoltes)
+    expect(init.indexOf('return false')).toBeLessThan(sdkBetoltes)
   })
 
   it('init és capture consent nélkül no-op (kulcs nélkül a tesztkörben)', () => {

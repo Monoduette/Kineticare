@@ -55,6 +55,27 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   radio.focus({ preventScroll: true })
 }
 
+/**
+ * A panelek `data-active` jelzője a rádiók állapotából (a sorrend azonos: az
+ * n-edik rádió az n-edik panelé, Services.tsx).
+ *
+ * MIÉRT: a fülváltás tisztán CSS (`:checked ~`), tehát DOM-változás nélkül
+ * történik. A PostHog halott kattintásnak veszi azt a koppintást, amely után
+ * 2,5 másodpercen belül nincs DOM-mutáció; ez az attribútum-írás a valódi
+ * váltást láthatóvá teszi számára. Megjelenést nem befolyásol.
+ * https://posthog.com/docs/product-analytics/dead-clicks
+ */
+export function sinPanelAllapot(fieldset: HTMLElement): void {
+  const radiok = [...fieldset.querySelectorAll<HTMLInputElement>('input.kc-services-sin__input')]
+  const panelek = [...fieldset.querySelectorAll<HTMLElement>('article.kc-services-sin__panel')]
+  panelek.forEach((panel, index) => {
+    const aktiv = radiok[index]?.checked ? 'true' : 'false'
+    if (panel.dataset.active !== aktiv) {
+      panel.dataset.active = aktiv
+    }
+  })
+}
+
 export function SinKoppintasIgazito({ fieldsetId }: { fieldsetId: string }) {
   useEffect(() => {
     const fieldset = document.getElementById(fieldsetId)
@@ -62,8 +83,19 @@ export function SinKoppintasIgazito({ fieldsetId }: { fieldsetId: string }) {
       return
     }
     const kezelo = (event: MouseEvent) => sinCimkeKattintas(event)
+    const valtas = (event: Event) => {
+      if (event.target instanceof HTMLInputElement && event.target.type === 'radio') {
+        sinPanelAllapot(fieldset)
+      }
+    }
+    // A hidratálás előtti (JS nélküli) váltás után is igaz legyen a jelző.
+    sinPanelAllapot(fieldset)
     fieldset.addEventListener('click', kezelo)
-    return () => fieldset.removeEventListener('click', kezelo)
+    fieldset.addEventListener('change', valtas)
+    return () => {
+      fieldset.removeEventListener('click', kezelo)
+      fieldset.removeEventListener('change', valtas)
+    }
   }, [fieldsetId])
   return null
 }

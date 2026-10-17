@@ -331,6 +331,8 @@
   /* ---- Interakció -------------------------------------------------------- */
   --kc-motion-fast: 120ms;
   --kc-motion-base: 200ms;
+  /* Nyomás-visszajelzés (`:active`): a 0,1 s-os azonnaliság-küszöb alatt. */
+  --kc-motion-press: 80ms;
   --kc-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 

@@ -333,6 +333,98 @@
   transform: translateY(-2px);
 }
 
+/* ---- Azonnali nyomás-visszajelzés (2026-10-16) ----------------------------
+   MIÉRT: lassú hálózaton a lap a React-hidratálás előtt 3–5 mp-ig látszik,
+   de nem reagál, és a látogató újra meg újra koppint (PostHog: a mobil halott
+   kattintások zöme). A nyomott állapot tisztán CSS, tehát a hidratálás előtt
+   is azonnal válaszol: a 0,1 s-os határon belül, amit a felhasználó még
+   „azonnalinak” érez (NN/g, Response Times: The 3 Important Limits,
+   https://www.nngroup.com/articles/response-times-3-important-limits/). A
+   nyomott réteg a rendszerek bevett állapota (Material 3, States: pressed,
+   https://m3.material.io/foundations/interaction/states/state-layers; Apple
+   HIG, Buttons, https://developer.apple.com/design/human-interface-guidelines/buttons).
+   - `touch-action: manipulation`: a böngésző nem vár dupla koppintásos
+     nagyításra (MDN, touch-action).
+   - `-webkit-tap-highlight-color: transparent`: a rendszer szürke villanása
+     helyett a saját, kontrasztra mért nyomott állapot látszik.
+   - A 0,97-es összehúzás csak mozgást engedő beállításnál (WCAG 2.2 SC 2.3.3).
+   Kontraszt (számolt): primary nyomva fehér az accent-deeper-en 7,08:1;
+   secondary/ghost nyomva ink a tint-en 13,53:1 (a ghost accent-deep felirata a
+   tint-en 4,72:1 lenne, ezért ink-re vált); kártya: ink 13,53:1, text-muted
+   8,05:1 a tint-en. A fókuszgyűrű a globális :focus-visible (base.css: 3 px
+   accent-deep, 2 px eltolás), a nyomott állapot nem írja felül.
+   A hover-szabályok `:not(:disabled)` miatt erősebbek, ezért itt AZONOS
+   erejű szelektorok állnak, utánuk: egérrel lenyomva is a nyomott szín nyer. */
+.kc-button,
+.kc-card--interactive {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.kc-button--primary:active:not(:disabled):not(.kc-button--disabled) {
+  background-color: var(--kc-color-accent-deeper);
+  color: var(--kc-color-on-primary);
+}
+
+.kc-button--secondary:active:not(:disabled):not(.kc-button--disabled),
+.kc-button--ghost:active:not(:disabled):not(.kc-button--disabled) {
+  background-color: var(--kc-color-surface-tint);
+  color: var(--kc-color-text);
+}
+
+.kc-card--interactive:active {
+  background-color: var(--kc-color-surface-tint);
+}
+
+/* Sötét sávon a tint kiabálna: a secondary a halvány akcentre telik (ink
+   felirattal 8,49:1), a ghost csak színt vált (accent-quiet az inken 8,49:1). */
+.kc-section--dark .kc-button--secondary:active:not(:disabled):not(.kc-button--disabled) {
+  background-color: var(--kc-color-on-dark-muted);
+  color: var(--kc-color-surface-dark);
+}
+
+.kc-section--dark .kc-button--ghost:active:not(:disabled):not(.kc-button--disabled) {
+  background-color: transparent;
+  color: var(--kc-color-on-dark-muted);
+}
+
+/* Az összehúzás a találati dobozt is összehúzza: a gomb szélén lenyomott,
+   majd felengedett egér (vagy ujj) már a dobozon kívül esne, és a kattintás a
+   szülőé lenne, azaz új halott kattintás. Nyomva ezért egy láthatatlan
+   felület kiegyenlíti az összehúzást: 1/0,97 ≈ 1,031, oldalanként 1,6%, plusz
+   a 2 px-es keret, mert az abszolút `::after` a belső (padding) dobozhoz
+   igazodik, plusz ráhagyás a tört pixeles kerekítésre (mérve: 1,6% + 2 px
+   mellett a gomb alsó szélén 0,3–0,6 px fedetlen maradt). A felület csak a
+   lenyomott gombé és csak a lenyomás alatt él, tehát más elem kattintását nem
+   veheti el: a túlfedés csak azt jelenti, hogy a gombon kezdett, a széle
+   mellett befejezett nyomás is a gombé marad.
+   KIVÉTEL a kártyát fedő gomb (`.kc-button--stretched`, például a
+   /kurzusaim `.kc-mycourse__cta`-ja): annak saját, az egész kártyát fedő
+   `::after`-je van. A `transform` és a `position:
+   relative` is a gombhoz kötné ezt a réteget, és a kártyára (borítókép, cím)
+   eső koppintás elveszne; ezért ez a gomb nem húzódik össze, csak színt vált.
+   A kártya NEM húzódik össze, csak a tint jelzi a nyomást: a kártya maga nem
+   link, a benne lévő link (vagy annak az egész kártyát fedő `::after`-je)
+   kapja a kattintást, és a kártya összehúzása ezt a linket húzná ki a
+   felengedés pontja alól. Kiegyenlítő felület itt nem segít, mert a kártyáé
+   lenne, nem a linké, és elnyelné a kattintást. */
+@media (prefers-reduced-motion: no-preference) {
+  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-button--stretched) {
+    position: relative;
+    transform: scale(0.97);
+    transition:
+      transform var(--kc-motion-press) var(--kc-ease-out),
+      background-color var(--kc-motion-press) var(--kc-ease-out),
+      color var(--kc-motion-press) var(--kc-ease-out);
+  }
+
+  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-button--stretched)::after {
+    content: '';
+    position: absolute;
+    inset: calc(-2% - 4px);
+  }
+}
+
 /* A KÁRTYÁN belüli, osztály nélküli címsor komponens-cím, nem szekció-cím
    („Számlázási adatok", „Adataim", „Elállási jog"): a három-méretes skálán a
    TÖRZSMÉRETEN (M) áll, a szintjét a 700-as súly és a törzs-betű adja. A

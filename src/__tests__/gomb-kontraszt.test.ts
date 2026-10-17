@@ -256,6 +256,15 @@ const PAROK: readonly Par[] = [
   p('kc-button--secondary', 'sötét sáv', SZIN('on-dark'), SZIN('surface-dark'), 4.5, '1.4.3'),
   p('kc-button--ghost', 'alap', SZIN('primary'), SZIN('bg'), 4.5, '1.4.3'),
   p('kc-button--ghost', 'alap / tint', SZIN('primary'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  // --- nyomott (:active) állapotok, 2026-10-16 (ui.css „Azonnali nyomás-visszajelzés”) ---
+  p('kc-button--primary', 'nyomva', SZIN('on-primary'), SZIN('accent-deeper'), 4.5, '1.4.3'),
+  p('kc-button--secondary', 'nyomva', SZIN('text'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  p('kc-button--ghost', 'nyomva', SZIN('text'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  p('kc-card--interactive', 'nyomva, másodlagos szöveg', SZIN('text-muted'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  p('kc-button--secondary', 'sötét sáv nyomva', SZIN('surface-dark'), SZIN('on-dark-muted'), 4.5, '1.4.3'),
+  // A layout.css `.kc-nav-mobile__toggle:active` az ikont a fejléc akcentjére
+  // (--kc-header-accent = accent-deeper) színezi, nem ink-re.
+  p('kc-nav-mobile__toggle', 'nyomva, ikon', SZIN('accent-deeper'), SZIN('surface-tint'), 3, '1.4.11'),
   p(
     'kc-button--ghost',
     'sötét sáv hover',
@@ -928,6 +937,11 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       indok: 'Ua.: hover-kitöltés, a fókuszgyűrű az offset miatt a lapra esik.',
     },
     {
+      szelektor: '.kc-button--primary:active:not(:disabled):not(.kc-button--disabled)',
+      felulir: null,
+      indok: 'Ua.: nyomott kitöltés (2026-10-16), a fókuszgyűrű az offset miatt a lapra esik.',
+    },
+    {
       szelektor: '.kc-category-filter__chip--active, .kc-category-filter__chip--active:hover',
       felulir: null,
       indok:
@@ -1022,9 +1036,13 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
         'miatt a gyűrű a LAPRA esik (fehér az inken 15,63:1, paperen 14,79:1).',
     },
     {
-      szelektor: '.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled)',
+      szelektor:
+        '.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled), ' +
+        '.kc-services-sin__cta:active:not(:disabled):not(.kc-button--disabled)',
       felulir: null,
-      indok: 'Ua.: hover-kitöltés a gombon, a gyűrű az offset miatt a lapra esik.',
+      indok:
+        'Ua.: hover- és nyomott kitöltés a gombon (nyomva is ink, nem accent), ' +
+        'a gyűrű az offset miatt a lapra esik.',
     },
   ]
 

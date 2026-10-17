@@ -524,9 +524,12 @@ describe('főmenü állapotstílus-őr', () => {
     expect(focusRule?.body).toMatch(/outline-color:\s*color-mix\(/)
   })
 
-  it.each(linkClasses)('%s megtartja a 44px-es célmagasságot', (selector) => {
+  // A mobil fiók tételei 2026-10-16 óta 56/48 px-esek (a dizájn-vászon
+  // mérete); a szerződés a 44 px-es alsó határ, nem a pontos érték.
+  it.each(linkClasses)('%s megtartja a legalább 44px-es célmagasságot', (selector) => {
     const rule = CSS_RULES.find((candidate) => candidate.selectors.includes(selector))
-    expect(rule?.body).toMatch(/min-height:\s*2\.75rem\s*;/)
+    const minHeight = rule?.body.match(/min-height:\s*([\d.]+)rem\s*;/)
+    expect(Number(minHeight?.[1])).toBeGreaterThanOrEqual(2.75)
   })
 })
 

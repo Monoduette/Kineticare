@@ -41,7 +41,7 @@ export function Field({ label, name, id, hint, error, required, className, ...in
         {...inputProps}
         aria-describedby={describedBy}
         aria-invalid={error ? true : undefined}
-        className={['kc-field__input', error ? 'kc-field__input--error' : '']
+        className={['kc-field__input', 'ph-no-deadclick', error ? 'kc-field__input--error' : '']
           .filter(Boolean)
           .join(' ')}
         id={inputId}

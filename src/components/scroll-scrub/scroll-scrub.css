@@ -236,7 +236,15 @@
 
 .scroll-scrub__chapter-pin {
   position: sticky;
-  top: 0;
+  /* Ha a tűzött jelenet-szöveg a CTA-ig nem fér a nézetbe (alacsony, széles
+     ablak: például 1280×560, 150%-os Windows-skálázás), a pin annyival tapad
+     feljebb, hogy a CTA aljáig látsszon; különben a CTA a hajtás alatt
+     maradna, és mire a fejezet végén előjön, a szöveg már kiúszott. A
+     látható sütisáv (`--kc-consent-offset`) a nézet alját takarja, ezért a
+     szabad magasságból levonjuk. A szöveg kiterjedését a scroll-scrub.tsx
+     méri (`--ss-pin-need`); mérés nélkül a kifejezés pozitív, és a pin a
+     tetejével tapad. */
+  top: min(0px, 100dvh - var(--kc-consent-offset, 0px) - var(--ss-pin-need, 0px));
   display: flex;
   align-items: center;
   min-height: 100dvh;
@@ -365,15 +373,26 @@
   display: none;
 }
 
-/* Csökkentett mozgás: természetes olvasási sorrend, a feliratok a főszöveg
-   után következnek. A szöveg megnőhet, a poszter marad 100dvh; nincs videó. */
-@media (prefers-reduced-motion: reduce) {
+/* Csökkentett mozgás ÉS a poszter-mód (900 px alatt, illetve legfeljebb
+   480 px magas nézetben, például fekvő telefonon): természetes olvasási
+   sorrend, a feliratok a főszöveg után következnek. A szöveg megnőhet, a
+   poszter marad 100dvh; nincs videó. A poszter-mód (scroll-scrub.tsx,
+   `posterOnly`, ugyanez a feltétel) klipet nem tölt, ezért a filmsáv sem
+   lehet három képernyő magas: álló kép fölött nincs mit görgetni, és a záró
+   felirat a még csukott kéz fölött jelent volna meg. A 900 px a fejléc
+   határa (layout.css); a 480 px alatti magasságon a tűzött jelenet-szöveg
+   nem fér el, a CTA így sosem lenne kattintható. */
+@media (prefers-reduced-motion: reduce), (max-width: 899px), (max-height: 480px) {
   .scroll-scrub__chapter {
     min-height: 100dvh !important;
   }
 
+  /* A relatív pinre a tűzött állapot `top` eltolása is hatna: egy elavult
+     `--ss-pin-need` (például futás közben bekapcsolt csökkentett mozgás) a
+     címet a lap teteje fölé tolná. */
   .scroll-scrub__chapter-pin {
     position: relative;
+    top: 0;
   }
 
   .scroll-scrub__captions {

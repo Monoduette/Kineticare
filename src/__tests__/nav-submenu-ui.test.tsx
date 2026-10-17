@@ -119,13 +119,28 @@ describe('MobileNav — drawer almenü', () => {
     expect(html).toContain('aria-label="Szolgáltatások almenü"')
   })
 
-  it('a hamburger zárt drawert jelez, és az aria-controls a drawerre mutat', () => {
+  it('a hamburger JavaScript nélkül nyit: popovertarget a fiókra, a fiók manual popover', () => {
+    // 2026-10-16: a nyitás a böngészőé (popover API), nem React `onClick`,
+    // így a hidratálás előtti koppintás sem vész el. A kibontott állapotot a
+    // böngésző közli (HTML-AAM), ezért kézi `aria-expanded` nem állhat rajta:
+    // a szerver `false`-a a hidratálás előtti nyitásnál hazudna.
     const controls = attribute(html, /aria-controls="([^"]+)"/)
     const drawerId = attribute(html, /class="kc-nav-mobile__drawer"[^>]*id="([^"]+)"/)
+    const toggle = html.match(/<button[^>]*aria-controls="[^"]+"[^>]*>/i)?.[0] ?? ''
 
-    expect(html).toContain('aria-expanded="false"')
-    expect(controls).toBeDefined()
+    expect(drawerId).toBe('kc-mobile-menu')
     expect(controls).toBe(drawerId)
+    expect(toggle).toMatch(/popovertarget="kc-mobile-menu"/i)
+    expect(toggle).toMatch(/popovertargetaction="toggle"/i)
+    expect(toggle).not.toMatch(/aria-expanded/)
+    expect(html).toMatch(/<nav[^>]*id="kc-mobile-menu"[^>]*popover="manual"/)
+  })
+
+  it('popover nélküli böngészőre <details><summary> tartalék áll a fiók előtt', () => {
+    expect(html).toMatch(
+      /<details class="kc-nav-mobile__fallback"><summary[^>]*class="kc-nav-mobile__toggle"/,
+    )
+    expect(html.indexOf('kc-nav-mobile__fallback')).toBeLessThan(html.indexOf('<nav'))
   })
 
   it('üres menü esetén beszédes üzenet, nem néma üres drawer', () => {

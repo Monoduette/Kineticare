@@ -22,6 +22,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 ).IS_REACT_ACT_ENVIRONMENT = true
 
 let pathname = '/kurzusok/kez'
+
+/** Navigáció: a Next útvonala és a böngésző címe együtt változik. */
+function nav(path: string): void {
+  pathname = path
+  window.history.replaceState(null, '', path)
+}
+
+/**
+ * Az SDK betöltése alatt sorba állított esemény a keletkezési oldalát viszi
+ * (posthog.ts, originProperties); a közvetlenül küldött nem, azt az SDK maga
+ * olvassa a címből.
+ */
+function keletkezes(path: string): Record<string, string> {
+  return { $current_url: `${window.location.origin}${path}`, $pathname: path }
+}
+
 // A Next useSearchParams-a navigációig ugyanazt az objektumot adja.
 const searchParams = new URLSearchParams()
 
@@ -87,13 +103,24 @@ function captured(): Array<[string, Record<string, unknown> | undefined]> {
   return sdk.delivered
 }
 
+/**
+ * Az SDK 2026-10-16 óta lustán, dinamikus `import()`-tal érkezik (posthog.ts):
+ * az init és a várakozó események kézbesítése egy aszinkron lépés után fut.
+ * Ez a segéd kivárja a lépést, mielőtt a teszt a kézbesítést vizsgálja.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
+
 beforeEach(() => {
   resetPostHogForTests()
   posthog.init.mockReset()
   sdk.optedOut = false
   sdk.delivered = []
   window.localStorage.clear()
-  pathname = '/kurzusok/kez'
+  nav('/kurzusok/kez')
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -105,50 +132,55 @@ afterEach(() => {
 })
 
 describe('PostHog init-sorrend: a korai capture nem vész el', () => {
-  it('tárolt hozzájárulással a hideg betöltés első $pageview-ja és course_viewed-je kimegy, egyszer', () => {
+  it('tárolt hozzájárulással a hideg betöltés első $pageview-ja és course_viewed-je kimegy, egyszer', async () => {
     window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
 
     renderPage(7)
+    await settle()
 
     expect(posthog.init).toHaveBeenCalledTimes(1)
     expect(captured()).toEqual([
-      ['$pageview', { $current_url: '/kurzusok/kez' }],
-      ['course_viewed', { courseId: 7 }],
+      ['$pageview', { ...keletkezes('/kurzusok/kez'), $current_url: '/kurzusok/kez' }],
+      ['course_viewed', { ...keletkezes('/kurzusok/kez'), courseId: 7 }],
     ])
   })
 
-  it('hozzájárulás nélkül semmi nem megy ki; a banner-elfogadás után az aktuális oldal eseményei igen', () => {
+  it('hozzájárulás nélkül semmi nem megy ki; a banner-elfogadás után az aktuális oldal eseményei igen', async () => {
     renderPage(7)
+    await settle()
     expect(posthog.init).not.toHaveBeenCalled()
     expect(captured()).toEqual([])
 
     act(() => optInToAnalytics())
+    await settle()
 
     expect(captured()).toEqual([
-      ['$pageview', { $current_url: '/kurzusok/kez' }],
-      ['course_viewed', { courseId: 7 }],
+      ['$pageview', { ...keletkezes('/kurzusok/kez'), $current_url: '/kurzusok/kez' }],
+      ['course_viewed', { ...keletkezes('/kurzusok/kez'), courseId: 7 }],
     ])
   })
 
-  it('hozzájárulás előtt elhagyott oldal eseménye nem megy ki utólag', () => {
+  it('hozzájárulás előtt elhagyott oldal eseménye nem megy ki utólag', async () => {
     renderPage(7)
-    pathname = '/kurzusok/masik'
+    nav('/kurzusok/masik')
     renderPage(8)
 
     act(() => optInToAnalytics())
+    await settle()
 
     expect(captured()).toEqual([
-      ['$pageview', { $current_url: '/kurzusok/masik' }],
-      ['course_viewed', { courseId: 8 }],
+      ['$pageview', { ...keletkezes('/kurzusok/masik'), $current_url: '/kurzusok/masik' }],
+      ['course_viewed', { ...keletkezes('/kurzusok/masik'), courseId: 8 }],
     ])
   })
 
-  it('kurzusról kurzusra lépve (ugyanaz a komponens) az új courseId-vel is kimegy a course_viewed', () => {
+  it('kurzusról kurzusra lépve (ugyanaz a komponens) az új courseId-vel is kimegy a course_viewed', async () => {
     window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
     renderPage(7)
+    await settle()
     sdk.delivered = []
 
-    pathname = '/kurzusok/masik'
+    nav('/kurzusok/masik')
     renderPage(8)
 
     expect(captured()).toEqual([
@@ -160,28 +192,31 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
     renderPage(8)
     expect(captured()).toEqual([])
   })
-  it('korábbi elutasítás után (az SDK tartós opt-outjával) az újra-elfogadáskor is kimegy az aktuális oldal eseménye', () => {
+  it('korábbi elutasítás után (az SDK tartós opt-outjával) az újra-elfogadáskor is kimegy az aktuális oldal eseménye', async () => {
     // Újratöltés egy korábbi „Elutasítom” után: a tárolt döntés 'denied', az
     // SDK a saját opt-outjával indulna.
     window.localStorage.setItem(CONSENT_STORAGE_KEY, 'denied')
     sdk.optedOut = true
     renderPage(7)
+    await settle()
     expect(posthog.init).not.toHaveBeenCalled()
 
     act(() => optInToAnalytics())
+    await settle()
 
     expect(captured()).toEqual([
-      ['$pageview', { $current_url: '/kurzusok/kez' }],
-      ['course_viewed', { courseId: 7 }],
+      ['$pageview', { ...keletkezes('/kurzusok/kez'), $current_url: '/kurzusok/kez' }],
+      ['course_viewed', { ...keletkezes('/kurzusok/kez'), courseId: 7 }],
     ])
   })
-  it('ugyanazon látogatáson belül visszavonás, navigáció, újra-elfogadás után az aktuális oldal eseménye kimegy', () => {
+  it('ugyanazon látogatáson belül visszavonás, navigáció, újra-elfogadás után az aktuális oldal eseménye kimegy', async () => {
     window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
     renderPage(7)
+    await settle()
     act(() => optOutOfAnalytics())
     sdk.delivered = []
 
-    pathname = '/kurzusok/masik'
+    nav('/kurzusok/masik')
     renderPage(8)
     expect(captured()).toEqual([])
 

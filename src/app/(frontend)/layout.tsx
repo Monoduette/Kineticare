@@ -5,7 +5,7 @@ import { Suspense, type ReactNode } from 'react'
 import { BarionPixel, BarionPixelNoscript } from '@/components/analytics/BarionPixel'
 import { ConsentBanner } from '@/components/analytics/ConsentBanner'
 import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics'
-import { MetaPixel } from '@/components/analytics/MetaPixel'
+import { MetaPixelLazy } from '@/components/analytics/MetaPixelLazy'
 import { PostHogPageView } from '@/components/analytics/PostHogPageView'
 import { PostHogProvider } from '@/components/analytics/PostHogProvider'
 import { kapcsolatIdopontSzerkesztoHref } from '@/components/editor/frontend/szerkeszto-szalag'
@@ -14,6 +14,7 @@ import { FeloldottFooter } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { AnchorScroll } from '@/components/motion/AnchorScroll'
 import { resolveServerUrl } from '@/env'
+import { isMetaPixelConfigured } from '@/lib/analytics/meta-pixel'
 import { getPageBySlug } from '@/lib/cms'
 import { KAPCSOLAT_OLDAL_WEBCIM } from '@/lib/contact-email'
 import { DEFAULT_OG_IMAGE, INDEX_ROBOTS, SITE_DESCRIPTION } from '@/lib/seo'
@@ -162,11 +163,15 @@ export default async function FrontendLayout({ children }: { children: ReactNode
           </Suspense>
           {/* GA4 consent-kapu: mérési azonosító nélkül és hozzájárulás előtt no-op. */}
           <GoogleAnalytics />
-          {/* Meta Pixel consent-kapu: azonosító nélkül és hozzájárulás előtt no-op.
-              A useSearchParams miatt Suspense-határ kell (Next build-szabály). */}
-          <Suspense fallback={null}>
-            <MetaPixel />
-          </Suspense>
+          {/* Meta Pixel consent-kapu: hozzájárulás előtt no-op. Azonosító nélkül
+              nem is renderel (a csomag le sem töltődik), azonosítóval is csak a
+              hidratálás után töltődik be (MetaPixelLazy, `ssr: false`). A
+              useSearchParams miatt Suspense-határ kell (Next build-szabály). */}
+          {isMetaPixelConfigured() ? (
+            <Suspense fallback={null}>
+              <MetaPixelLazy />
+            </Suspense>
+          ) : null}
           {isDraft ? (
             <>
               <ElonezetKeretSzalag elonezet hely="fejlec" />

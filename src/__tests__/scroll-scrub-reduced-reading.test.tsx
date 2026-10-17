@@ -13,7 +13,8 @@ import {
 const css = postcss.parse(readFileSync('src/components/scroll-scrub/scroll-scrub.css', 'utf8'))
 const reduced = css.nodes.find(
   (node): node is AtRule =>
-    node.type === 'atrule' && node.params === '(prefers-reduced-motion: reduce)',
+    node.type === 'atrule' &&
+    node.params.split(',')[0].trim() === '(prefers-reduced-motion: reduce)',
 )!
 const declaration = (nodes: (Rule | AtRule)[], selector: string, prop: string) => {
   const rule = nodes.find(
@@ -23,6 +24,16 @@ const declaration = (nodes: (Rule | AtRule)[], selector: string, prop: string) =
 }
 
 describe('reduced-motion static reading', () => {
+  it('a mobil poszter-mód (900 px alatt) ugyanezt a statikus elrendezést kapja', () => {
+    // A scroll-scrub.tsx `posterOnly` (max-width: 899px) klipet nem tölt; a
+    // filmsáv ezért nem maradhat három képernyő magas egy álló kép fölött.
+    const queries = reduced.params.split(',').map((query) => query.trim())
+    expect(queries).toContain('(max-width: 899px)')
+    // Legfeljebb 480 px magas nézetben (fekvő telefon) a tűzött jelenet-szöveg
+    // nem fér el, a CTA kattinthatatlan lenne.
+    expect(queries).toContain('(max-height: 480px)')
+  })
+
   it('keeps the main copy and its scrim fully visible before and after the old handoff', () => {
     for (const progress of [0, 0.31, 180 / 470.8, 0.8, 1]) {
       expect(sceneCopyOpacity(progress, 0.31, true)).toBe(1)

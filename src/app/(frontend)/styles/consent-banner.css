@@ -129,6 +129,46 @@
   }
 }
 
+/* ---- Nyitott mobilmenü mellett a sáv egy sorra csukódik (2026-10-16) ------
+   A fiók megnyitása a navigáció pillanata: a sáv ilyenkor csak a két döntő
+   gombot mutatja, a magyarázó szöveg a felolvasónak megmarad (vizuálisan
+   rejtett, nem `display: none`). A sáv így alacsonyabb, a mért magassága
+   (`--kc-consent-offset`) is kisebb, tehát a fiók alján kevesebb hely megy el.
+   A popover a felső rétegben áll, a sáv nem takarja; a `<details>`-ágon (régi
+   böngésző) viszont a sáv a fiók fölött van, ott ez tartja elérhetően a
+   „Kapcsolat” menüpontot. NN/g, Sticky headers: a rögzített elem a szükséges
+   minimumra szoruljon (https://www.nngroup.com/articles/sticky-headers/).
+   A két szabály külön áll: a `:popover-open`-t nem ismerő böngésző az egész
+   szelektorlistát eldobná. Csak a fiók sávjában (900 px alatt) élnek: fölötte
+   a fiók rejtett, egy ott nyitva maradt popover nem csukhatja a sávot. */
+@media (max-width: 899px) {
+  html:has(#kc-mobile-menu:popover-open) .kc-consent-banner__text {
+    /* A `.kc-visually-hidden` (base.css) technikája. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  html:has(.kc-nav-mobile__fallback[open]) .kc-consent-banner__text {
+    /* A `.kc-visually-hidden` (base.css) technikája. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
 /* ---- 2.4.11: a sáv ne takarhassa el a fókuszált elemet -------------------- */
 
 .kc-has-consent-banner {

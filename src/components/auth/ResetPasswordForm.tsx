@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
-import { resetPassword } from '../../lib/auth-client'
+import { RESET_LINK_INVALID_MESSAGE, resetPassword } from '../../lib/auth-client'
 import { ctaLabel, ctaProgressLabel } from '../../lib/cta-vocabulary'
 import { isMyCoursePlayerHref } from '../../lib/courses'
 import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl } from '../../lib/return-url'
@@ -58,6 +58,39 @@ export const RESET_SUCCESS_NEXT_STEP =
 export const RESET_SUCCESS_NEXT_STEP_PLAYER =
   'Sikeresen beállítottad az új jelszavadat. A következő gombbal továbbléphetsz a kurzushoz.'
 
+/**
+ * A visszaállító jegy helye a lapfül munkamenet-tárolójában. Az analitika a
+ * jegyet hozzájárulás esetén kiveszi a címsorból, és a lap újratöltése után
+ * innen áll helyre (ResetPasswordRestore). A tároló a lapfülhöz kötött, a fül
+ * bezárásával törlődik; sikeres beállítás vagy érvénytelen jegy után azonnal.
+ */
+const RESET_TOKEN_STORAGE_KEY = 'kc_reset_token'
+
+function rememberResetToken(token: string): void {
+  try {
+    window.sessionStorage.setItem(RESET_TOKEN_STORAGE_KEY, token)
+  } catch {
+    // Tiltott tároló: újratöltés után az e-mailes link kell.
+  }
+}
+
+function forgetResetToken(): void {
+  try {
+    window.sessionStorage.removeItem(RESET_TOKEN_STORAGE_KEY)
+  } catch {
+    // Tiltott tároló: nincs mit törölni.
+  }
+}
+
+/** A lapfülben megjegyzett jegy, vagy `null`. */
+export function readRememberedResetToken(): string | null {
+  try {
+    return window.sessionStorage.getItem(RESET_TOKEN_STORAGE_KEY) || null
+  } catch {
+    return null
+  }
+}
+
 export interface ResetPasswordFormProps {
   token: string
   /** A jelszó-beállítás utáni cél. Alapból `/kurzusaim`. */
@@ -71,6 +104,10 @@ export function ResetPasswordForm({ token, returnUrl }: ResetPasswordFormProps) 
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const safeReturn = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
+
+  useEffect(() => {
+    rememberResetToken(token)
+  }, [token])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -88,8 +125,12 @@ export function ResetPasswordForm({ token, returnUrl }: ResetPasswordFormProps) 
     const result = await resetPassword({ token, password })
     setSubmitting(false)
     if (result.ok) {
+      forgetResetToken()
       setDone(true)
       return
+    }
+    if (result.message === RESET_LINK_INVALID_MESSAGE) {
+      forgetResetToken()
     }
     setError(result.message ?? 'A jelszó-visszaállítás nem sikerült. Kérj új linket.')
   }

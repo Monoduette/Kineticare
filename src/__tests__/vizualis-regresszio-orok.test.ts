@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import postcss from 'postcss'
+import postcss, { type Rule } from 'postcss'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -230,5 +230,224 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
     expect(szabaly).not.toMatch(/outline\s*:\s*none/)
     expect(szabaly).not.toMatch(/box-shadow/)
     expect(szabaly).toMatch(/border-color:\s*var\(--kc-color-focus\)/)
+  })
+})
+
+/**
+ * ŐR (2026-10-16, mobil halott kattintások): a nyomott állapot CSS-ből,
+ * a hidratálás előtt is látszik, és a 0,97-es összehúzás KIZÁRÓLAG mozgást
+ * engedő beállításnál fut (WCAG 2.2 SC 2.3.3; ui.css „Azonnali
+ * nyomás-visszajelzés”). Hihető regresszió: a transform kikerül a
+ * `prefers-reduced-motion: no-preference` blokkból, vagy egy átírás elhagyja a
+ * `touch-action: manipulation`-t, és a böngésző újra vár a dupla koppintásra.
+ */
+describe('azonnali nyomás-visszajelzés (:active)', () => {
+  const fajlok = ['app/(frontend)/styles/ui.css', 'app/(frontend)/styles/layout.css']
+  const gyokerek = fajlok.map((fajl) => postcss.parse(olvas(fajl)))
+  // A kártya szándékosan nem húzódik össze (ui.css: a benne lévő linket húzná
+  // ki a felengedés pontja alól), csak a tint jelzi a nyomást.
+  const vezerlok = [
+    '.kc-button',
+    '.kc-nav-mobile__toggle',
+    '.kc-nav-mobile__link',
+    '.kc-nav-mobile__sublink',
+  ]
+
+  const szabalyok = () => {
+    const lista: { szelektorok: string[]; media: string | null; torzs: string }[] = []
+    for (const gyoker of gyokerek) {
+      gyoker.walkRules((rule) => {
+        const szulo = rule.parent
+        lista.push({
+          szelektorok: rule.selectors,
+          media: szulo?.type === 'atrule' && 'params' in szulo ? String(szulo.params) : null,
+          torzs: rule.nodes.map((node) => node.toString()).join(';'),
+        })
+      })
+    }
+    return lista
+  }
+
+  it.each(vezerlok)('%s lenyomva 0,97-re húzódik, csak mozgást engedő beállításnál', (vezerlo) => {
+    const osszehuzo = szabalyok().filter(
+      (sz) =>
+        sz.szelektorok.some((s) => s.startsWith(vezerlo) && s.includes(':active')) &&
+        /transform:\s*scale\(0\.97\)/.test(sz.torzs),
+    )
+    expect(osszehuzo.length).toBeGreaterThan(0)
+    for (const sz of osszehuzo) {
+      expect(sz.media).toBe('(prefers-reduced-motion: no-preference)')
+      expect(sz.torzs).toMatch(/var\(--kc-motion-press\)/)
+    }
+  })
+
+  it.each([...vezerlok, '.kc-card--interactive'])(
+    '%s nem vár dupla koppintásra, és nincs rendszer-villanás',
+    (vezerlo) => {
+      const alap = szabalyok().filter((sz) => sz.szelektorok.includes(vezerlo) && sz.media === null)
+      const torzs = alap.map((sz) => sz.torzs).join(';')
+      expect(torzs).toMatch(/touch-action:\s*manipulation/)
+      expect(torzs).toMatch(/-webkit-tap-highlight-color:\s*transparent/)
+    },
+  )
+
+  // A kártyát fedő gomb (kiterjesztett `::after`/`::before` link)
+  // összehúzódva a kiterjesztett felületét is a saját dobozához kötné, és a
+  // kártyára eső koppintás elveszne (/kurzusaim, 2026-10-17). Az ilyen gomb a
+  // `kc-button--stretched` jelölőt viseli, és a ui.css összehúzó szabálya ezt
+  // zárja ki. Az őr a jelölőt keresi: bármelyik CSS-ben kiterjesztett réteget
+  // kapó osztály, ha gombon (`<Button>` vagy `kc-button` osztályú elem) áll,
+  // ugyanabban a className-sorban a jelölőt is viselje.
+  // Amit felismer: `position: absolute` és `inset` (nulla vagy negatív
+  // hossz bármely egységgel, `0.0`, `-0px`, `calc(0px)`, `!important`-tal
+  // is), `inset-block` + `inset-inline`, a négy oldal 0-ja, vagy `top`/`left`
+  // 0 és 100%-os méret; egy- és kétkettőspontos `:after`/`::before`, több
+  // szabályra bontva, beágyazva (`&::after`), és a szabályon belüli
+  // `@media`/`@container`/`@supports` blokkban beágyazva is.
+  // Amit NEM követ: a CSS-változóból jövő értéket (`inset: var(--x)`), a
+  // logikai oldalankénti alakot (`inset-inline-start` + …), és ha az
+  // osztálynév konstansból vagy egy burkoló komponens propjából érkezik a
+  // gombra; ilyenkor a jelölőt kézzel kell feltenni.
+  it('a kártyát fedő gomb nem húzódik össze lenyomva', () => {
+    const fajlok = (konyvtar: string): string[] =>
+      readdirSync(join(REPO, konyvtar), { withFileTypes: true }).flatMap((bejegyzes) => {
+        const ut = join(konyvtar, bejegyzes.name)
+        return bejegyzes.isDirectory() ? fajlok(ut) : [ut]
+      })
+    const osszes = fajlok('.').map((ut) => relative('.', ut))
+    // Az érték fed, ha minden tagja nulla vagy negatív hossz (`inset: 0 0 0 0`,
+    // `0rem`, `-0px`, `calc(0px)`, `-1px`; `!important`-tal is): a negatív
+    // érték a szülőn túl is kiterjeszt.
+    const nulla = (ertek: string | undefined) =>
+      ertek !== undefined &&
+      ertek
+        .replace(/!important/i, '')
+        .trim()
+        .split(/\s+/)
+        .every((tag) => {
+          const szam = /^(?:calc\()?(-?\d*\.?\d+)([a-z%]*)\)?$/i.exec(tag)
+          return szam !== null && Number(szam[1]) <= 0
+        })
+    const teljes = (ertek: string | undefined) =>
+      ertek?.replace(/!important/i, '').trim() === '100%'
+    // Szelektoronként összegyűjtött deklarációk: a több szabályra bontott és a
+    // beágyazott (`&::after`) írásmód is egy helyre kerül.
+    const deklaraciok = new Map<string, Map<string, string>>()
+    const teljesSzelektor = (rule: Rule, szelektor: string): string[] => {
+      // A szabályon belüli at-rule (`.x { @media … { &::after {…} } }`) nem
+      // töri meg a láncot: az `&` a legközelebbi szabály-ősre oldódik.
+      let szulo = rule.parent
+      while (szulo?.type === 'atrule') szulo = szulo.parent
+      if (szulo?.type !== 'rule') return [szelektor]
+      return (szulo as Rule).selectors.flatMap((ős) =>
+        teljesSzelektor(
+          szulo as Rule,
+          szelektor.includes('&') ? szelektor.replaceAll('&', ős) : `${ős} ${szelektor}`,
+        ),
+      )
+    }
+    for (const fajl of osszes.filter((ut) => ut.endsWith('.css'))) {
+      postcss.parse(olvas(fajl)).walkRules((rule) => {
+        for (const szelektor of rule.selectors.flatMap((sz) => teljesSzelektor(rule, sz))) {
+          const kulcs = szelektor.trim().replace(/\s+/g, ' ')
+          const props = deklaraciok.get(kulcs) ?? new Map<string, string>()
+          for (const node of rule.nodes) {
+            if (node.type === 'decl') props.set(node.prop, node.value)
+          }
+          deklaraciok.set(kulcs, props)
+        }
+      })
+    }
+    const kiterjesztett = new Set<string>()
+    for (const [szelektor, props] of deklaraciok) {
+      if (!/::?(after|before)$/.test(szelektor)) continue
+      const ertek = (prop: string) => props.get(prop)
+      const fed =
+        nulla(ertek('inset')) ||
+        (nulla(ertek('inset-block')) && nulla(ertek('inset-inline'))) ||
+        ['top', 'right', 'bottom', 'left'].every((p) => nulla(ertek(p))) ||
+        (nulla(ertek('top')) &&
+          nulla(ertek('left')) &&
+          teljes(ertek('width')) &&
+          teljes(ertek('height')))
+      if (
+        ertek('position')
+          ?.replace(/!important/i, '')
+          .trim() !== 'absolute' ||
+        !fed
+      )
+        continue
+      const utolso = szelektor.split(/[\s>+~]+/).at(-1) ?? ''
+      for (const [, osztaly] of utolso.matchAll(/\.([\w-]+)/g)) kiterjesztett.add(osztaly)
+    }
+
+    const gombon: string[] = []
+    const jeloloNelkul: string[] = []
+    for (const fajl of osszes.filter((ut) => ut.endsWith('.tsx'))) {
+      const forras = olvas(fajl)
+      for (const osztaly of kiterjesztett) {
+        for (const talalat of forras.matchAll(new RegExp(`(?<![\\w-])${osztaly}(?![\\w-])`, 'g'))) {
+          const elotte = forras.slice(0, talalat.index)
+          const cimke = elotte.slice(elotte.search(/<[A-Za-z][\w.]*[^<]*$/))
+          const sor = forras.slice(
+            forras.lastIndexOf('\n', talalat.index) + 1,
+            forras.indexOf('\n', talalat.index),
+          )
+          if (!/^<Button\b/.test(cimke) && !/(?<![\w-])kc-button(?![\w-])/.test(cimke + sor)) {
+            continue
+          }
+          gombon.push(osztaly)
+          if (!/(?<![\w-])kc-button--stretched(?![\w-])/.test(sor)) {
+            jeloloNelkul.push(`${fajl}: ${osztaly}`)
+          }
+        }
+      }
+    }
+    // Kanári: a /kurzusaim kártyagombját a keresés megtalálja.
+    expect(gombon).toContain('kc-mycourse__cta')
+    expect(jeloloNelkul, 'kártyát fedő gomb a kc-button--stretched jelölő nélkül').toEqual([])
+
+    const osszehuzo = szabalyok().filter(
+      (sz) =>
+        sz.szelektorok.some((s) => s.startsWith('.kc-button') && s.includes(':active')) &&
+        /transform:\s*scale\(0\.97\)/.test(sz.torzs),
+    )
+    expect(osszehuzo.length).toBeGreaterThan(0)
+    for (const sz of osszehuzo) {
+      for (const szelektor of sz.szelektorok) {
+        expect(szelektor, 'a kártyát fedő gomb kimarad az összehúzásból').toContain(
+          ':not(.kc-button--stretched)',
+        )
+      }
+    }
+  })
+
+  it('a nyomás ideje 80 ms (a 0,1 s-os azonnaliság-határ alatt)', () => {
+    expect(olvas('app/(frontend)/styles/tokens.css')).toMatch(/--kc-motion-press:\s*80ms;/)
+  })
+
+  // A saját kitöltésű elsődleges gombok (ink a sínen, fordított fehér a sötét
+  // sávokon) nyomva a SAJÁT hover-színükön maradnak. A ui.css általános primary
+  // `:active` szabálya (0,4,0) erősebb az alapjuknál, és enélkül accent-kékre
+  // váltaná őket billentyűs (Szóköz) vagy érintéses nyomásnál.
+  it.each([
+    ['app/(frontend)/styles/blocks/services-sin.css', '.kc-services-sin__cta'],
+    [
+      'app/(frontend)/styles/blocks/cta-banner.css',
+      '.kc-section--dark .kc-cta-banner__action .kc-button--primary',
+    ],
+    ['components/courses/promo/promo-course.css', '.kc-promo-hero__button.kc-button--primary'],
+    ['components/courses/promo/promo-course.css', '.kc-promo-closing__button.kc-button--primary'],
+  ])('%s: %s nyomva a hover-színén marad', (fajl, gomb) => {
+    let kozos: Rule | null = null
+    postcss.parse(olvas(fajl)).walkRules((rule) => {
+      const sajat = rule.selectors
+        .map((s) => s.replace(/\s+/g, ' '))
+        .filter((s) => s.startsWith(gomb))
+      if (sajat.some((s) => s.includes(':hover')) && sajat.some((s) => s.includes(':active'))) {
+        kozos = rule
+      }
+    })
+    expect(kozos, `${gomb}: a :hover és az :active egy szabályban`).not.toBeNull()
   })
 })
