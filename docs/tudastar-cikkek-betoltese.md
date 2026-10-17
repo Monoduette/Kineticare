@@ -30,9 +30,12 @@ Ez alattomos hibaforrás: egy táblázatot tartalmazó cikk az adatbázisban
 hiánytalannak látszana, miközben a látogató nem látja a felét. Ezért a fordító
 minden fel nem ismert szerkezetre **kivételt dob**, nem ugorja át. A 7. és 8.
 cikk törzsében összehasonlító táblák vannak: ezeket a fordító ismert
-csomópontokra (felsorolás, „Fejléc: érték”) alakítja, mert a storefront és a
-Payload alapszerkesztője nem ismer `table` csomópontot. Kódblokk és második H1
-továbbra is dob.
+csomópontokra alakítja (soronként egy félkövér bekezdés, a sor címe, és egy
+felsorolás „Fejléc: érték” tételekkel), mert a storefront és a Payload
+alapszerkesztője nem ismer `table` csomópontot. A sorok közötti bekezdés
+szándékos: a Payload 3.90.2 szerkesztője (Lexical 0.50) az egymás melletti
+felsorolásokat az első szerkesztéskor egybefűzné, és a mentés a sorhatárokat
+eltüntetné. Kódblokk és második H1 továbbra is dob.
 
 ## 3. Mi kerül be a cikkből, és mi nem
 

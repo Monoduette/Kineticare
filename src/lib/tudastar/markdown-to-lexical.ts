@@ -271,18 +271,36 @@ function tablaCellak(sor: string): string[] {
 
 function tablaElvalaszto(cellak: readonly string[]): boolean {
   return (
-    cellak.length > 0 &&
-    cellak.every((cella) => cella.length === 0 || TABLA_ELVALASZTO.test(cella))
+    cellak.length > 0 && cellak.every((cella) => cella.length === 0 || TABLA_ELVALASZTO.test(cella))
   )
 }
 
+/** Félkövér bekezdés: a táblázat-sor első cellája, a sor címe. */
+const felkoverBekezdes = (sor: string): BlockNode => {
+  const felkover = (node: BlockNode): BlockNode => {
+    const n = node as BlockNode & { type?: string; format?: number; children?: BlockNode[] }
+    if (n.type === 'text') return { ...n, format: (n.format ?? 0) | FORMAT_BOLD } as BlockNode
+    return Array.isArray(n.children)
+      ? ({ ...n, children: n.children.map(felkover) } as BlockNode)
+      : n
+  }
+  const alap = bekezdes(sor) as BlockNode & { children: BlockNode[] }
+  return { ...alap, children: alap.children.map(felkover) } as BlockNode
+}
+
 /**
- * Markdown-tábla → bekezdés + felsorolás.
+ * Markdown-tábla → soronként egy félkövér bekezdés és egy felsorolás.
  *
  * A storefront szerializálója és a Payload alapszerkesztője nem ismer táblázat-
  * csomópontot. A cellák szövegét ezért ismert csomópontokban tartjuk: minden
- * adat-sor egy felsorolás, a fejléc szövege a tétel elején („Fejléc: érték”),
- * hogy a T4 szószám-őr és a látogató is megkapja a teljes tartalmat.
+ * adat-sor első cellája félkövér bekezdés (a sor címe), a többi cella egy
+ * felsorolás, a fejléc szövege a tétel elején („Fejléc: érték”), hogy a T4
+ * szószám-őr és a látogató is megkapja a teljes tartalmat.
+ *
+ * A sorok közé azért kerül bekezdés, mert a Payload 3.90.2 szerkesztője
+ * (Lexical 0.50) az egymás melletti, azonos típusú felsorolásokat az első
+ * szerkesztéskor egybefűzi, és a mentés a táblázat sorhatárait eltüntetné
+ * (T7 a tudastar-markdown-lexical tesztben).
  */
 function tablaCsomopontok(sorok: readonly string[]): BlockNode[] {
   const parsed = sorok
@@ -305,7 +323,9 @@ function tablaCsomopontok(sorok: readonly string[]): BlockNode[] {
       tetelek.push(fej.length > 0 ? `${fej}: ${ertek}` : ertek)
     }
     if (tetelek.length === 0) continue
-    csomopontok.push(lista(tetelek, false))
+    const [cim, ...tobbi] = tetelek
+    csomopontok.push(felkoverBekezdes(cim))
+    if (tobbi.length > 0) csomopontok.push(lista(tobbi, false))
   }
   if (csomopontok.length === 0) {
     throw new Error('Táblázat a cikk törzsében üres adatsorokkal.')

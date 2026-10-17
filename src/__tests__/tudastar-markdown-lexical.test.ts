@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -35,8 +36,7 @@ const CIKKEK = [
   '10-gipszben-a-kezed',
 ] as const
 
-const cikkPath = (nev: string): string =>
-  path.join(process.cwd(), 'docs', 'cikkek', `${nev}.md`)
+const cikkPath = (nev: string): string => path.join(process.cwd(), 'docs', 'cikkek', `${nev}.md`)
 
 interface LexicalLike {
   type?: string
@@ -108,9 +108,7 @@ describe('T1 — a törzs kivágása', () => {
       const { lines } = extractArticleBody(readFileSync(cikkPath(nev), 'utf8'))
       const torzs = lines.join('\n')
       expect(torzs, `${nev}: önteszt a törzsben`).not.toContain('a cikkíró öntesztje')
-      expect(torzs, `${nev}: vezetői jelzés a törzsben`).not.toContain(
-        'A vezetőnek szóló jelzések',
-      )
+      expect(torzs, `${nev}: vezetői jelzés a törzsben`).not.toContain('A vezetőnek szóló jelzések')
     }
   })
 
@@ -178,11 +176,7 @@ describe('T2 — soron belüli formázás', () => {
 
 describe('T3 — a fel nem ismert szerkezet HANGOSAN bukik', () => {
   it('a törzsbeli táblázatot ismert csomópontokra fordítja, szót nem veszt', () => {
-    const doc = markdownToLexical([
-      '| Fejléc A | Fejléc B |',
-      '|---|---|',
-      '| alma | körte |',
-    ])
+    const doc = markdownToLexical(['| Fejléc A | Fejléc B |', '|---|---|', '| alma | körte |'])
     const szoveg = szovegeOf((doc as unknown as { root: unknown }).root)
     expect(szoveg).toContain('Fejléc A')
     expect(szoveg).toContain('alma')
@@ -287,4 +281,81 @@ describe('T6 — a 7. és 8. cikk zárai', () => {
     }
     expect(src).not.toMatch(/kapcsolodoSlugok: \[[^\]]*de-quervain-szindroma/)
   })
+})
+
+/**
+ * T7 — a szerkesztő nem vonhatja össze a táblázat sorait (2026-10-17, a #329
+ * kritikus körének megerősített találata).
+ *
+ * A Lexical 0.50 (a Payload 3.90.2 szerkesztője) betöltéskor minden
+ * csomópontot piszkosnak jelöl, és a lista-transzformáció az egymás melletti,
+ * azonos típusú felsorolásokat egybefűzi. Az első gépelés után a mentés ezt az
+ * összefűzött állapotot írja vissza: a táblázat soronkénti listái egy hosszú
+ * listává olvadnak a nyilvános oldalon. A szerződés: a fordító kimenete a
+ * telepített szerkesztőben betöltve és egyszer szerkesztve is ugyanaz a
+ * szerkezet marad.
+ */
+describe('T7 — a szerkesztőben szerkesztve is megmarad a szerkezet', () => {
+  type Csomopont = { type?: string; listType?: string; children?: Csomopont[] }
+  const gyokerGyerekek = (doc: unknown): Csomopont[] =>
+    ((doc as { root: { children: Csomopont[] } }).root.children ?? []) as Csomopont[]
+  const szerkezet = (gyerekek: readonly Csomopont[]): string[] =>
+    gyerekek.map((gy) =>
+      gy.type === 'list' ? `list:${gy.listType}:${gy.children?.length ?? 0}` : String(gy.type),
+    )
+
+  it.each(CIKKEK)('%s: nincs két egymás melletti, azonos típusú felsorolás', (nev) => {
+    const { lines } = extractArticleBody(readFileSync(cikkPath(nev), 'utf8'))
+    const gyerekek = gyokerGyerekek(markdownToLexical(lines))
+    for (let i = 1; i < gyerekek.length; i += 1) {
+      const elozo = gyerekek[i - 1]
+      const aktualis = gyerekek[i]
+      expect(
+        elozo.type === 'list' && aktualis.type === 'list' && elozo.listType === aktualis.listType,
+        `${nev}: a ${i}. és ${i + 1}. csomópont egymás melletti ${aktualis.listType} lista`,
+      ).toBe(false)
+    }
+  })
+
+  it.each(CIKKEK)(
+    '%s: a telepített Lexical-szerkesztőben betöltve és egyszer szerkesztve ugyanaz a szerkezet',
+    async (nev) => {
+      // A szerkesztő a @payloadcms/richtext-lexical függősége: szándékosan a
+      // telepített változatot töltjük be, mert annak viselkedése a szerződés.
+      const csomag = (ut: string) =>
+        import(pathToFileURL(path.join(process.cwd(), 'node_modules', ut)).href)
+      const { createHeadlessEditor } = await import('@lexical/headless')
+      const { HeadingNode, QuoteNode } = await import('@lexical/rich-text')
+      const { ListItemNode, ListNode } = await import('@lexical/list')
+      const { $getRoot, $isTextNode } = await import('lexical')
+      const { LinkNode } = await csomag(
+        '@payloadcms/richtext-lexical/dist/features/link/nodes/LinkNode.js',
+      )
+      const { HorizontalRuleServerNode } = await csomag(
+        '@payloadcms/richtext-lexical/dist/features/horizontalRule/server/nodes/HorizontalRuleNode.js',
+      )
+
+      const { lines } = extractArticleBody(readFileSync(cikkPath(nev), 'utf8'))
+      const doc = markdownToLexical(lines)
+      const editor = createHeadlessEditor({
+        nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, HorizontalRuleServerNode],
+        onError: (error: Error) => {
+          throw error
+        },
+      })
+      editor.setEditorState(editor.parseEditorState(JSON.stringify(doc)))
+      // Egy elütés javítása a bevezetőben: a mentés ezután a teljes állapotot írja.
+      editor.update(
+        () => {
+          const elso = $getRoot()
+            .getAllTextNodes()
+            .find((node) => $isTextNode(node))
+          elso?.setTextContent(`${elso.getTextContent()} `)
+        },
+        { discrete: true },
+      )
+      const utana = editor.getEditorState().toJSON() as unknown
+      expect(szerkezet(gyokerGyerekek(utana))).toEqual(szerkezet(gyokerGyerekek(doc)))
+    },
+  )
 })
