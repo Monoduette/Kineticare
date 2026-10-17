@@ -90,11 +90,20 @@ try {
     if (gombok.length !== 2 || Math.abs(gombok[0] - gombok[1]) > 1) {
       hibak.push(`${nev}: a sütisáv gombjai nem egy sorban állnak nyitott fióknál`)
     }
-    const szoveg = await page.locator('.kc-consent-banner__text').evaluate((elem) => ({
-      ...elem.getBoundingClientRect().toJSON(),
-      van: elem.textContent.trim().length > 0,
-    }))
-    if (!szoveg.van || szoveg.width > 1 || szoveg.height > 1) {
+    const szoveg = await page
+      .locator('.kc-consent-banner__text')
+      .evaluate(
+        (elem) => ({
+          ...elem.getBoundingClientRect().toJSON(),
+          van: elem.textContent.trim().length > 0,
+        }),
+        null,
+        { timeout: 5_000 },
+      )
+      .catch(() => null)
+    if (!szoveg) {
+      hibak.push(`${nev}: a sütisáv magyarázó szövege hiányzik a DOM-ból`)
+    } else if (!szoveg.van || szoveg.width > 1 || szoveg.height > 1) {
       hibak.push(
         `${nev}: nyitott fióknál a sütisáv szövege nem csukódott össze (${Math.round(szoveg.width)}×${Math.round(szoveg.height)} px)`,
       )
