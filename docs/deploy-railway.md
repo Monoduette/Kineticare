@@ -252,9 +252,10 @@ Railway új build nélkül a régi képet indítja. Két korlát:
     szüksége. A `password_setup_pending` visszaírása a vendégvásárlásból jött
     fiókok miatt kell: ha ilyen fiók ebben az ablakban állította be az első
     jelszavát, a jelző visszaállításával a következő vásárláskor újra
-    jelszóbeállító linket kap. A mentés után létrejött fióknak (a merge és a
-    deploy között létrejötteknek is) nincs régi hashe, neki
-    jelszó-visszaállítás kell. Ha a Railway PITR-je a deploy előtt már be
+    jelszóbeállító linket kap. A visszaírás a mentésben nem szereplő fiókokhoz nem nyúl. Ha ilyen fiók
+    a 3.90 alatt regisztrált vagy lépett be, jelszó-visszaállítás kell neki;
+    ha még a 3.88 alatt, a deploy előtt jött létre, és azóta nem lépett be,
+    ugyanúgy beléphet, mint addig. Ha a Railway PITR-je a deploy előtt már be
     volt kapcsolva (`docs/adatbazis-mentes.md`), a régi oszlopok onnan is
     kiolvashatók; az elsődleges forrás a merge előtti mentés.
   - **Jelszó-visszaállító e-maillel** is helyreáll a belépés (a 3.88 régi
