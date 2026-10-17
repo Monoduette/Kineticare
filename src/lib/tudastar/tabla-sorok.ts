@@ -26,10 +26,9 @@ import type { BlockNode, RichTextContent } from '../../scripts/restore-legacy-co
  *
  * Már egybeolvadt sorok (a 3.88 szerkesztője egy sor szerkezeti szerkesztésekor
  * a sortól lefelé, a 3.90 szerkesztője betöltéskor az egész táblát egy listába
- * fűzi) nem sorok: egy listában a sor címének fejléce csak egyszer állhat, és
- * üres első fejlécű táblánál csak az első tétel lehet fejléc nélküli. Az ilyen
- * listát az átalakítás nem bántja, de külön jelenti (`egybeolvadt`): a
- * sorhatárokat csak ember vagy a markdown-forrás állíthatja helyre.
+ * fűzi) nem sorok: egy listában egy fejléc csak egyszer állhat. Az ilyen listát
+ * az átalakítás nem bántja, de külön jelenti (`egybeolvadt`): a sorhatárokat
+ * csak ember vagy a markdown-forrás állíthatja helyre.
  */
 
 const FORMAT_BOLD = 1
@@ -57,21 +56,27 @@ function fejlec(tetel: Csomopont): string | null {
 }
 
 /**
- * Egy `bullet` lista, amelyben már több táblázat-sor olvadt össze: a sor
- * címének fejléce a tételek között újra előfordul, vagy (üres első fejlécű
- * táblánál) az első tételen túl is áll fejléc nélküli tétel a fejléces tételek
- * között. Ezt a szerkesztő egybefűzése hagyja hátra; gépi szétválasztása nem
- * biztonságos.
+ * Egy `bullet` lista, amelyben már több táblázat-sor olvadt össze. A régi
+ * fordító egy soron belül minden fejlécet legfeljebb egyszer ír (oszloponként
+ * egyet), ezért ha egy fejléc a listában kétszer áll, a listában legalább két
+ * sor cellái vannak. Ez a jel az üres első fejlécű táblára is igaz (a cellák
+ * fejléce ismétlődik), és a hétköznapi felsorolásokra nem (ott egy
+ * „Szó: …” mondatkezdet legfeljebb egyszer fordul elő). Ismert határ: egy
+ * tábla, amelynek két oszlopa azonos fejlécet visel, ép sorként is
+ * egybeolvadtnak látszik; a cikkek tábláiban ilyen nincs (2026-10-17).
  */
 function sorEgybeolvadt(node: Csomopont): boolean {
   if (node.type !== 'list' || node.listType !== 'bullet') return false
   const tetelek = (node.children ?? []) as Csomopont[]
   if (tetelek.length < 2) return false
-  const fejlecek = tetelek.map(fejlec)
-  if (!fejlecek.some((f) => f !== null)) return false
-  const cim = fejlecek[0]
-  if (cim !== null) return fejlecek.slice(1).includes(cim)
-  return fejlecek.slice(1).some((f) => f === null)
+  const latott = new Set<string>()
+  for (const tetel of tetelek) {
+    const fej = fejlec(tetel)
+    if (fej === null) continue
+    if (latott.has(fej)) return true
+    latott.add(fej)
+  }
+  return false
 }
 
 /**

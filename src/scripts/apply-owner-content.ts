@@ -6474,6 +6474,8 @@ export async function javitsdTudastarTablaSorokat(
           hangos: true,
         })),
       ]
+      // Az egybeolvadt tábla emberi munkát kér: a futás nem zárhat „OK”-val.
+      if (javitas.egybeolvadt.length > 0) eredmeny.hiba = true
       if (javitas.content === null) {
         naplozdLepeseket({ modositasok: [], kihagyasok }, dryRun)
         eredmeny.kihagyasok += kihagyasok.length
@@ -6495,11 +6497,13 @@ export async function javitsdTudastarTablaSorokat(
       if (!kozzetett) {
         naplozdLepeseket({ modositasok: [], kihagyasok }, dryRun)
         eredmeny.kihagyasok += kihagyasok.length
-        // A piszkozat közzététele itt NEM út: ha a piszkozatot a 3.90
-        // szerkesztője mentette, benne a táblázat sorai már egy listába
-        // olvadtak, és a közzététel pont azt az adatvesztést okozná, amit a
-        // szabály elhárít (utána a job futamot sem találna, és „nincs teendő”-t
-        // adna). A piszkozat tartalmát ezért megnézzük, és aszerint szólunk.
+        // A piszkozat közzététele itt NEM út: a közzététel csak a 3.90
+        // szerkesztőjéből lehetséges, amely betöltéskor a táblázat sorait egy
+        // listába fűzi, és már ezt az alakot tenné közzé. Egyetlen biztonságos
+        // út: az utolsó közzétett verzió visszaállítása (nem piszkozatként),
+        // a job futtatása, és a piszkozat szándékos javításainak felvitele
+        // UTÁNA, amikor a tárolt alak már biztonságos. A sosem közzétett
+        // dokumentumot a job nem tudja javítani.
         const piszkozatTartalom = legutobbi.content
         const piszkozatbanEgybeolvadt =
           piszkozatTartalom !== null &&
@@ -6507,13 +6511,22 @@ export async function javitsdTudastarTablaSorokat(
           tablaSorokSzetvalasztasa(
             piszkozatTartalom as Parameters<typeof tablaSorokSzetvalasztasa>[0],
           ).egybeolvadt.length > 0
-        const tanacs = piszkozatbanEgybeolvadt
-          ? 'A piszkozatban a táblázat sorai MÁR EGY LISTÁBA olvadtak: az adminban (Verziók) VESD EL a piszkozatot, NE tedd közzé, majd futtasd újra a jobot.'
-          : 'A piszkozatban a táblázat még ép: az adminban (Verziók) vesd el a piszkozatot (vagy ha szándékos javítást tartalmaz, tedd közzé), majd futtasd újra a jobot.'
+        const sosemKozzetett = doc._status !== 'published'
+        const tanacs = sosemKozzetett
+          ? 'A dokumentum sosem volt közzétéve, a job nem írja: a tábláját a szerkesztőben NE mentsd, hanem a docs/cikkek/ markdownból töltsd be újra (import:tudastar), vagy a sorokat kézzel válaszd szét (a sor címe félkövér bekezdés, a többi cella felsorolás).'
+          : `Az adminban (Verziók) állítsd vissza az utolsó KÖZZÉTETT verziót, NEM piszkozatként („Restore as draft” nélkül), majd futtasd újra a jobot. A piszkozat szándékos javításait a job lefutása UTÁN vidd fel újra a szerkesztőben; a piszkozatot NE tedd közzé (a 3.90 szerkesztője közzétételkor a táblázat sorait egy listába fűzi).${
+              piszkozatbanEgybeolvadt
+                ? ' A piszkozatban a táblázat sorai már egy listába olvadtak.'
+                : ''
+            }`
         logger.error(
           `Tartalom-javítás: ${cimke} táblázat-sorainak szétválasztása ${
             dryRun ? 'éles futásban KIMARADNA' : 'KIMARADT'
-          }: a dokumentumnak közzé nem tett piszkozata van, vagy nincs közzétéve. ${tanacs} Addig a dokumentumot NE mentsd a szerkesztőben: a mentés a táblázat sorait egy listába olvasztaná.`,
+          }: ${
+            sosemKozzetett
+              ? 'a dokumentum nincs közzétéve.'
+              : 'a dokumentumnak közzé nem tett piszkozata van.'
+          } ${tanacs} Addig a dokumentumot NE mentsd a szerkesztőben: a mentés a táblázat sorait egy listába olvasztaná.`,
           {
             publikaltAllapot: doc._status ?? null,
             legutobbiAllapot: legutobbi._status ?? null,

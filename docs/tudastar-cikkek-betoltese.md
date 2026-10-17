@@ -248,27 +248,40 @@ oszlop fejléce üres). A nem táblázat-alakú szomszédos listákat a job hang
 kihagyásként jelenti, és nem bántja. Csak közzétett, piszkozat nélküli
 dokumentumba ír (ugyanaz a szabály, mint az ÁSZF-javításnál).
 
-Már egybeolvadt sorokat (egy listában több sor cellái: a sor címének
-fejléce ismétlődik, vagy üres első fejlécű táblánál fejléc nélküli tétel áll a
-fejlécesek között) a job nem bánt és nem is „javít”: hangos kihagyásként
-jelenti, a sorhatárokat az adminban kézzel, a `docs/cikkek/` markdown alapján
-kell helyreállítani. Ha egy dokumentumnak közzé nem tett piszkozata van, a
-job nem ír, és a napló megmondja, mi a teendő: a 3.90 szerkesztőjében mentett
-piszkozatot (benne a tábla már egybeolvadt) EL KELL VETNI, nem közzétenni.
+Már egybeolvadt sorokat (egy listában több sor cellái: egy fejléc a listában
+kétszer áll, a régi fordító soronként minden fejlécet egyszer ír) a job nem
+bánt és nem is „javít”: hangos kihagyásként jelenti, a futás hibával zár, és
+a sorhatárokat az adminban kézzel, a `docs/cikkek/` markdown alapján kell
+helyreállítani. Hétköznapi felsorolásra (egy „Szó: …” mondatkezdet egyszer)
+nem riaszt; őr: a 10 cikk és a hubok friss fordítása egyetlen jelentést sem
+ad. Ismert határ: egy tábla két azonos fejlécű oszloppal egybeolvadtnak
+látszik; a cikkekben ilyen nincs.
+
+Ha egy dokumentumnak közzé nem tett piszkozata van, a job nem ír, és a napló
+megmondja a teendőt: az utolsó KÖZZÉTETT verzió visszaállítása az adminban
+(Verziók, NEM „Restore as draft”), a job újrafuttatása, majd a piszkozat
+szándékos javításainak felvitele UTÁNA. A piszkozatot közzétenni TILOS: a
+közzététel csak a 3.90 szerkesztőjéből lehetséges, amely betöltéskor a sorokat
+egy listába fűzi, és azt tenné közzé. A sosem közzétett dokumentumot a job
+nem javítja: azt a markdownból kell újratölteni vagy kézzel szétválasztani.
 
 Futtatás helyben: `npm run content:owner` (próbafutás), majd
 `OWNER_CONTENT_CONFIRM=igen npm run content:owner`. Élesben a content-job
-service (`docs/deploy-railway.md` 7.1): a job az ÖSSZES tulajdonosi szabályt
-futtatja, ezért (1) előbb a próbafutás naplója: „MÓDOSÍTANÁ” sor csak a
-`tudastar-tabla-sorok` tételeknél állhat (a sín Elrendezés-szabály például
-egy tudatos Tábla-választást visszaírna Sínre); (2) `OWNER_CONTENT_CONFIRM=igen`
-és ÚJ deploy ugyanarra a teljes commit-SHA-ra (a `redeploy` a régi snapshotot
-futtatja, az új szabály nélkül); (3) a kapu AZONNAL vissza `nem`-re, különben
-a következő automatikus deploy újra élesben fut; (4) ellenőrző próbafutás: a
-tételek eltűnnek, a cikkek a nyilvános oldalon soronként tagoltak. Őr:
-`src/__tests__/tudastar-tabla-sorok.test.ts` (a régi alak a szerkesztőben
-egybeolvad, a szétválasztott nem; a régi alakból pontosan a fordító
-szerkezete lesz; a részben vagy teljesen egybeolvadt lista nem sor).
+service (`docs/deploy-railway.md` 7.1): a szolgáltatás a `src/lib/tudastar/**`
+útvonalat figyeli, ezért a merge maga indít deployt (próbafutás), és a kapu
+átállítása is újradeployt indít ugyanarra a commitra. A job az ÖSSZES
+tulajdonosi szabályt futtatja, ezért (1) előbb a merge utáni próbafutás
+naplója: „MÓDOSÍTANÁ” sor csak a `tudastar-tabla-sorok` tételeknél állhat (a
+sín Elrendezés-szabály például egy tudatos Tábla-választást visszaírna Sínre);
+(2) `OWNER_CONTENT_CONFIRM=igen` (a változó mentése újradeployt indít; ha nem
+indulna, új deploy a `main` teljes commit-SHA-jára); (3) a kapu AZONNAL vissza
+`nem`-re, különben a következő automatikus deploy újra élesben fut; (4)
+ellenőrző próbafutás: a `tudastar-tabla-sorok` tételek eltűnnek, a cikkek a
+nyilvános oldalon soronként tagoltak. Őr:
+`src/__tests__/tudastar-tabla-sorok.test.ts` (a régi alak a telepített
+szerkesztőben egybeolvad, a szétválasztott nem; a régi alakból pontosan a
+fordító szerkezete lesz; a szerkesztő valódi egybeolvadt kimenete felismert;
+a részben egybeolvadt lista nem sor).
 
 ## 7. Újrafuttatható
 

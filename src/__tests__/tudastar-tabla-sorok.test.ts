@@ -165,12 +165,39 @@ describe('tablaSorokSzetvalasztasa: a tárolt táblázat-sorok', () => {
     },
   )
 
+  it.each([
+    '1-miert-zsibbad-a-kezem',
+    '2-keztoalagut-szindroma',
+    '3-teniszkonyok',
+    '4-pattano-ujj',
+    '5-csuklo-es-kezfajdalom',
+    '6-csuklotores-utani-gyogytorna',
+    '7-inhuvelygyulladas',
+    '8-befagyott-vall',
+    '9-peace-and-love-friss-serules',
+    '10-gipszben-a-kezed',
+  ])(
+    '%s: a friss fordítás (hétköznapi listák, szétválasztott táblák) semmit nem jelent és nem ír',
+    (nev) => {
+      const { lines } = extractArticleBody(readFileSync(cikkPath(nev), 'utf8'))
+      const eredmeny = tablaSorokSzetvalasztasa(markdownToLexical(lines))
+      expect(eredmeny.content).toBeNull()
+      expect(eredmeny.egyebFutamok).toEqual([])
+      expect(eredmeny.egybeolvadt).toEqual([])
+    },
+  )
+
   it('7-inhuvelygyulladas: a szerkesztő a régi alakot egybefűzi, a szétválasztottat nem', async () => {
     const regi = richText(regiTablaCsomopontok(elsoTabla('7-inhuvelygyulladas')))
     const regiSzerkesztve = await szerkesztoben(regi)
     // A hiba: a sorok egyetlen listába olvadnak.
     expect(regiSzerkesztve).toHaveLength(1)
     expect((regiSzerkesztve[0] as { type: string }).type).toBe('list')
+    // A szerkesztő VALÓDI egybeolvadt kimenetét a felismerés egybeolvadtnak
+    // látja, és nem ír (nem a kézi fixtúra, hanem a Lexical 0.50 alakja).
+    const egybeolvadtFelismeres = tablaSorokSzetvalasztasa(richText(regiSzerkesztve))
+    expect(egybeolvadtFelismeres.content).toBeNull()
+    expect(egybeolvadtFelismeres.egybeolvadt).toHaveLength(1)
 
     const javitott = tablaSorokSzetvalasztasa(regi).content
     const javitottSzerkesztve = await szerkesztoben(javitott)
@@ -253,7 +280,7 @@ describe('tablaSorokSzetvalasztasa: a tárolt táblázat-sorok', () => {
     ])
   })
 
-  it('üres első fejlécű tábla egybeolvadt sorai is felismerhetők (fejléc nélküli tétel a fejlécesek között)', () => {
+  it('üres első fejlécű tábla egybeolvadt sorai is felismerhetők (a cellák fejléce ismétlődik)', () => {
     const regi = richText([
       lista(['Hol érzed?', 'Hüvelyk: a tövénél', 'Mi a jellegzetes?', 'Hüvelyk: markolás']),
     ])
@@ -264,6 +291,21 @@ describe('tablaSorokSzetvalasztasa: a tárolt táblázat-sorok', () => {
     expect(
       tablaSorokSzetvalasztasa(richText([lista(['Hol érzed?', 'Hüvelyk: a tövénél'])])).egybeolvadt,
     ).toEqual([])
+  })
+
+  it('hétköznapi felsorolás egy „Szó: …” tétellel és több sima tétellel NEM egybeolvadt tábla', () => {
+    // A 2. kritikus kör találata: az 1. és 5. cikk ilyen listáira riasztott a régi
+    // szabály (fejléc nélküli tétel a fejléces mellett).
+    const lista1 = lista([
+      'Kemoterápia.',
+      'Egyes gyógyszerek: HIV-gyógyszer, görcsgátló, bizonyos antibiotikumok.',
+      'Mérgező anyagok, például ólom.',
+      'Vitaminhiány.',
+    ])
+    const eredmeny = tablaSorokSzetvalasztasa(richText([lista1]))
+    expect(eredmeny.content).toBeNull()
+    expect(eredmeny.egybeolvadt).toEqual([])
+    expect(eredmeny.egyebFutamok).toEqual([])
   })
 
   it('egy teljesen egybeolvadt tábla (egyetlen lista) nem futam, de jelentve van', () => {
@@ -402,7 +444,7 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
       lista(['Tünet: zsibbadás', 'Teendő: pihentetés', 'Tünet: fájdalom', 'Teendő: hűtés']),
     ])
 
-  it('közzé nem tett, még ép piszkozat mellett nem ír, hibával zár, és a piszkozat elvetését vagy közzétételét kéri', async () => {
+  it('közzé nem tett piszkozat mellett nem ír, hibával zár, és a közzétett verzió visszaállítását kéri, a közzétételt tiltja', async () => {
     const hibaKem = vi.spyOn(logger, 'error').mockImplementation(() => {})
     const { payload, update } = csonk({
       posts: [
@@ -420,11 +462,13 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
     expect(eredmeny).toEqual({ modositasok: 0, kihagyasok: 0, hiba: true, irt: [] })
     expect(update).not.toHaveBeenCalled()
     const uzenet = String(hibaKem.mock.calls.at(-1)?.[0])
-    expect(uzenet).toContain('a táblázat még ép')
-    expect(uzenet).not.toContain('NE tedd közzé')
+    expect(uzenet).toContain('állítsd vissza az utolsó KÖZZÉTETT verziót')
+    expect(uzenet).toContain('„Restore as draft” nélkül')
+    expect(uzenet).toContain('a piszkozatot NE tedd közzé')
+    expect(uzenet).not.toContain('már egy listába olvadtak')
   })
 
-  it('a 3.90 szerkesztőjében mentett (már egybeolvadt) piszkozatnál a közzétételt TILTJA, az elvetést kéri', async () => {
+  it('a 3.90 szerkesztőjében mentett (már egybeolvadt) piszkozatnál ugyanaz a tanács, és a napló az egybeolvadást is kimondja', async () => {
     const hibaKem = vi.spyOn(logger, 'error').mockImplementation(() => {})
     const { payload, update } = csonk({
       posts: [
@@ -443,18 +487,36 @@ describe('javitsdTudastarTablaSorokat: a tartalomjob szabálya', () => {
     expect(eredmeny.hiba).toBe(true)
     expect(update).not.toHaveBeenCalled()
     const uzenet = String(hibaKem.mock.calls.at(-1)?.[0])
-    expect(uzenet).toContain('VESD EL a piszkozatot, NE tedd közzé')
-    expect(uzenet).not.toContain('tedd közzé)')
+    expect(uzenet).toContain('a piszkozatot NE tedd közzé')
+    expect(uzenet).toContain('már egy listába olvadtak')
   })
 
-  it('a már egybeolvadt táblázatot hangos kihagyásként jelenti, nem írja át, és nem „nincs teendő”', async () => {
+  it('sosem közzétett dokumentumnál nem ír, és a markdownból való újratöltést vagy kézi szétválasztást kéri', async () => {
+    const hibaKem = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    const { payload, update } = csonk({
+      posts: [
+        { id: 9, title: 'Piszkozat', _status: 'draft', content: tablas(), legutobbi: 'draft' },
+      ],
+      pages: [],
+    })
+    const eredmeny = await javitsdTudastarTablaSorokat(payload, false)
+    expect(eredmeny.hiba).toBe(true)
+    expect(update).not.toHaveBeenCalled()
+    const uzenet = String(hibaKem.mock.calls.at(-1)?.[0])
+    expect(uzenet).toContain('sosem volt közzétéve')
+    expect(uzenet).toContain('import:tudastar')
+    expect(uzenet).not.toContain('Restore as draft')
+  })
+
+  it('a már egybeolvadt táblázatot hangos kihagyásként jelenti, nem írja át, és a futás hibával zár', async () => {
     const hibaKem = vi.spyOn(logger, 'error').mockImplementation(() => {})
     const { payload, update } = csonk({
       posts: [{ id: 8, title: 'Befagyott váll', _status: 'published', content: egybeolvadt() }],
       pages: [],
     })
     const eredmeny = await javitsdTudastarTablaSorokat(payload, false)
-    expect(eredmeny).toEqual({ modositasok: 0, kihagyasok: 1, hiba: false, irt: [] })
+    // Emberi munkát kér, ezért a futás nem zárhat „OK”-val: hiba igaz.
+    expect(eredmeny).toEqual({ modositasok: 0, kihagyasok: 1, hiba: true, irt: [] })
     expect(update).not.toHaveBeenCalled()
     expect(String(hibaKem.mock.calls.at(-1)?.[0])).toContain('már egybeolvadt táblázat-sorok')
   })
