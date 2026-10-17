@@ -236,13 +236,14 @@
 
 .scroll-scrub__chapter-pin {
   position: sticky;
-  /* A nézetnél magasabb tűzött tartalom (alacsony, széles ablak: például
-     1280×560, 150%-os Windows-skálázás) az ALJÁVAL tapad, ne a tetejével,
-     különben a CTA a hajtás alatt maradna, és mire a fejezet végén előjön,
-     a szöveg már kiúszott. A látható sütisáv (`--kc-consent-offset`) a nézet
-     alját takarja, ezért a szabad magasságból levonjuk. A tartalom
-     kiterjedését a scroll-scrub.tsx méri (`--ss-pin-need`); mérés nélkül a
-     kifejezés pozitív, és a pin a tetejével tapad. */
+  /* Ha a tűzött jelenet-szöveg a CTA-ig nem fér a nézetbe (alacsony, széles
+     ablak: például 1280×560, 150%-os Windows-skálázás), a pin annyival tapad
+     feljebb, hogy a CTA aljáig látsszon; különben a CTA a hajtás alatt
+     maradna, és mire a fejezet végén előjön, a szöveg már kiúszott. A
+     látható sütisáv (`--kc-consent-offset`) a nézet alját takarja, ezért a
+     szabad magasságból levonjuk. A szöveg kiterjedését a scroll-scrub.tsx
+     méri (`--ss-pin-need`); mérés nélkül a kifejezés pozitív, és a pin a
+     tetejével tapad. */
   top: min(0px, 100dvh - var(--kc-consent-offset, 0px) - var(--ss-pin-need, 0px));
   display: flex;
   align-items: center;
@@ -386,8 +387,12 @@
     min-height: 100dvh !important;
   }
 
+  /* A relatív pinre a tűzött állapot `top` eltolása is hatna: egy elavult
+     `--ss-pin-need` (például futás közben bekapcsolt csökkentett mozgás) a
+     címet a lap teteje fölé tolná. */
   .scroll-scrub__chapter-pin {
     position: relative;
+    top: 0;
   }
 
   .scroll-scrub__captions {

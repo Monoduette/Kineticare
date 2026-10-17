@@ -238,11 +238,3 @@ main > .kc-film-hero:first-of-type {
     padding-block: var(--kc-space-2);
   }
 }
-
-/* Nagyon alacsony nézetben a szöveg természetesen görgethető marad;
-   a film sticky vászna és a feliratok időzítése változatlan. */
-@media (max-width: 860px) and (max-height: 480px) {
-  .kc-film-hero .scroll-scrub__chapter-pin {
-    position: relative;
-  }
-}

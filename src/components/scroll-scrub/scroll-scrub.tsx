@@ -141,6 +141,9 @@ type ThemeStyle = CSSProperties & Record<`--ss-${string}`, string | number>
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value))
 
+/** Ráhagyás a tűzött jelenet-szöveg (a CTA) alja és a sütisáv teteje között, px. */
+const PIN_CTA_GAP = 16
+
 const smoothstep = (value: number) => {
   const x = clamp(value)
   return x * x * (3 - 2 * x)
@@ -374,20 +377,19 @@ export function ScrollScrub({
         segment.start = rect.top + pageY - rootTop
         segment.end = segment.start + rect.height
       }
-      // A tűzött jelenet-szöveg kiterjedése a pin tetejétől az alsó
-      // térközéig. Ha ez a sütisávval együtt nem fér a nézetbe, a pin az
-      // aljával tapad (scroll-scrub.css `--ss-pin-need`). Csak tűzött (sticky)
-      // elrendezésben: a statikus olvasó elrendezésben a pin relatív, ott az
-      // eltolás elcsúsztatná.
+      // A tűzött jelenet-szöveg kiterjedése a pin tetejétől a szöveg aljáig,
+      // egy kis ráhagyással. Ha ez a sütisávval együtt nem fér a nézetbe, a
+      // pin éppen annyival tapad feljebb, hogy a CTA a sáv fölé kerüljön
+      // (scroll-scrub.css `--ss-pin-need`). A pin alsó térköze nem számít:
+      // azzal a pin akkor is felcsúszna, amikor a CTA már látszik, és a cím
+      // fölöslegesen a fejléc alá kerülne. Csak tűzött (sticky) elrendezésben;
+      // a statikus elrendezést a CSS `top: 0` is védi.
       for (const pin of root.querySelectorAll<HTMLElement>('.scroll-scrub__chapter-pin')) {
         pin.style.removeProperty('--ss-pin-need')
         const copy = pin.querySelector<HTMLElement>('.scroll-scrub__copy')
-        const style = getComputedStyle(pin)
-        if (copy && style.position === 'sticky') {
+        if (copy && getComputedStyle(pin).position === 'sticky') {
           const need =
-            copy.getBoundingClientRect().bottom -
-            pin.getBoundingClientRect().top +
-            parseFloat(style.paddingBottom)
+            copy.getBoundingClientRect().bottom - pin.getBoundingClientRect().top + PIN_CTA_GAP
           pin.style.setProperty('--ss-pin-need', `${Math.ceil(need)}px`)
         }
       }
@@ -674,6 +676,10 @@ export function ScrollScrub({
 
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', onResize)
+    // Érintőképernyőn a csak magasságváltozást az onResize kihagyja; a
+    // poszter-mód határának átlépésekor (például osztott képernyő) viszont a
+    // tűzés és a `--ss-pin-need` mérése is változik.
+    posterOnly.addEventListener('change', layout)
     window.addEventListener('orientationchange', layout)
     window.addEventListener('pointerdown', onFirstGesture, {
       once: true,
@@ -714,6 +720,7 @@ export function ScrollScrub({
       window.cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
+      posterOnly.removeEventListener('change', layout)
       window.removeEventListener('orientationchange', layout)
       window.removeEventListener('pointerdown', onFirstGesture)
       window.removeEventListener('touchstart', onFirstGesture)

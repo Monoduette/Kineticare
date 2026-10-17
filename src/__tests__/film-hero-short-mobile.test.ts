@@ -11,23 +11,6 @@ const compact = css.nodes.find(
 )
 
 describe('film hero short-mobile text layout', () => {
-  it('lets very short viewports scroll the text naturally without changing the film or opacity', () => {
-    const reading = css.nodes.find(
-      (node): node is AtRule =>
-        node.type === 'atrule' &&
-        node.name === 'media' &&
-        node.params === '(max-width: 860px) and (max-height: 480px)',
-    )
-    expect(reading).toBeDefined()
-    expect(reading!.nodes).toHaveLength(1)
-    const rule = reading?.nodes?.[0]
-    expect(rule?.type).toBe('rule')
-    if (!rule || rule.type !== 'rule') throw new Error('Missing short-viewport reading rule')
-    expect(rule.selector).toBe('.kc-film-hero .scroll-scrub__chapter-pin')
-    expect(rule.nodes).toHaveLength(1)
-    expect(rule.nodes[0]).toMatchObject({ type: 'decl', prop: 'position', value: 'relative' })
-  })
-
   it('bounds the override to short mobile viewports, leaving desktop and tall mobile alone', () => {
     expect(compact).toBeDefined()
   })
