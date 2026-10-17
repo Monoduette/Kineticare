@@ -183,6 +183,19 @@ describe('T3 — a fel nem ismert szerkezet HANGOSAN bukik', () => {
     expect(szoveg).toContain('körte')
   })
 
+  it('a táblázat-sor címe nem lehet egyetlen link (a storefront gombként mutatná)', () => {
+    expect(() =>
+      markdownToLexical(['| | Leírás |', '|---|---|', '| [Kurzus](/kurzusok/a) | szöveg |']),
+    ).toThrowError(/csak link/)
+  })
+
+  it.each([
+    ['táblázat után közvetlenül lista', ['| A | B |', '|---|---|', '| a | b |', '', '- c']],
+    ['üres sorral elválasztott listatételek', ['- a', '', '- b']],
+  ])('két egymás melletti felsorolásra kivételt dob: %s', (_eset, sorok) => {
+    expect(() => markdownToLexical(sorok)).toThrowError(/egybefűzné/)
+  })
+
   it('kódblokkra kivételt dob', () => {
     expect(() => markdownToLexical(['```js', 'kod()', '```'])).toThrowError(/Kódblokk/)
   })
@@ -299,10 +312,19 @@ describe('T7 — a szerkesztőben szerkesztve is megmarad a szerkezet', () => {
   type Csomopont = { type?: string; listType?: string; children?: Csomopont[] }
   const gyokerGyerekek = (doc: unknown): Csomopont[] =>
     ((doc as { root: { children: Csomopont[] } }).root.children ?? []) as Csomopont[]
-  const szerkezet = (gyerekek: readonly Csomopont[]): string[] =>
-    gyerekek.map((gy) =>
-      gy.type === 'list' ? `list:${gy.listType}:${gy.children?.length ?? 0}` : String(gy.type),
+  /**
+   * A teljes fa a szerkesztő saját, a megjelenítést nem érintő kulcsai
+   * (`textFormat`, `textStyle`, `direction`, `version`) nélkül.
+   */
+  const kanonikus = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(kanonikus)
+    if (node === null || typeof node !== 'object') return node
+    return Object.fromEntries(
+      Object.entries(node)
+        .filter(([kulcs]) => !['textFormat', 'textStyle', 'direction', 'version'].includes(kulcs))
+        .map(([kulcs, ertek]) => [kulcs, kanonikus(ertek)]),
     )
+  }
 
   it.each(CIKKEK)('%s: nincs két egymás melletti, azonos típusú felsorolás', (nev) => {
     const { lines } = extractArticleBody(readFileSync(cikkPath(nev), 'utf8'))
@@ -344,18 +366,21 @@ describe('T7 — a szerkesztőben szerkesztve is megmarad a szerkezet', () => {
         },
       })
       editor.setEditorState(editor.parseEditorState(JSON.stringify(doc)))
-      // Egy elütés javítása a bevezetőben: a mentés ezután a teljes állapotot írja.
-      editor.update(
-        () => {
-          const elso = $getRoot()
-            .getAllTextNodes()
-            .find((node) => $isTextNode(node))
-          elso?.setTextContent(`${elso.getTextContent()} `)
-        },
-        { discrete: true },
-      )
+      // Egy elütés és a javítása a bevezetőben: a mentés ezután a teljes
+      // állapotot írja, a szöveg pedig ugyanaz, mint előtte.
+      for (const javitas of [(t: string) => `${t}x`, (t: string) => t.slice(0, -1)]) {
+        editor.update(
+          () => {
+            const elso = $getRoot()
+              .getAllTextNodes()
+              .find((node) => $isTextNode(node))
+            elso?.setTextContent(javitas(elso.getTextContent()))
+          },
+          { discrete: true },
+        )
+      }
       const utana = editor.getEditorState().toJSON() as unknown
-      expect(szerkezet(gyokerGyerekek(utana))).toEqual(szerkezet(gyokerGyerekek(doc)))
+      expect(kanonikus(gyokerGyerekek(utana))).toEqual(kanonikus(gyokerGyerekek(doc)))
     },
   )
 })
