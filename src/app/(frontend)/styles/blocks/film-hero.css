@@ -215,8 +215,11 @@ main > .kc-film-hero:first-of-type {
    https://design-system.service.gov.uk/components/cookie-banner/
    WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum), a „sticky cookie banner”
    példa és a scroll-padding-jellegű térköz mint javasolt megoldás:
-   https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html */
-@media (max-width: 860px) {
+   https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html
+   A határ a poszter-mód széle (899 px, scroll-scrub.css): 861 és 899 px között
+   a pin statikus és középre igazított, a sáv pedig ugyanúgy a CTA-ra eshet
+   (mérve 2026-10-17: 880×600-on a sáv teteje 457 px, a CTA 517–569 px). */
+@media (max-width: 899px) {
   .kc-has-consent-banner .kc-film-hero .scroll-scrub__chapter-pin {
     padding-top: calc(3.5rem + var(--kc-space-2));
     padding-bottom: calc(

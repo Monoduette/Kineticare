@@ -359,6 +359,25 @@ export function ScrollScrub({
       delete segment.layer.dataset.videoFailed
     }
 
+    // A tűzött jelenet-szöveg kiterjedése a pin tetejétől a szöveg aljáig,
+    // egy kis ráhagyással. Ha ez a sütisávval együtt nem fér a nézetbe, a pin
+    // éppen annyival tapad feljebb, hogy a CTA a sáv fölé kerüljön
+    // (scroll-scrub.css `--ss-pin-need`). A pin alsó térköze nem számít: azzal
+    // a pin akkor is felcsúszna, amikor a CTA már látszik, és a cím
+    // fölöslegesen a fejléc alá kerülne. Csak tűzött (sticky) elrendezésben; a
+    // statikus elrendezést a CSS `top: 0` is védi.
+    const measurePinNeed = () => {
+      for (const pin of root.querySelectorAll<HTMLElement>('.scroll-scrub__chapter-pin')) {
+        pin.style.removeProperty('--ss-pin-need')
+        const copy = pin.querySelector<HTMLElement>('.scroll-scrub__copy')
+        if (copy && getComputedStyle(pin).position === 'sticky') {
+          const need =
+            copy.getBoundingClientRect().bottom - pin.getBoundingClientRect().top + PIN_CTA_GAP
+          pin.style.setProperty('--ss-pin-need', `${Math.ceil(need)}px`)
+        }
+      }
+    }
+
     const layout = () => {
       const pageY = window.scrollY || window.pageYOffset
       rootTop = root.getBoundingClientRect().top + pageY
@@ -377,22 +396,7 @@ export function ScrollScrub({
         segment.start = rect.top + pageY - rootTop
         segment.end = segment.start + rect.height
       }
-      // A tűzött jelenet-szöveg kiterjedése a pin tetejétől a szöveg aljáig,
-      // egy kis ráhagyással. Ha ez a sütisávval együtt nem fér a nézetbe, a
-      // pin éppen annyival tapad feljebb, hogy a CTA a sáv fölé kerüljön
-      // (scroll-scrub.css `--ss-pin-need`). A pin alsó térköze nem számít:
-      // azzal a pin akkor is felcsúszna, amikor a CTA már látszik, és a cím
-      // fölöslegesen a fejléc alá kerülne. Csak tűzött (sticky) elrendezésben;
-      // a statikus elrendezést a CSS `top: 0` is védi.
-      for (const pin of root.querySelectorAll<HTMLElement>('.scroll-scrub__chapter-pin')) {
-        pin.style.removeProperty('--ss-pin-need')
-        const copy = pin.querySelector<HTMLElement>('.scroll-scrub__copy')
-        if (copy && getComputedStyle(pin).position === 'sticky') {
-          const need =
-            copy.getBoundingClientRect().bottom - pin.getBoundingClientRect().top + PIN_CTA_GAP
-          pin.style.setProperty('--ss-pin-need', `${Math.ceil(need)}px`)
-        }
-      }
+      measurePinNeed()
       total = Math.max(runtime.at(-1)?.end ?? viewportHeight, viewportHeight)
       dirty = true
     }
@@ -644,6 +648,10 @@ export function ScrollScrub({
     }
     const onResize = () => {
       if (coarsePointer && window.innerWidth === layoutWidth && usesMobileMedia() === mobileMedia) {
+        // Érintőképernyőn a csak magasságváltozás (címsor, osztott képernyő) a
+        // szakaszokat nem méri újra, a pin magassága viszont a nézettel nő vagy
+        // fogy: a CTA-hoz kellő tapadás ezért friss mérést kap.
+        measurePinNeed()
         return
       }
       layout()

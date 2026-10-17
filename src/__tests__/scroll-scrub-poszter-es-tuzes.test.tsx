@@ -21,7 +21,11 @@ import type { BlockFilmHero } from '@/payload-types'
  *  2. a `--ss-pin-need` mérése kimarad: alacsony, széles ablakban a tűzött
  *     szöveg a CTA-ig nem fér a nézetbe, és a CTA sosem kattintható;
  *  3. a poszter-mód határának átlépése csak magasságváltozással (osztott
- *     képernyő, érintőképernyő) nem méri újra a pint.
+ *     képernyő, érintőképernyő) nem méri újra a pint;
+ *  4. a mérés a pin alsó térközét is beszámítja (a 4eb9660 előtti hiba): a
+ *     pin akkor is felcsúszik, amikor a CTA már látszik;
+ *  5. érintőképernyőn a poszter-határt át nem lépő magasságváltozás után a
+ *     `--ss-pin-need` a régi nézet értéke marad.
  *
  * A happy-dom nem számol elrendezést és nem tölti a stíluslapot: a nézet
  * méretét, a média-lekérdezéseket és a pin `position` értékét a teszt adja
@@ -39,8 +43,23 @@ const BLOKK: BlockFilmHero = {
   lead: 'Teszt-bevezető.',
 }
 
-/** A szöveg alja a pin tetejétől (px), a mért elrendezés helyett. */
-const COPY_BOTTOM = 600
+/**
+ * A szöveg alja a pin tetejétől (px), a mért elrendezés helyett: a szöveg a
+ * nézet magas pinben függőlegesen középen áll.
+ */
+const szovegAlja = () => Math.round(nezet.height / 2) + 150
+
+/**
+ * A pin alsó térköze a stíluslap szerint (`padding: clamp(5rem, 9vw, 8rem)`,
+ * 1280 px-en kb. 115 px). A mérésnek NEM szabad beszámítania.
+ */
+const PIN_ALSO_TERKOZ = '115px'
+
+/** A poszter-mód feltétele a stíluslapon és a komponensben is. */
+const POSZTER_LEKERDEZES = '(max-width: 899px), (max-height: 480px)'
+
+/** Érintőképernyős eszköz (hover: none, pointer: coarse). */
+let erinto = false
 
 interface Nezet {
   width: number
@@ -58,7 +77,8 @@ function illeszkedik(query: string): boolean {
       if (kulcs === 'max-width') return nezet.width <= parseFloat(ertek)
       if (kulcs === 'max-height') return nezet.height <= parseFloat(ertek)
       if (kulcs === 'prefers-reduced-motion') return false
-      if (kulcs === 'hover' || kulcs === 'pointer') return false
+      if (kulcs === 'hover') return erinto ? ertek === 'none' : ertek === 'hover'
+      if (kulcs === 'pointer') return erinto ? ertek === 'coarse' : ertek === 'fine'
       throw new Error(`ismeretlen média-feltétel: ${feltetel}`)
     }),
   )
@@ -85,6 +105,7 @@ afterEach(() => {
   root = null
   document.body.innerHTML = ''
   lekerdezesek.length = 0
+  erinto = false
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -118,20 +139,27 @@ async function mount(kezdo: Nezet, scrollY: number): Promise<HTMLElement> {
       return new DOMRect(0, -window.scrollY, nezet.width, 0)
     }
     if (this.classList.contains('scroll-scrub__copy')) {
-      return new DOMRect(0, COPY_BOTTOM - 300, 500, 300)
+      return new DOMRect(0, szovegAlja() - 300, 500, 300)
     }
     if (this.classList.contains('scroll-scrub__chapter-pin')) {
       return new DOMRect(0, 0, nezet.width, nezet.height)
     }
     return rect.call(this)
   })
-  // A stíluslap szerint a pin tűzött, kivéve a poszter-módot (lásd a CSS-őrt).
-  // A ScrollScrub a pinről csak a `position` értéket olvassa.
+  // A stíluslap szerint a pin tűzött, kivéve a poszter-módot (lásd a CSS-őrt),
+  // és a valódi alsó térközét is hordozza, hogy a mérés ne számíthassa be.
   const computed = window.getComputedStyle.bind(window)
   vi.spyOn(window, 'getComputedStyle').mockImplementation((elem, pseudo) => {
     if (elem instanceof HTMLElement && elem.classList.contains('scroll-scrub__chapter-pin')) {
-      const poszter = illeszkedik('(max-width: 899px), (max-height: 480px)')
-      return { position: poszter ? 'relative' : 'sticky' } as CSSStyleDeclaration
+      const ertekek: Record<string, string> = {
+        position: illeszkedik(POSZTER_LEKERDEZES) ? 'relative' : 'sticky',
+        paddingBottom: PIN_ALSO_TERKOZ,
+        'padding-bottom': PIN_ALSO_TERKOZ,
+      }
+      return {
+        ...ertekek,
+        getPropertyValue: (nev: string) => ertekek[nev] ?? '',
+      } as unknown as CSSStyleDeclaration
     }
     return computed(elem, pseudo)
   })
@@ -169,9 +197,11 @@ describe('ScrollScrub poszter-mód (statikus olvasó elrendezés)', () => {
 })
 
 describe('ScrollScrub tűzött pin: a szöveg kiterjedése', () => {
-  it('tűzött elrendezésben a szöveg aljáig mért kiterjedés (és a ráhagyás) a pinre kerül', async () => {
+  it('tűzött elrendezésben a szöveg aljáig mért kiterjedés (és a ráhagyás) a pinre kerül, a pin alsó térköze nélkül', async () => {
     await mount({ width: 1280, height: 560 }, 0)
-    expect(pin().style.getPropertyValue('--ss-pin-need')).toBe(`${COPY_BOTTOM + 16}px`)
+    // 560 / 2 + 150 = 430 a szöveg alja, + 16 px ráhagyás; a 115 px-es alsó
+    // térköz nem számít.
+    expect(pin().style.getPropertyValue('--ss-pin-need')).toBe('446px')
   })
 
   it('a poszter-mód határának átlépése resize nélkül is újraméri a pint', async () => {
@@ -179,7 +209,23 @@ describe('ScrollScrub tűzött pin: a szöveg kiterjedése', () => {
     await act(async () => nezetValtozik({ width: 1280, height: 470 }))
     expect(pin().style.getPropertyValue('--ss-pin-need')).toBe('')
     await act(async () => nezetValtozik({ width: 1280, height: 560 }))
-    expect(pin().style.getPropertyValue('--ss-pin-need')).toBe(`${COPY_BOTTOM + 16}px`)
+    expect(pin().style.getPropertyValue('--ss-pin-need')).toBe('446px')
+  })
+
+  it('érintőképernyőn a poszter-határt át nem lépő magasságváltozás után is friss a mérés', async () => {
+    erinto = true
+    await mount({ width: 1280, height: 900 }, 0)
+    expect(pin().style.getPropertyValue('--ss-pin-need')).toBe('616px')
+    await act(async () => {
+      nezetValtozik({ width: 1280, height: 600 })
+      window.dispatchEvent(new Event('resize'))
+    })
+    expect(pin().style.getPropertyValue('--ss-pin-need')).toBe('466px')
+  })
+
+  it('a komponens poszter-feltétele azonos a stíluslapéval', async () => {
+    await mount({ width: 1280, height: 720 }, 0)
+    expect(lekerdezesek.map(({ query }) => query)).toContain(POSZTER_LEKERDEZES)
   })
 })
 
@@ -207,6 +253,9 @@ describe('scroll-scrub.css: a pin eltolása', () => {
         node.params.split(',')[0].trim() === '(prefers-reduced-motion: reduce)',
     )
     expect(statikus).toBeDefined()
+    // A poszter-feltétel a komponensével azonos (lásd fent), a kettő nem
+    // csúszhat szét.
+    expect(statikus!.params).toBe(`(prefers-reduced-motion: reduce), ${POSZTER_LEKERDEZES}`)
     expect(pinTop(statikus!)).toEqual(['0'])
   })
 })
