@@ -32,7 +32,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *     jelet írja;
  * 10. a függő `reset` a következő hozzájárulásnál az `opt_in_capturing` ELŐTT
  *     fut, mert az `$opt_in` a tárolt azonossággal megy ki; a függő
- *     `identify` UTÁNA, mert opt-out alatt az SDK eldobná.
+ *     `identify` UTÁNA, mert opt-out alatt az SDK eldobná. Az `opt_in` a
+ *     reset után is lefut, ha az SDK opt-outtal indult: a valódi `reset()` az
+ *     opt-outot törli, a szüneteltetett kérés-sort viszont csak az `opt_in`
+ *     indítja el;
+ * 11. a betöltés alatti belépés a korábbi lapról maradt `reset` jelet nem
+ *     nyelheti el.
  */
 
 const sdk = vi.hoisted(() => {
@@ -48,7 +53,10 @@ const sdk = vi.hoisted(() => {
     identify: vi.fn((id: string) => {
       hivasok.push(`identify:${id}`)
     }),
+    // A valódi reset() a tárolt opt-outot is törli (posthog-js 1.430.3
+    // posthog-core.js `_reset`: „Consent is user state, so reset() clears it”).
     reset: vi.fn(() => {
+      allapot.optedOut = false
       hivasok.push('reset')
     }),
   }
@@ -294,5 +302,30 @@ describe('PostHog SDK: lusta betöltés', () => {
     masodikLap.initPostHog()
     await kivar()
     expect(sdk.hivasok).toEqual(['opt_in', 'identify:42'])
+  })
+
+  it('a betöltés alatti belépés előtt a korábbi lapról függő reset az $opt_in előtt fut', async () => {
+    // Korábbi lap: hozzájárulás nélküli kijelentkezés, az SDK opt-outot tárol.
+    sdk.optedOut = true
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'denied')
+    resetAnalyticsIdentity()
+
+    // Ez a lap: elfogadás, és belépés, mielőtt az SDK megérkezne.
+    let megerkezik: () => void = () => {}
+    const kapu = new Promise<void>((resolve) => {
+      megerkezik = resolve
+    })
+    vi.resetModules()
+    vi.doMock('posthog-js', async () => {
+      await kapu
+      return sdk.modul()
+    })
+    const lap = await import('@/lib/analytics/posthog')
+    lap.optInToAnalytics()
+    expect(lap.identifyUser(77)).toBe(true)
+
+    megerkezik()
+    await kivar()
+    expect(sdk.hivasok).toEqual(['reset', 'opt_in', 'identify:77'])
   })
 })

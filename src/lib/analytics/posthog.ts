@@ -135,8 +135,10 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
 const URL_WITH_QUERY = /^(https?:\/\/|\/)[^\s]*\?/
 
 /**
- * A beágyazás mélységének felső korlátja. A posthog-js 1.430.3 eseményei
- * legfeljebb három szint mélyek (`$web_vitals`), a korlát ennek bő többszöröse.
+ * A beágyazás mélységének felső korlátja. A posthog-js 1.430.3 legmélyebb
+ * ismert eseménye az `$exception` (öt szint:
+ * `$exception_list[].stacktrace.frames[]`); a korlát ennél három szinttel több.
+ * A korlát alá csökkentése a hibakövetés adatait csendben `null`-ra cserélné.
  */
 const SANITIZE_MAX_DEPTH = 8
 
@@ -327,6 +329,16 @@ function markIdentityPending(op: IdentityOp): void {
   }
 }
 
+/** Az azonosság-művelet jele, törlés nélkül. */
+function peekIdentityPending(): IdentityOp | null {
+  try {
+    const op = window.localStorage.getItem(IDENTITY_PENDING_KEY)
+    return op === 'reset' || op?.startsWith('id:') ? (op as IdentityOp) : null
+  } catch {
+    return null
+  }
+}
+
 /** Visszaadja és törli az azonosság-művelet jelét. */
 function takeIdentityPending(): IdentityOp | null {
   try {
@@ -354,12 +366,19 @@ function applyIdentityOp(client: PostHog, op: IdentityOp): void {
  * így a következő látogató hozzájárulása nem a kijelentkezett felhasználó
  * profiljára megy. Az `identify` UTÁNA fut, mert opt-out alatt a posthog-js
  * a `$identify` eseményt eldobná.
+ *
+ * Az opt-out állapotát a reset ELŐTT kell megnézni: a `reset()` a tárolt
+ * opt-outot is törli (posthog-js 1.430.3 `_reset`: `this.consent.reset()`),
+ * a tárolt opt-outtal induló SDK kérés-sora viszont szünetel, amíg az
+ * `opt_in_capturing` el nem indítja. Nélküle az események csak a lap
+ * elhagyásakor mennének ki, vagy el is vesznének.
  */
 function syncGrantedCapture(client: PostHog, earlierOp: IdentityOp | null): void {
+  const optedOut = client.has_opted_out_capturing()
   if (earlierOp === 'reset') {
     applyIdentityOp(client, earlierOp)
   }
-  if (client.has_opted_out_capturing()) {
+  if (optedOut) {
     client.opt_in_capturing()
   }
   if (earlierOp && earlierOp !== 'reset') {
@@ -462,6 +481,11 @@ export function initPostHog(): boolean {
     return false
   }
   scrubSensitiveQueryFromAddressBar()
+  // Egy korábbi lapról maradt `reset` jel. A betöltés alatti belépés a jelet
+  // a saját `id:` jelével felülírja (a sor viszi), a kijelentkezett
+  // felhasználó azonosságát viszont attól még el kell engedni az `$opt_in`
+  // előtt.
+  const resetFromEarlierPage = peekIdentityPending() === 'reset'
   initStarted = true
   // A hozzájárulásra várók most az SDK-sorba kerülnek, a keletkezési
   // oldalukkal (lásd readyCallbacks): a betöltés alatti route-váltás már nem
@@ -485,7 +509,10 @@ export function initPostHog(): boolean {
       // $opt_in eseményt csak ekkor küld, nem minden betöltéskor. A korábbi
       // lapon (az SDK megérkezése előtt vagy hozzájárulás nélkül) történt
       // belépés vagy kijelentkezés jele ugyanitt fut le, a sora elveszett.
-      syncGrantedCapture(client, identityQueued ? null : takeIdentityPending())
+      syncGrantedCapture(
+        client,
+        identityQueued ? (resetFromEarlierPage ? 'reset' : null) : takeIdentityPending(),
+      )
       initialized = true
       startCapturing()
     },

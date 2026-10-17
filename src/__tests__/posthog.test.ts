@@ -169,6 +169,24 @@ describe('M9 — a before_send minden eseményt a beágyazott értékeivel együ
     expect(kimenet.split(JSON.stringify(tiszta))).toHaveLength(4)
   })
 
+  it('a tömbökben, beágyazott tömbökben is tisztít', () => {
+    const kimenet = kuldes('egyedi', { lista: [cim, [{ k: cim }]] })
+    expect(kimenet).not.toContain(JEGY)
+    expect(kimenet.split(JSON.stringify(tiszta))).toHaveLength(3)
+  })
+
+  it('az $exception öt szint mély veremkerete változatlanul kimegy', () => {
+    const kivetel = {
+      $exception_list: [
+        {
+          type: 'Error',
+          stacktrace: { frames: [{ filename: 'app.js', lineno: 1, function: 'f' }] },
+        },
+      ],
+    }
+    expect(JSON.parse(kuldes('$exception', kivetel)).properties).toEqual(kivetel)
+  })
+
   it('a mélységi korlátnál mélyebb objektum kimarad, nem tisztítatlanul megy ki', () => {
     let melyen: Record<string, unknown> = { url: cim, [cim]: 1 }
     for (let i = 0; i < 12; i += 1) {
