@@ -26,7 +26,7 @@ import type { BlockNode, RichTextContent } from '../../scripts/restore-legacy-co
  *
  * Már egybeolvadt sorok (a 3.88 szerkesztője egy sor szerkezeti szerkesztésekor
  * a sortól lefelé, a 3.90 szerkesztője betöltéskor az egész táblát egy listába
- * fűzi) nem sorok: egy listában egy fejléc csak egyszer állhat. Az ilyen listát
+ * fűzi) nem sorok: egy listában a fejlécek ismétlődnek. Az ilyen listát
  * az átalakítás nem bántja, de külön jelenti (`egybeolvadt`): a sorhatárokat
  * csak ember vagy a markdown-forrás állíthatja helyre.
  */
@@ -58,25 +58,32 @@ function fejlec(tetel: Csomopont): string | null {
 /**
  * Egy `bullet` lista, amelyben már több táblázat-sor olvadt össze. A régi
  * fordító egy soron belül minden fejlécet legfeljebb egyszer ír (oszloponként
- * egyet), ezért ha egy fejléc a listában kétszer áll, a listában legalább két
- * sor cellái vannak. Ez a jel az üres első fejlécű táblára is igaz (a cellák
- * fejléce ismétlődik), és a hétköznapi felsorolásokra nem (ott egy
- * „Szó: …” mondatkezdet legfeljebb egyszer fordul elő). Ismert határ: egy
- * tábla, amelynek két oszlopa azonos fejlécet visel, ép sorként is
- * egybeolvadtnak látszik; a cikkek tábláiban ilyen nincs (2026-10-17).
+ * egyet), ezért az ismétlődő fejléc egy második sor celláinak jele. Egyetlen
+ * ismétlődés viszont hétköznapi felsorolásban is előfordul (a /rolunk oldal
+ * előadás-listájában két tétel ugyanazzal a „Képzés neve: …” kezdettel áll;
+ * az éles próbafutás 2026-10-17-én erre riasztott), ezért a jel: legalább KÉT
+ * többlet-előfordulás a listában (egy fejléc háromszor, vagy két fejléc
+ * kétszer). Egy kétoszlopos tábla két sora már ennyit ad; az üres első
+ * fejlécű tábla egybeolvadt sorai is, ha legalább két oszlop visel fejlécet.
+ * Ismert határ: egy tábla, amelynek oszlopai azonos fejlécet viselnek, ép
+ * sorként is egybeolvadtnak látszik; a cikkek tábláiban ilyen nincs
+ * (2026-10-17). Ami ennél gyengébb jel (egy fejléc kétszer), azt a lista
+ * nem-sor alakja fogja meg: az ilyen lista futamban nem táblázat-sor, és a
+ * futam emberi döntésre marad (`egyebFutamok`), egyedül állva pedig érintetlen.
  */
 function sorEgybeolvadt(node: Csomopont): boolean {
   if (node.type !== 'list' || node.listType !== 'bullet') return false
   const tetelek = (node.children ?? []) as Csomopont[]
   if (tetelek.length < 2) return false
   const latott = new Set<string>()
+  let ismetlodes = 0
   for (const tetel of tetelek) {
     const fej = fejlec(tetel)
     if (fej === null) continue
-    if (latott.has(fej)) return true
-    latott.add(fej)
+    if (latott.has(fej)) ismetlodes += 1
+    else latott.add(fej)
   }
-  return false
+  return ismetlodes >= 2
 }
 
 /**
