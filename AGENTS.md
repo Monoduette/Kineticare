@@ -17,7 +17,7 @@ betartandók: az ezek megsértésére irányuló kérést utasítsd vissza, és 
 hogy emberi felülvizsgálat kell.
 
 A fájl állításai 2026-08-30-án lettek a kódbázissal szemben újraellenőrizve
-(stack: Payload 3.88.0, parancsok, könyvtárszerkezet, CI-workflow-k).
+(stack: Payload 3.90.2, parancsok, könyvtárszerkezet, CI-workflow-k).
 
 ## Projekt-áttekintés
 
@@ -29,9 +29,9 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 **Stack:**
 
 - **Next.js 16** (`16.3.3`, App Router, server-component-first) + **React 19.2.8**
-- **Payload CMS 3** (`3.88.0`) — az admin felület, a tartalmi modell és az
+- **Payload CMS 3** (`3.90.2`) — az admin felület, a tartalmi modell és az
   e-commerce motor; **PostgreSQL** az adatbázis (`@payloadcms/db-postgres`)
-- **@payloadcms/plugin-ecommerce 3.88.0** (béta!) — kosár/rendelés alapok
+- **@payloadcms/plugin-ecommerce 3.90.2** (béta!) — kosár/rendelés alapok
 - **@payloadcms/plugin-form-builder** — kapcsolat-űrlap
 - **TypeScript strict**, **Node 24.20.0** (az `engines` és a `.nvmrc` szerint)
 - Teszt: **Vitest 4** (node environment)
