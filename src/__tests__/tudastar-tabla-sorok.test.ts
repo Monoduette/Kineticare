@@ -282,15 +282,51 @@ describe('tablaSorokSzetvalasztasa: a tárolt táblázat-sorok', () => {
 
   it('üres első fejlécű tábla egybeolvadt sorai is felismerhetők (a cellák fejléce ismétlődik)', () => {
     const regi = richText([
-      lista(['Hol érzed?', 'Hüvelyk: a tövénél', 'Mi a jellegzetes?', 'Hüvelyk: markolás']),
+      lista([
+        'Hol érzed?',
+        'Hüvelyk: a tövénél',
+        'Mikor: markoláskor',
+        'Mi a jellegzetes?',
+        'Hüvelyk: markolás',
+        'Mikor: reggel',
+      ]),
     ])
     const eredmeny = tablaSorokSzetvalasztasa(regi)
     expect(eredmeny.content).toBeNull()
     expect(eredmeny.egybeolvadt).toHaveLength(1)
     // Az ép, üres első fejlécű sor nem egybeolvadt.
     expect(
-      tablaSorokSzetvalasztasa(richText([lista(['Hol érzed?', 'Hüvelyk: a tövénél'])])).egybeolvadt,
+      tablaSorokSzetvalasztasa(
+        richText([lista(['Hol érzed?', 'Hüvelyk: a tövénél', 'Mikor: markoláskor'])]),
+      ).egybeolvadt,
     ).toEqual([])
+  })
+
+  it('hétköznapi felsorolás, amelyben egy „Név: …” kezdet kétszer áll, NEM egybeolvadt tábla (a /rolunk előadás-listája)', () => {
+    // Az éles próbafutás találata (2026-10-17): a /rolunk oldal listájában két
+    // tétel ugyanazzal a képzés-névvel kezdődik, és a régi jel (egy fejléc
+    // kétszer) egybeolvadt táblának nézte, a job hibával zárt volna.
+    const eloadasok = lista([
+      'Magyar Sportrehabilitációs Konferencia (2025, Budapest): egy esettanulmány',
+      'Sportrehabilitációs tréner képzés: Bevezetés a kéz rehabilitációjába (2024)',
+      'ProBody Stúdió sportrehabilitációs tréner képzés: Gerinc anatómia (2024)',
+      'ProBody Stúdió sportrehabilitációs tréner képzés: Könyök és csukló (2023)',
+      'A Magyar Kézsebész Társaság 29. kongresszusa: skill tréning (2023)',
+      'Akkreditált Oftex kurzus: Ínvarratok (2023, Budapest)',
+      'ISPOR konferencia: Thoracic Spine Deformities (2020, Milánó)',
+    ])
+    const eredmeny = tablaSorokSzetvalasztasa(richText([bekezdes('Előadások'), eloadasok]))
+    expect(eredmeny.content).toBeNull()
+    expect(eredmeny.egybeolvadt).toEqual([])
+    expect(eredmeny.egyebFutamok).toEqual([])
+    // Ugyanez a lista futamban sem táblázat-sor, és nem egybeolvadt: a futam
+    // emberi döntésre marad, a job nem ír.
+    const futamban = tablaSorokSzetvalasztasa(
+      richText([eloadasok, lista(['Tünet: zsibbadás', 'Teendő: pihentetés'])]),
+    )
+    expect(futamban.content).toBeNull()
+    expect(futamban.egybeolvadt).toEqual([])
+    expect(futamban.egyebFutamok).toHaveLength(1)
   })
 
   it('hétköznapi felsorolás egy „Szó: …” tétellel és több sima tétellel NEM egybeolvadt tábla', () => {

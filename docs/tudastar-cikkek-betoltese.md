@@ -248,14 +248,19 @@ oszlop fejléce üres). A nem táblázat-alakú szomszédos listákat a job hang
 kihagyásként jelenti, és nem bántja. Csak közzétett, piszkozat nélküli
 dokumentumba ír (ugyanaz a szabály, mint az ÁSZF-javításnál).
 
-Már egybeolvadt sorokat (egy listában több sor cellái: egy fejléc a listában
-kétszer áll, a régi fordító soronként minden fejlécet egyszer ír) a job nem
+Már egybeolvadt sorokat (egy listában több sor cellái: a fejlécek a listában
+ismétlődnek, a régi fordító soronként minden fejlécet egyszer ír) a job nem
 bánt és nem is „javít”: hangos kihagyásként jelenti, a futás hibával zár, és
 a sorhatárokat az adminban kézzel, a `docs/cikkek/` markdown alapján kell
-helyreállítani. Hétköznapi felsorolásra (egy „Szó: …” mondatkezdet egyszer)
-nem riaszt; őr: a 10 cikk és a hubok friss fordítása egyetlen jelentést sem
-ad. Ismert határ: egy tábla két azonos fejlécű oszloppal egybeolvadtnak
-látszik; a cikkekben ilyen nincs.
+helyreállítani. A jel legalább két többlet-előfordulás (egy fejléc háromszor,
+vagy két fejléc kétszer): egyetlen ismétlődés hétköznapi felsorolásban is
+előfordul (a `/rolunk` előadás-listájában két tétel ugyanazzal a képzés-névvel
+kezdődik; az első éles próbafutás 2026-10-17-én erre riasztott). Hétköznapi
+felsorolásra („Szó: …” mondatkezdet egyszer-kétszer) nem riaszt; őr: a 10
+cikk és a hubok friss fordítása egyetlen jelentést sem ad. Ismert határ: egy
+tábla azonos fejlécű oszlopokkal egybeolvadtnak látszik; a cikkekben ilyen
+nincs. A gyengébb jelű lista (egy fejléc kétszer) futamban nem táblázat-sor,
+a futam emberi döntésre marad, egyedül állva érintetlen.
 
 Ha egy dokumentumnak közzé nem tett piszkozata van, a job nem ír, és a napló
 megmondja a teendőt: az utolsó KÖZZÉTETT verzió visszaállítása az adminban
