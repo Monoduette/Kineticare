@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import postcss, { type Rule } from 'postcss'
@@ -290,6 +290,53 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
       expect(torzs).toMatch(/-webkit-tap-highlight-color:\s*transparent/)
     },
   )
+
+  // A kártyát fedő gomb (kiterjesztett `::after` link) összehúzódva a
+  // kiterjesztett felületét is kihúzná a koppintás alól, és a kártyára eső
+  // koppintás elveszne (/kurzusaim, 2026-10-17). Minden ilyen Button-osztálynak
+  // a ui.css összehúzó szabályának `:not()` listáján kell állnia.
+  it('a kártyát fedő gomb nem húzódik össze lenyomva', () => {
+    const fajlok = (konyvtar: string): string[] =>
+      readdirSync(join(REPO, konyvtar), { withFileTypes: true }).flatMap((bejegyzes) => {
+        const ut = join(konyvtar, bejegyzes.name)
+        return bejegyzes.isDirectory() ? fajlok(ut) : [ut]
+      })
+    const osszes = fajlok('.').map((ut) => relative('.', ut))
+    const kiterjesztett = new Set<string>()
+    for (const fajl of osszes.filter((ut) => ut.endsWith('.css'))) {
+      postcss.parse(olvas(fajl)).walkRules((rule) => {
+        const decl = (prop: string) =>
+          rule.nodes.find((node) => node.type === 'decl' && node.prop === prop)?.toString()
+        if (decl('position') !== 'position: absolute' || decl('inset') !== 'inset: 0') return
+        for (const szelektor of rule.selectors) {
+          const osztaly = /^\.([\w-]+)::after$/.exec(szelektor.trim())?.[1]
+          if (osztaly) kiterjesztett.add(osztaly)
+        }
+      })
+    }
+    const gombOsztalyok = osszes
+      .filter((ut) => ut.endsWith('.tsx'))
+      .flatMap((fajl) =>
+        [...olvas(fajl).matchAll(/<Button\b[^>]*?className="([^"]+)"/g)].flatMap((talalat) =>
+          talalat[1].split(/\s+/),
+        ),
+      )
+      .filter((osztaly) => kiterjesztett.has(osztaly))
+    expect(gombOsztalyok).toContain('kc-mycourse__cta')
+
+    const osszehuzo = szabalyok().filter(
+      (sz) =>
+        sz.szelektorok.some((s) => s.startsWith('.kc-button') && s.includes(':active')) &&
+        /transform:\s*scale\(0\.97\)/.test(sz.torzs),
+    )
+    for (const osztaly of new Set(gombOsztalyok)) {
+      for (const sz of osszehuzo) {
+        for (const szelektor of sz.szelektorok) {
+          expect(szelektor, `${osztaly}: kimarad az összehúzásból`).toContain(`:not(.${osztaly})`)
+        }
+      }
+    }
+  })
 
   it('a nyomás ideje 80 ms (a 0,1 s-os azonnaliság-határ alatt)', () => {
     expect(olvas('app/(frontend)/styles/tokens.css')).toMatch(/--kc-motion-press:\s*80ms;/)
