@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import sharp from 'sharp'
-import type { Payload, PayloadRequest } from 'payload'
+import type { FileToSave, Payload, PayloadRequest } from 'payload'
 import { generateFileData } from '../../node_modules/payload/dist/uploads/generateFileData.js'
 import type { Media } from '../payload-types'
 import manifest from '../../public/media/team/manifest.json'
@@ -19,6 +19,15 @@ import {
   planMediaRecoveryEnrollment,
   managedMediaAssets,
 } from '../lib/media-recovery-provenance'
+
+/**
+ * A Payload 3.90-től a mentendő fájl vagy bájtokat (`buffer`), vagy egy
+ * ideiglenes forrásfájlt (`sourcePath`) visz (payload/dist/uploads/types
+ * `FileToSave`). A teszt mindkettőt a Payload mentésével azonosan kezeli.
+ */
+function fileBytes(file: FileToSave): Buffer {
+  return 'buffer' in file ? file.buffer : readFileSync(file.sourcePath)
+}
 
 const folders: string[] = []
 afterEach(() => {
@@ -332,7 +341,7 @@ describe('durable team media recovery provenance', { timeout: 60_000 }, () => {
         focus ? { uploadEdits: { focalPoint: focus } } : {},
         { alt: f.doc.alt },
       )
-      for (const file of created.files) writeFileSync(file.path, file.buffer)
+      for (const file of created.files) writeFileSync(file.path, fileBytes(file))
       f.edit(created.data)
       expect(f.doc.focalX).toBe(focus?.x ?? 50)
       expect(f.doc.focalY).toBe(focus?.y ?? 50)
@@ -341,7 +350,7 @@ describe('durable team media recovery provenance', { timeout: 60_000 }, () => {
       f.update.mockImplementation(async (args?: unknown) => {
         const options = args as { data: Partial<Media>; req?: { query: PayloadRequest['query'] } }
         const result = await generate('update', options.req?.query ?? {}, options.data)
-        for (const file of result.files) writeFileSync(file.path, file.buffer)
+        for (const file of result.files) writeFileSync(file.path, fileBytes(file))
         f.edit({ ...result.data, updatedAt: '2026-09-05T00:02:00.000Z' })
         return f.doc
       })

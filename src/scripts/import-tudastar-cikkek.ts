@@ -56,8 +56,9 @@ export interface CikkBejegyzes {
  * webcímek szerepelnek a `docs/adwords-kampany.md` céloldal-hozzárendelésében
  * (7.2), tehát nem szabad eltérni tőlük, különben a hirdetés 404-re visz.
  *
- * A 7. és 8. cikk CSAK `/blog/{slug}` poszt. Gyökér `/inhuvelygyulladas`
- * pages-rekordot ez a script nem hoz létre.
+ * A 7. és 8. cikk ebben a scriptben `/blog/{slug}` poszt. A gyökér
+ * `/inhuvelygyulladas` és `/befagyott-vall` pages-hubot nem ez, hanem az
+ * `import-hub-oldalak.ts` hozza létre (`src/lib/tudastar/hub-oldalak.ts`).
  *
  * A 9. és 10. cikk a tulajdonosok blogötlete (2026-09-19), tulajdonosi
  * utasításra élesbe szánva: ugyanazon a két kapun megy át, mint a többi;

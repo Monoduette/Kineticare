@@ -271,18 +271,40 @@ function tablaCellak(sor: string): string[] {
 
 function tablaElvalaszto(cellak: readonly string[]): boolean {
   return (
-    cellak.length > 0 &&
-    cellak.every((cella) => cella.length === 0 || TABLA_ELVALASZTO.test(cella))
+    cellak.length > 0 && cellak.every((cella) => cella.length === 0 || TABLA_ELVALASZTO.test(cella))
   )
 }
 
+/** Félkövér bekezdés: a táblázat-sor első cellája, a sor címe. */
+const felkoverBekezdes = (sor: string): BlockNode => {
+  const felkover = (node: BlockNode): BlockNode => {
+    const n = node as BlockNode & { type?: string; format?: number; children?: BlockNode[] }
+    if (n.type === 'text') return { ...n, format: (n.format ?? 0) | FORMAT_BOLD } as BlockNode
+    return Array.isArray(n.children)
+      ? ({ ...n, children: n.children.map(felkover) } as BlockNode)
+      : n
+  }
+  const alap = bekezdes(sor) as BlockNode & { children: BlockNode[] }
+  return { ...alap, children: alap.children.map(felkover) } as BlockNode
+}
+
 /**
- * Markdown-tábla → bekezdés + felsorolás.
+ * Markdown-tábla → soronként egy félkövér bekezdés és egy felsorolás.
  *
  * A storefront szerializálója és a Payload alapszerkesztője nem ismer táblázat-
  * csomópontot. A cellák szövegét ezért ismert csomópontokban tartjuk: minden
- * adat-sor egy felsorolás, a fejléc szövege a tétel elején („Fejléc: érték”),
- * hogy a T4 szószám-őr és a látogató is megkapja a teljes tartalmat.
+ * adat-sor első cellája félkövér bekezdés (a sor címe), a többi cella egy
+ * felsorolás; a fejléc szövege mindenütt az érték elején áll („Fejléc:
+ * érték”), hogy a T4 szószám-őr és a látogató is megkapja a teljes tartalmat.
+ * Ha az első oszlop fejléce üres, a sor címe csak az érték.
+ *
+ * A sor címe nem lehet egyetlen link: a storefront az önálló linkes bekezdést
+ * gombként vagy beágyazott videóként jelenítené meg.
+ *
+ * A sorok közé azért kerül bekezdés, mert a Payload 3.90.2 szerkesztője
+ * (Lexical 0.50) az egymás melletti, azonos típusú felsorolásokat az első
+ * szerkesztéskor egybefűzi, és a mentés a táblázat sorhatárait eltüntetné
+ * (T7 a tudastar-markdown-lexical tesztben).
  */
 function tablaCsomopontok(sorok: readonly string[]): BlockNode[] {
   const parsed = sorok
@@ -296,16 +318,32 @@ function tablaCsomopontok(sorok: readonly string[]): BlockNode[] {
   const fejlec = parsed[0]
   const csomopontok: BlockNode[] = []
   for (const sor of parsed.slice(1)) {
-    const tetelek: string[] = []
+    const cellak: Array<{ fej: string; ertek: string }> = []
     const oszlopok = Math.max(fejlec.length, sor.length)
     for (let i = 0; i < oszlopok; i += 1) {
       const ertek = (sor[i] ?? '').trim()
       if (ertek.length === 0) continue
-      const fej = (fejlec[i] ?? '').trim()
-      tetelek.push(fej.length > 0 ? `${fej}: ${ertek}` : ertek)
+      cellak.push({ fej: (fejlec[i] ?? '').trim(), ertek })
     }
-    if (tetelek.length === 0) continue
-    csomopontok.push(lista(tetelek, false))
+    if (cellak.length === 0) continue
+    const [cim, ...tobbi] = cellak.map(({ fej, ertek }) =>
+      fej.length > 0 ? `${fej}: ${ertek}` : ertek,
+    )
+    // Ugyanaz a szabály, mint a storefront CTA-felismerésénél
+    // (src/components/lexical/serialize.tsx significantChildren): az üres
+    // szöveg nem számít, és ha egyetlen jelentős elem marad, az nem lehet link.
+    const jelentos = inlineNodes(cim).filter((node) => {
+      const n = node as { type?: string; text?: string }
+      return n.type !== 'text' || (n.text ?? '').trim().length > 0
+    })
+    if (jelentos.length === 1 && (jelentos[0] as { type?: string }).type === 'link') {
+      throw new Error(
+        `Táblázat-sor címe csak link („${cim}”): a storefront gombként mutatná. ` +
+          'Írj elé szöveget, vagy tedd a linket egy későbbi oszlopba.',
+      )
+    }
+    csomopontok.push(felkoverBekezdes(cim))
+    if (tobbi.length > 0) csomopontok.push(lista(tobbi, false))
   }
   if (csomopontok.length === 0) {
     throw new Error('Táblázat a cikk törzsében üres adatsorokkal.')
@@ -439,6 +477,20 @@ export function markdownToLexical(lines: readonly string[]): RichTextContent {
 
   if (csomopontok.length === 0) {
     throw new Error('A cikk törzse üres lett a fordítás után.')
+  }
+  // A Payload 3.90.2 szerkesztője (Lexical 0.50) az egymás melletti, azonos
+  // típusú felsorolásokat az első szerkesztéskor egybefűzi; ilyen kimenet a
+  // mentés után mást mutatna, mint amit a fordító írt (T7).
+  for (let k = 1; k < csomopontok.length; k += 1) {
+    const elozo = csomopontok[k - 1] as { type?: string; listType?: string }
+    const aktualis = csomopontok[k] as { type?: string; listType?: string }
+    if (elozo.type === 'list' && aktualis.type === 'list' && elozo.listType === aktualis.listType) {
+      throw new Error(
+        'Két felsorolás közvetlenül egymás után (például táblázat után lista, vagy üres sorral ' +
+          'elválasztott listatételek): a szerkesztő egybefűzné őket. Tegyél közéjük bekezdést, ' +
+          'vagy vond össze őket egy listába.',
+      )
+    }
   }
   return richText(csomopontok)
 }

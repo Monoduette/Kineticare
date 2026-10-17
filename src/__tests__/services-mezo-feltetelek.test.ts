@@ -184,11 +184,13 @@ describe('services: az elrejtett mező adata mentéskor megmarad', () => {
     expect(adat).toEqual({ elrendezes: 'sin', image: 31, rows: [{ number: '07' }] })
   })
 
-  it('forrás-őr: a Payload 3.88 a feltételt csak validáció-kihagyásra használja, és a rejtett mező értékét a form-state-ben tartja', () => {
+  it('forrás-őr: a Payload (3.90) a feltételt csak validáció-kihagyásra használja, és a rejtett mező értékét a form-state-ben tartja', () => {
     const forras = (relativ: string): string =>
       readFileSync(fileURLToPath(new URL(`../../node_modules/${relativ}`, import.meta.url)), 'utf8')
-    expect(forras('payload/dist/fields/hooks/beforeChange/promise.js')).toContain(
-      'let skipValidationFromHere = skipValidation || !passesCondition;',
+    // A 3.90 a beküldött mezőkörön kívüli mezőt is kihagyja
+    // (isOutsideSubmittedFieldScope); a feltétel szerepe változatlan.
+    expect(forras('payload/dist/fields/hooks/beforeChange/promise.js')).toMatch(
+      /let skipValidationFromHere = skipValidation \|\|(?: [\w.]+ \|\|)* !passesCondition;/,
     )
     expect(forras('payload/dist/utilities/reduceFieldsToValues.js')).not.toContain(
       'passesCondition',
