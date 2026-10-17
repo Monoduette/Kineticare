@@ -118,12 +118,14 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
     // ez elég (posthog-js dead-clicks-autocapture.js: `maskAllText:
     // config.mask_all_text`).
     mask_all_text: true,
-    // M9 A KIMENŐ HATÁRON, MINDEN ESEMÉNYRE. A posthog-js a `$current_url`-t
-    // (és a `$referrer`-t, a `$initial_*` személy-tulajdonságokat) maga
-    // olvassa a címsorból: az `$autocapture`, a `$dead_click`, a
-    // `$pageleave` és az `$opt_in` így a jelszó-visszaállító jegyet is
-    // felküldte volna. A saját `$pageview` eddig is tisztított volt; ez a
-    // horog minden más eseményt is ugyanazon a tisztítón visz át.
+    // M9 MINDEN ESEMÉNYRE. A posthog-js a `$current_url`-t (és a
+    // `$referrer`-t, a `$initial_*` személy-tulajdonságokat, a heatmap- és a
+    // web-vitals-adatok beágyazott URL-jeit) maga olvassa a címsorból: az
+    // `$autocapture`, a `$dead_click`, a `$pageleave` és az `$opt_in` így a
+    // jelszó-visszaállító jegyet is felküldte volna. Ez a horog minden
+    // eseményt, bármilyen mélységben, a meglévő tisztítón visz át. A nem
+    // esemény útvonalakat (`/flags`, tartós tárolás) a címsor init előtti
+    // tisztítása fedi (scrubSensitiveQueryFromAddressBar).
     // https://posthog.com/docs/libraries/js/config (before_send)
     before_send: sanitizeOutgoingEvent,
   }
@@ -132,26 +134,70 @@ export function buildPostHogOptions(): Partial<PostHogConfig> {
 /** URL-nek látszó szöveg (abszolút vagy gyökér-relatív, query-vel). */
 const URL_WITH_QUERY = /^(https?:\/\/|\/)[^\s]*\?/
 
+/** A beágyazás mélységének felső korlátja (a PostHog-tulajdonságok sekélyek). */
+const SANITIZE_MAX_DEPTH = 8
+
+/**
+ * Egy tulajdonság-érték tisztítása, bármilyen mélységben: az URL-jellegű
+ * szöveg és az URL-jellegű objektum-KULCS is (a `$$heatmap` adatát a
+ * posthog-js a nyers `location.href` kulcs alatt küldi, a `$web_vitals`
+ * mérőszámai beágyazott `$current_url`-t visznek).
+ */
+function sanitizeValue(value: unknown, depth: number): unknown {
+  if (typeof value === 'string') {
+    return URL_WITH_QUERY.test(value) ? sanitizeAnalyticsUrl(value) : value
+  }
+  if (depth >= SANITIZE_MAX_DEPTH || value === null || typeof value !== 'object') {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeValue(item, depth + 1))
+  }
+  const clean: Record<string, unknown> = {}
+  for (const [key, inner] of Object.entries(value)) {
+    const cleanKey = URL_WITH_QUERY.test(key) ? sanitizeAnalyticsUrl(key) : key
+    clean[cleanKey] = sanitizeValue(inner, depth + 1)
+  }
+  return clean
+}
+
 function sanitizeProperties(properties: Properties | undefined): Properties | undefined {
   if (!properties) {
     return properties
   }
-  const clean: Properties = {}
-  for (const [key, value] of Object.entries(properties)) {
-    if (typeof value === 'string' && URL_WITH_QUERY.test(value)) {
-      clean[key] = sanitizeAnalyticsUrl(value)
-    } else if (
-      (key === '$set' || key === '$set_once') &&
-      value !== null &&
-      typeof value === 'object' &&
-      !Array.isArray(value)
-    ) {
-      clean[key] = sanitizeProperties(value as Properties)
-    } else {
-      clean[key] = value
+  return sanitizeValue(properties, 0) as Properties
+}
+
+/**
+ * Az érzékeny query-paraméter (a jelszó-visszaállító jegy) kivétele a
+ * CÍMSORBÓL, mielőtt az SDK bármit olvasna. A posthog-js az URL-t nem csak az
+ * eseményekbe írja (azokat a `before_send` tisztítja), hanem a tartós
+ * személy-tulajdonságokba (`$initial_current_url`, a saját sütijébe és
+ * localStorage-ába) és a `/flags` kérés törzsébe is; ezek nem események,
+ * a `before_send` nem látja őket. Ha a jegy már az init előtt eltűnik a
+ * címből, egyik útvonalon sem mehet ki. Csak hozzájárulással, az SDK
+ * betöltése előtt fut. A visszaállító űrlap a jegyet a szervertől kapja
+ * (prop), tehát működik tovább; a lap újratöltése után viszont az e-mailes
+ * linket kell újra megnyitni. A Next.js útválasztója a `history` példányán
+ * figyeli a `replaceState`-et; az eredeti (prototípus) hívás csak a címsort
+ * írja át, így a lap nem renderel újra, és nem megy ki második `$pageview`.
+ */
+function scrubSensitiveQueryFromAddressBar(): void {
+  try {
+    const url = new URL(window.location.href)
+    const withoutHash = `${url.origin}${url.pathname}${url.search}`
+    const clean = sanitizeAnalyticsUrl(withoutHash)
+    if (clean !== withoutHash) {
+      History.prototype.replaceState.call(
+        window.history,
+        window.history.state,
+        '',
+        `${clean}${url.hash}`,
+      )
     }
+  } catch {
+    // A címsor nem írható (például sandboxolt keret): a `before_send` marad.
   }
-  return clean
 }
 
 /**
@@ -299,15 +345,32 @@ function applyIdentityOp(client: PostHog, op: IdentityOp): void {
  * sorban. Igazat ad, ha lefutott vagy sorba került.
  */
 function runIdentityOp(op: IdentityOp): boolean {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !isPostHogConfigured()) {
+    return false
+  }
+  if (!hasAnalyticsConsent()) {
+    // Hozzájárulás nélkül nincs azonosítás (a `/flags` kérés a users.id-t is
+    // vinné). A kijelentkezés viszont akkor is elengedi a tárolt azonosságot:
+    // a futó kliensen a `reset()` a saját opt-outját is törli (posthog-js:
+    // „Consent is user state, so reset() clears it”), ezért utána rögtön
+    // vissza kell állítani, különben a `$pageleave` kimenne. SDK nélkül a
+    // `reset` jel marad a következő (hozzájárulásos) initre, és felülírja egy
+    // korábbi belépés jelét, hogy a gépet a következő ember ne a régi
+    // felhasználóként folytassa.
+    if (op === 'reset') {
+      if (initialized && posthog) {
+        posthog.reset()
+        posthog.opt_out_capturing()
+        capturing = false
+      } else {
+        markIdentityPending('reset')
+      }
+    }
     return false
   }
   if (initialized && posthog) {
     applyIdentityOp(posthog, op)
     return true
-  }
-  if (!isPostHogConfigured() || !hasAnalyticsConsent()) {
-    return false
   }
   markIdentityPending(op)
   identityQueued = withClient((client) => {
@@ -376,6 +439,7 @@ export function initPostHog(): boolean {
   if (!isPostHogConfigured() || !hasAnalyticsConsent()) {
     return false
   }
+  scrubSensitiveQueryFromAddressBar()
   initStarted = true
   // A hozzájárulásra várók most az SDK-sorba kerülnek, a keletkezési
   // oldalukkal (lásd readyCallbacks): a betöltés alatti route-váltás már nem
@@ -522,6 +586,16 @@ export function disableAnalyticsCapture(): void {
   // Betöltés közben: a várakozó hívások eldobódnak, és az SDK megérkezésekor
   // a hozzájárulás-ellenőrzés (initPostHog) meg sem indítja a klienst.
   dropPendingCalls()
+  // Egy függő belépés-jel visszavonás után nem élhet tovább: egy későbbi
+  // hozzájárulás különben a régi felhasználóként azonosítaná a gépet. A
+  // `reset` jel marad (az csak elenged).
+  try {
+    if (window.localStorage.getItem(IDENTITY_PENDING_KEY)?.startsWith('id:')) {
+      window.localStorage.removeItem(IDENTITY_PENDING_KEY)
+    }
+  } catch {
+    // Tiltott tároló: nincs mit törölni.
+  }
   if (initialized && posthog) {
     posthog.opt_out_capturing()
     capturing = false
