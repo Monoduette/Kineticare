@@ -242,19 +242,29 @@ Railway új build nélkül a régi képet indítja. Két korlát:
     haladást. Csak közvetlenül a deploy után, rendelés előtt elfogadható.
   - **Adatkímélő út**: a mentésből csak a `users` tábla `hash`, `salt`,
     `login_attempts` és `lock_until` oszlopát kell visszaírni az élő
-    adatbázisba (a deploy után regisztrált fiókoknak nincs régi hashük, nekik
-    jelszó-visszaállítás kell). A Railway PITR-je
-    (`docs/adatbazis-mentes.md`) testvér-szolgáltatásba állít vissza, onnan is
-    kiolvasható ugyanez.
+    adatbázisba, és csak akkor, amikor már kizárólag a 3.88 fut (egy még
+    futó 3.90-es konténer a következő belépéskor újra átírná a hasht). Akinek
+    a jelszava a mentés óta keletkezett, megváltozott vagy visszaállt, az a
+    régi jelszavát kapja vissza, és jelszó-visszaállításra van szüksége; a
+    deploy után regisztrált fióknak nincs régi hashe. A vendégvásárlásból
+    jött fiók, amely ebben az ablakban állította be az első jelszavát,
+    maradjon ki a visszaírásból (vagy a `password_setup_pending` jelzőjét is
+    vissza kell állítani). Ha a Railway PITR-je a deploy előtt már be volt
+    kapcsolva (`docs/adatbazis-mentes.md`), a régi oszlopok onnan is
+    kiolvashatók; az elsődleges forrás a merge előtti mentés.
   - **Jelszó-visszaállító e-maillel** is helyreáll a belépés (a 3.88 régi
-    formátumú hasht ír), működő Resenddel; a 3.88 a zárolást ilyenkor nem
-    oldja fel, a már zárolt fiók 10 percet vár. A tulajdonos, ha újra bejut,
-    a munkatársak jelszavát az adminban közvetlenül beállíthatja.
+    formátumú hasht ír), működő Resenddel. A visszaállítás az adott eszközön
+    azonnal be is léptet; zárolt fióknál egy másik eszközön a jelszavas
+    belépés 10 percig még a zárolásba ütközik, ezt a tulajdonos az adminban
+    a feloldással (Unlock) megszüntetheti. A tulajdonos, ha újra bejut, a
+    munkatársak jelszavát az adminban közvetlenül is beállíthatja.
   - **A mentés ideje**: a `Kineticare` szolgáltatás a `main` minden pushára
     automatikusan deployol, ezért a mentést a #329 MERGE-e előtt kell
-    elkészíteni (`npm run backup:db`: helyi `pg_dump`/`pg_restore` 18-as vagy
-    újabb főverzió és a TCP-proxys `DATABASE_PUBLIC_URL` kell hozzá, a
-    privát `DATABASE_URI` kívülről nem érhető el; `docs/adatbazis-mentes.md`).
+    elkészíteni: `npm run backup:db`, helyi `pg_dump`/`pg_restore` 18-as
+    vagy újabb főverzióval. A szkript a `DATABASE_URI` változót olvassa;
+    ebbe a `Postgres-c8Rg` szolgáltatás `DATABASE_PUBLIC_URL` (TCP-proxy)
+    értékét kell tenni, mert a belső cím kívülről nem érhető el
+    (`docs/adatbazis-mentes.md`).
 
 ## 7. Job-szolgáltatások (egyszeri scriptek a Railway-en)
 

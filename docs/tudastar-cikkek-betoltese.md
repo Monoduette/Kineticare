@@ -63,8 +63,8 @@ vágva, legfeljebb 200 karakter.
 | `4-pattano-ujj.md` | `pattano-ujj` |
 | `5-csuklo-es-kezfajdalom.md` | `csuklo-es-kezfajdalom` |
 | `6-csuklotores-utani-gyogytorna.md` | `csuklotores-utani-gyogytorna` |
-| `7-inhuvelygyulladas.md` | `inhuvelygyulladas` (csak `/blog/…`; nincs gyökér pages-hub) |
-| `8-befagyott-vall.md` | `befagyott-vall` (csak `/blog/…`; kategória `vall-es-konyok`) |
+| `7-inhuvelygyulladas.md` | `inhuvelygyulladas` (`/blog/…`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi) |
+| `8-befagyott-vall.md` | `befagyott-vall` (`/blog/…`, kategória `vall-es-konyok`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi) |
 | `9-peace-and-love-friss-serules.md` | `peace-and-love-friss-serules` (tulajdonosi cikk, 5.1; kategória `kez-es-csuklo`) |
 | `10-gipszben-a-kezed.md` | `gipszben-a-kezed` (tulajdonosi cikk, 5.1; kategória `tores-es-mutet-utan`) |
 
