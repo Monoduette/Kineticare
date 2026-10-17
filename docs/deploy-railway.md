@@ -241,15 +241,18 @@ Railway új build nélkül a régi képet indítja. Két korlát:
     hivatkozásait, visszatérítéseket, hozzáféréseket, új fiókokat és
     haladást. Csak közvetlenül a deploy után, rendelés előtt elfogadható.
   - **Adatkímélő út**: a mentésből csak a `users` tábla `hash`, `salt`,
-    `login_attempts` és `lock_until` oszlopát kell visszaírni az élő
-    adatbázisba, és csak akkor, amikor már kizárólag a 3.88 fut (egy még
-    futó 3.90-es konténer a következő belépéskor újra átírná a hasht). Akinek
-    a jelszava a mentés óta keletkezett, megváltozott vagy visszaállt, az a
-    régi jelszavát kapja vissza, és jelszó-visszaállításra van szüksége; a
-    deploy után regisztrált fióknak nincs régi hashe. A vendégvásárlásból
-    jött fiók, amely ebben az ablakban állította be az első jelszavát,
-    maradjon ki a visszaírásból (vagy a `password_setup_pending` jelzőjét is
-    vissza kell állítani). Ha a Railway PITR-je a deploy előtt már be volt
+    `login_attempts`, `lock_until` és `password_setup_pending` oszlopát kell
+    visszaírni az élő adatbázisba, minden olyan sorra, amely a mentésben is
+    megvan, és csak akkor, amikor már kizárólag a 3.88 fut (egy még futó
+    3.90-es konténer a következő belépéskor újra átírná a hasht). Akinek a
+    jelszava a mentés óta keletkezett vagy megváltozott (például
+    jelszó-visszaállítással), az a régi jelszavát kapja vissza, és újabb
+    jelszó-visszaállításra van szüksége. A `password_setup_pending` visszaírása
+    a vendégvásárlásból jött fiókok miatt kell: ha ilyen fiók ebben az
+    ablakban állította be az első jelszavát, a jelző visszaállításával a
+    következő vásárláskor újra jelszóbeállító linket kap. A deploy után
+    regisztrált fióknak nincs régi hashe, neki jelszó-visszaállítás kell. Ha a
+    Railway PITR-je a deploy előtt már be volt
     kapcsolva (`docs/adatbazis-mentes.md`), a régi oszlopok onnan is
     kiolvashatók; az elsődleges forrás a merge előtti mentés.
   - **Jelszó-visszaállító e-maillel** is helyreáll a belépés (a 3.88 régi
