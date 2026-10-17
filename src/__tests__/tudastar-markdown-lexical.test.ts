@@ -183,10 +183,21 @@ describe('T3 — a fel nem ismert szerkezet HANGOSAN bukik', () => {
     expect(szoveg).toContain('körte')
   })
 
-  it('a táblázat-sor címe nem lehet egyetlen link (a storefront gombként mutatná)', () => {
-    expect(() =>
-      markdownToLexical(['| | Leírás |', '|---|---|', '| [Kurzus](/kurzusok/a) | szöveg |']),
-    ).toThrowError(/csak link/)
+  it.each(['[Kurzus](/kurzusok/a)', '[Kurzus](/kurzusok/a)** **'])(
+    'a táblázat-sor címe nem lehet egyetlen link (a storefront gombként mutatná): %s',
+    (cim) => {
+      expect(() =>
+        markdownToLexical(['| | Leírás |', '|---|---|', `| ${cim} | szöveg |`]),
+      ).toThrowError(/csak link/)
+    },
+  )
+
+  it('két link vagy link és szöveg a sor címében megengedett (rendes bekezdés lesz)', () => {
+    for (const cim of ['[a](/a)[b](/b)', '[Kurzus](/kurzusok/a) és társai']) {
+      expect(() =>
+        markdownToLexical(['| | Leírás |', '|---|---|', `| ${cim} | szöveg |`]),
+      ).not.toThrow()
+    }
   })
 
   it.each([

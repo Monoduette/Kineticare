@@ -329,7 +329,14 @@ function tablaCsomopontok(sorok: readonly string[]): BlockNode[] {
     const [cim, ...tobbi] = cellak.map(({ fej, ertek }) =>
       fej.length > 0 ? `${fej}: ${ertek}` : ertek,
     )
-    if (inlineNodes(cim).every((node) => (node as { type?: string }).type === 'link')) {
+    // Ugyanaz a szabály, mint a storefront CTA-felismerésénél
+    // (src/components/lexical/serialize.tsx significantChildren): az üres
+    // szöveg nem számít, és ha egyetlen jelentős elem marad, az nem lehet link.
+    const jelentos = inlineNodes(cim).filter((node) => {
+      const n = node as { type?: string; text?: string }
+      return n.type !== 'text' || (n.text ?? '').trim().length > 0
+    })
+    if (jelentos.length === 1 && (jelentos[0] as { type?: string }).type === 'link') {
       throw new Error(
         `Táblázat-sor címe csak link („${cim}”): a storefront gombként mutatná. ` +
           'Írj elé szöveget, vagy tedd a linket egy későbbi oszlopba.',
