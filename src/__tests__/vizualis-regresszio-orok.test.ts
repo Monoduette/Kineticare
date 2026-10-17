@@ -291,10 +291,13 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
     },
   )
 
-  // A kártyát fedő gomb (kiterjesztett `::after` link) összehúzódva a
-  // kiterjesztett felületét is kihúzná a koppintás alól, és a kártyára eső
-  // koppintás elveszne (/kurzusaim, 2026-10-17). Minden ilyen Button-osztálynak
-  // a ui.css összehúzó szabályának `:not()` listáján kell állnia.
+  // A kártyát fedő gomb (kiterjesztett `::after`/`::before` link)
+  // összehúzódva a kiterjesztett felületét is a saját dobozához kötné, és a
+  // kártyára eső koppintás elveszne (/kurzusaim, 2026-10-17). Az ilyen gomb a
+  // `kc-button--stretched` jelölőt viseli, és a ui.css összehúzó szabálya ezt
+  // zárja ki. Az őr a jelölőt keresi: bármelyik CSS-ben kiterjesztett réteget
+  // kapó osztály, ha gombon (`<Button>` vagy `kc-button` osztályú elem) áll,
+  // ugyanabban a className-sorban a jelölőt is viselje.
   it('a kártyát fedő gomb nem húzódik össze lenyomva', () => {
     const fajlok = (konyvtar: string): string[] =>
       readdirSync(join(REPO, konyvtar), { withFileTypes: true }).flatMap((bejegyzes) => {
@@ -302,38 +305,70 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
         return bejegyzes.isDirectory() ? fajlok(ut) : [ut]
       })
     const osszes = fajlok('.').map((ut) => relative('.', ut))
+    const nulla = (ertek: string | undefined) => ertek === '0' || ertek === '0px'
     const kiterjesztett = new Set<string>()
     for (const fajl of osszes.filter((ut) => ut.endsWith('.css'))) {
       postcss.parse(olvas(fajl)).walkRules((rule) => {
-        const decl = (prop: string) =>
-          rule.nodes.find((node) => node.type === 'decl' && node.prop === prop)?.toString()
-        if (decl('position') !== 'position: absolute' || decl('inset') !== 'inset: 0') return
+        const ertek = (prop: string) =>
+          rule.nodes
+            .find((node) => node.type === 'decl' && node.prop === prop)
+            ?.toString()
+            .split(':')
+            .slice(1)
+            .join(':')
+            .trim()
+        const fed =
+          nulla(ertek('inset')) || ['top', 'right', 'bottom', 'left'].every((p) => nulla(ertek(p)))
+        if (ertek('position') !== 'absolute' || !fed) return
         for (const szelektor of rule.selectors) {
-          const osztaly = /^\.([\w-]+)::after$/.exec(szelektor.trim())?.[1]
-          if (osztaly) kiterjesztett.add(osztaly)
+          if (!/::(after|before)\s*$/.test(szelektor)) continue
+          const utolso =
+            szelektor
+              .trim()
+              .split(/[\s>+~]+/)
+              .at(-1) ?? ''
+          for (const [, osztaly] of utolso.matchAll(/\.([\w-]+)/g)) kiterjesztett.add(osztaly)
         }
       })
     }
-    const gombOsztalyok = osszes
-      .filter((ut) => ut.endsWith('.tsx'))
-      .flatMap((fajl) =>
-        [...olvas(fajl).matchAll(/<Button\b[^>]*?className="([^"]+)"/g)].flatMap((talalat) =>
-          talalat[1].split(/\s+/),
-        ),
-      )
-      .filter((osztaly) => kiterjesztett.has(osztaly))
-    expect(gombOsztalyok).toContain('kc-mycourse__cta')
+
+    const gombon: string[] = []
+    const jeloloNelkul: string[] = []
+    for (const fajl of osszes.filter((ut) => ut.endsWith('.tsx'))) {
+      const forras = olvas(fajl)
+      for (const osztaly of kiterjesztett) {
+        for (const talalat of forras.matchAll(new RegExp(`(?<![\\w-])${osztaly}(?![\\w-])`, 'g'))) {
+          const elotte = forras.slice(0, talalat.index)
+          const cimke = elotte.slice(elotte.search(/<[A-Za-z][\w.]*[^<]*$/))
+          const sor = forras.slice(
+            forras.lastIndexOf('\n', talalat.index) + 1,
+            forras.indexOf('\n', talalat.index),
+          )
+          if (!/^<Button\b/.test(cimke) && !/(?<![\w-])kc-button(?![\w-])/.test(cimke + sor)) {
+            continue
+          }
+          gombon.push(osztaly)
+          if (!/(?<![\w-])kc-button--stretched(?![\w-])/.test(sor)) {
+            jeloloNelkul.push(`${fajl}: ${osztaly}`)
+          }
+        }
+      }
+    }
+    // Kanári: a /kurzusaim kártyagombját a keresés megtalálja.
+    expect(gombon).toContain('kc-mycourse__cta')
+    expect(jeloloNelkul, 'kártyát fedő gomb a kc-button--stretched jelölő nélkül').toEqual([])
 
     const osszehuzo = szabalyok().filter(
       (sz) =>
         sz.szelektorok.some((s) => s.startsWith('.kc-button') && s.includes(':active')) &&
         /transform:\s*scale\(0\.97\)/.test(sz.torzs),
     )
-    for (const osztaly of new Set(gombOsztalyok)) {
-      for (const sz of osszehuzo) {
-        for (const szelektor of sz.szelektorok) {
-          expect(szelektor, `${osztaly}: kimarad az összehúzásból`).toContain(`:not(.${osztaly})`)
-        }
+    expect(osszehuzo.length).toBeGreaterThan(0)
+    for (const sz of osszehuzo) {
+      for (const szelektor of sz.szelektorok) {
+        expect(szelektor, 'a kártyát fedő gomb kimarad az összehúzásból').toContain(
+          ':not(.kc-button--stretched)',
+        )
       }
     }
   })

@@ -79,7 +79,7 @@ function CourseCard({ card }: { card: CourseCardView }) {
           ) : null}
 
           <Button
-            className="kc-mycourse__cta"
+            className="kc-mycourse__cta kc-button--stretched"
             href={card.href}
             variant={expired ? 'secondary' : 'primary'}
           >

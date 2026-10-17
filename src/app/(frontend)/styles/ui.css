@@ -398,8 +398,9 @@
    lenyomott gombé és csak a lenyomás alatt él, tehát más elem kattintását nem
    veheti el: a túlfedés csak azt jelenti, hogy a gombon kezdett, a széle
    mellett befejezett nyomás is a gombé marad.
-   KIVÉTEL a kártyát fedő gomb (`.kc-mycourse__cta`, /kurzusaim): annak saját,
-   az egész kártyát fedő `::after`-je van. A `transform` és a `position:
+   KIVÉTEL a kártyát fedő gomb (`.kc-button--stretched`, például a
+   /kurzusaim `.kc-mycourse__cta`-ja): annak saját, az egész kártyát fedő
+   `::after`-je van. A `transform` és a `position:
    relative` is a gombhoz kötné ezt a réteget, és a kártyára (borítókép, cím)
    eső koppintás elveszne; ezért ez a gomb nem húzódik össze, csak színt vált.
    A kártya NEM húzódik össze, csak a tint jelzi a nyomást: a kártya maga nem
@@ -408,7 +409,7 @@
    felengedés pontja alól. Kiegyenlítő felület itt nem segít, mert a kártyáé
    lenne, nem a linké, és elnyelné a kattintást. */
 @media (prefers-reduced-motion: no-preference) {
-  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-mycourse__cta) {
+  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-button--stretched) {
     position: relative;
     transform: scale(0.97);
     transition:
@@ -417,7 +418,7 @@
       color var(--kc-motion-press) var(--kc-ease-out);
   }
 
-  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-mycourse__cta)::after {
+  .kc-button:active:not(:disabled):not(.kc-button--disabled):not(.kc-button--stretched)::after {
     content: '';
     position: absolute;
     inset: calc(-2% - 4px);
