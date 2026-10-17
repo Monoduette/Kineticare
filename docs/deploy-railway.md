@@ -240,20 +240,22 @@ Railway új build nélkül a régi képet indítja. Két korlát:
     pénzt már levonta), a NAV-nak már beküldött Számlázz.hu-számlák
     hivatkozásait, visszatérítéseket, hozzáféréseket, új fiókokat és
     haladást. Csak közvetlenül a deploy után, rendelés előtt elfogadható.
-  - **Adatkímélő út**: a mentésből csak a `users` tábla `hash`, `salt`,
-    `login_attempts`, `lock_until` és `password_setup_pending` oszlopát kell
-    visszaírni az élő adatbázisba, minden olyan sorra, amely a mentésben is
-    megvan, és csak akkor, amikor már kizárólag a 3.88 fut (egy még futó
-    3.90-es konténer a következő belépéskor újra átírná a hasht). Akinek a
-    jelszava a mentés óta keletkezett vagy megváltozott (például
-    jelszó-visszaállítással), az a régi jelszavát kapja vissza, és újabb
-    jelszó-visszaállításra van szüksége. A `password_setup_pending` visszaírása
-    a vendégvásárlásból jött fiókok miatt kell: ha ilyen fiók ebben az
-    ablakban állította be az első jelszavát, a jelző visszaállításával a
-    következő vásárláskor újra jelszóbeállító linket kap. A deploy után
-    regisztrált fióknak nincs régi hashe, neki jelszó-visszaállítás kell. Ha a
-    Railway PITR-je a deploy előtt már be volt
-    kapcsolva (`docs/adatbazis-mentes.md`), a régi oszlopok onnan is
+  - **Adatkímélő út**: a mentésből a `users` tábla `hash`, `salt` és
+    `password_setup_pending` oszlopát kell visszaírni az élő adatbázisba,
+    minden olyan sorra, amely a mentésben is megvan, és ugyanezeken a sorokon
+    a `login_attempts` értékét 0-ra, a `lock_until` értékét üresre kell
+    állítani (a mentésbeli régi számlálók nem kellenek). Mindezt csak akkor,
+    amikor már kizárólag a 3.88 fut (egy még futó 3.90-es konténer a
+    következő belépéskor újra átírná a hasht). Akinek a jelszava a mentés óta
+    keletkezett vagy megváltozott (például jelszó-visszaállítással), az a
+    régi jelszavát kapja vissza, és újabb jelszó-visszaállításra van
+    szüksége. A `password_setup_pending` visszaírása a vendégvásárlásból jött
+    fiókok miatt kell: ha ilyen fiók ebben az ablakban állította be az első
+    jelszavát, a jelző visszaállításával a következő vásárláskor újra
+    jelszóbeállító linket kap. A mentés után létrejött fióknak (a merge és a
+    deploy között létrejötteknek is) nincs régi hashe, neki
+    jelszó-visszaállítás kell. Ha a Railway PITR-je a deploy előtt már be
+    volt kapcsolva (`docs/adatbazis-mentes.md`), a régi oszlopok onnan is
     kiolvashatók; az elsődleges forrás a merge előtti mentés.
   - **Jelszó-visszaállító e-maillel** is helyreáll a belépés (a 3.88 régi
     formátumú hasht ír), működő Resenddel. A visszaállítás az adott eszközön
