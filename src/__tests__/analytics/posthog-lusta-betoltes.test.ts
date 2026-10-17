@@ -51,7 +51,9 @@ const sdk = vi.hoisted(() => {
     optedOut: false,
     hivasok,
     init: vi.fn(),
-    capture: vi.fn(),
+    capture: vi.fn((event: string) => {
+      hivasok.push(`capture:${event}`)
+    }),
     identify: vi.fn((id: string) => {
       hivasok.push(`identify:${id}`)
     }),
@@ -329,6 +331,77 @@ describe('PostHog SDK: lusta betöltés', () => {
     megerkezik()
     await kivar()
     expect(sdk.hivasok).toEqual(['reset', 'opt_in', 'identify:77'])
+  })
+
+  /** Ez a lap: az SDK csak a `megerkezik()` hívásra érkezik meg. */
+  async function kesleltetettSdk(): Promise<{
+    lap: typeof import('@/lib/analytics/posthog')
+    megerkezik: () => void
+  }> {
+    let megerkezik: () => void = () => {}
+    const kapu = new Promise<void>((resolve) => {
+      megerkezik = resolve
+    })
+    vi.resetModules()
+    vi.doMock('posthog-js', async () => {
+      await kapu
+      return sdk.modul()
+    })
+    return { lap: await import('@/lib/analytics/posthog'), megerkezik }
+  }
+
+  // A 2026-10-17-i kritikus kör találata: a jel az SDK megérkezésekor olvasva
+  // az ezen a lapon sorba állított kijelentkezést is mutatta, ezért a
+  // `reset()` kétszer futott, és először a sorban előtte álló események
+  // ELŐTT: a bejelentkezett felhasználó betöltés alatti eseményei névtelen
+  // azonosítóval mentek ki.
+  it('az ugyanazon a lapon, a betöltés alatt sorba állított kijelentkezés egyszer, a sorban előtte álló esemény UTÁN fut', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    const { lap, megerkezik } = await kesleltetettSdk()
+    expect(lap.initPostHog()).toBe(true)
+    lap.captureAnalyticsEvent('checkout_started', { productId: 3 })
+    lap.resetAnalyticsIdentity()
+
+    megerkezik()
+    await kivar()
+    expect(sdk.hivasok).toEqual(['capture:checkout_started', 'reset'])
+    expect(window.localStorage.getItem('kc_analytics_identity_pending')).toBeNull()
+  })
+
+  it('a betöltés alatti kijelentkezés, majd belépés sorrendben, a kijelentkezés egyszer fut', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    const { lap, megerkezik } = await kesleltetettSdk()
+    lap.initPostHog()
+    lap.resetAnalyticsIdentity()
+    expect(lap.identifyUser(5)).toBe(true)
+
+    megerkezik()
+    await kivar()
+    expect(sdk.hivasok).toEqual(['reset', 'identify:5'])
+  })
+
+  it('a korábbi lapról függő reset tárolt opt-out mellett az $opt_in előtt, az ezen a lapon sorba állított kijelentkezés a sorban fut', async () => {
+    // Korábbi lap: hozzájárulás nélküli kijelentkezés, az SDK opt-outot tárol.
+    sdk.optedOut = true
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'denied')
+    resetAnalyticsIdentity()
+
+    // Ez a lap: elfogadás, belépés, esemény, kijelentkezés az SDK előtt.
+    const { lap, megerkezik } = await kesleltetettSdk()
+    lap.optInToAnalytics()
+    lap.identifyUser(77)
+    lap.captureAnalyticsEvent('checkout_started', { productId: 3 })
+    lap.resetAnalyticsIdentity()
+
+    megerkezik()
+    await kivar()
+    expect(sdk.hivasok).toEqual([
+      'reset',
+      'opt_in',
+      'identify:77',
+      'capture:checkout_started',
+      'reset',
+    ])
   })
 
   /** Korábbi lap: hozzájárulás nélküli kijelentkezés, az SDK opt-outot tárol. */

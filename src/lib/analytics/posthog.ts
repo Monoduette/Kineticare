@@ -366,6 +366,16 @@ function writePendingIdentity(pending: PendingIdentity): void {
 let identityQueued = false
 
 /**
+ * A sor NEM viszi: a tárolóban az első sorba állításkor már ott álló `reset`
+ * jel (korábbi lapról, vagy ezen a lapon hozzájárulás nélkül írva). Ezt az
+ * SDK megérkezésekor az init futtatja, az `$opt_in` előtt; a sor saját
+ * `reset()`-jét nem ismétli meg (a 2026-10-17-i kritikus kör találata: a jel
+ * megérkezéskor olvasva a sorban álló kijelentkezést is mutatta, a `reset()`
+ * kétszer, és először a sorban előtte álló események ELŐTT futott).
+ */
+let syncReset = false
+
+/**
  * A művelet jele. A kijelentkezés a függő belépést elveti (az már nem
  * érvényes), a belépés a függő kijelentkezést megtartja.
  */
@@ -463,6 +473,9 @@ function runIdentityOp(op: IdentityOp): boolean {
     applyIdentityOp(posthog, op)
     return true
   }
+  if (!identityQueued) {
+    syncReset = peekIdentityPending()?.reset ?? false
+  }
   markIdentityPending(op)
   identityQueued = withClient((client) => {
     applyIdentityOp(client, op)
@@ -554,13 +567,13 @@ export function initPostHog(): boolean {
       // $opt_in eseményt csak ekkor küld, nem minden betöltéskor. A korábbi
       // lapon (az SDK megérkezése előtt vagy hozzájárulás nélkül) történt
       // belépés vagy kijelentkezés jele ugyanitt fut le, a sora elveszett.
-      // Ha ezen a lapon is van sorba állított azonosság-művelet, a belépést a
-      // sor viszi (a korábbi események után); a függő kijelentkezés viszont az
-      // `$opt_in` előtt fut.
-      const pending = identityQueued ? peekIdentityPending() : takeIdentityPending()
+      // Ha ezen a lapon is van sorba állított azonosság-művelet, a belépést és
+      // a kijelentkezést a sor viszi (a korábbi események után, a sorrendjük
+      // szerint); csak a sor elé eső, a sor által nem vitt kijelentkezés jele
+      // (syncReset) fut itt, az `$opt_in` előtt.
       syncGrantedCapture(
         client,
-        identityQueued ? { reset: pending?.reset ?? false, id: null } : pending,
+        identityQueued ? { reset: syncReset, id: null } : takeIdentityPending(),
       )
       initialized = true
       startCapturing()
@@ -625,6 +638,7 @@ function captureEvent(event: string, properties?: Record<string, unknown>): void
 function dropPendingCalls(): void {
   pendingCalls = []
   identityQueued = false
+  syncReset = false
 }
 
 /** A hozzájárulásra várók egyszeri futtatása (a lista ürül). */

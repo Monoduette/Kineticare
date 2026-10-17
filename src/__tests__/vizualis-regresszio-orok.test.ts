@@ -298,12 +298,16 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
   // zárja ki. Az őr a jelölőt keresi: bármelyik CSS-ben kiterjesztett réteget
   // kapó osztály, ha gombon (`<Button>` vagy `kc-button` osztályú elem) áll,
   // ugyanabban a className-sorban a jelölőt is viselje.
-  // Amit felismer: `position: absolute` és `inset` (bármely nulla alak,
-  // `!important`-tal is), `inset-block` + `inset-inline`, a négy oldal 0-ja,
-  // vagy `top`/`left` 0 és 100%-os méret; egy- és kétkettőspontos
-  // `:after`/`::before`, több szabályra bontva és beágyazva (`&::after`) is.
-  // Amit NEM követ: ha az osztálynév konstansból vagy egy burkoló komponens
-  // propjából érkezik a gombra; ilyenkor a jelölőt kézzel kell feltenni.
+  // Amit felismer: `position: absolute` és `inset` (nulla vagy negatív
+  // hossz bármely egységgel, `0.0`, `-0px`, `calc(0px)`, `!important`-tal
+  // is), `inset-block` + `inset-inline`, a négy oldal 0-ja, vagy `top`/`left`
+  // 0 és 100%-os méret; egy- és kétkettőspontos `:after`/`::before`, több
+  // szabályra bontva, beágyazva (`&::after`), és a szabályon belüli
+  // `@media`/`@container`/`@supports` blokkban beágyazva is.
+  // Amit NEM követ: a CSS-változóból jövő értéket (`inset: var(--x)`), a
+  // logikai oldalankénti alakot (`inset-inline-start` + …), és ha az
+  // osztálynév konstansból vagy egy burkoló komponens propjából érkezik a
+  // gombra; ilyenkor a jelölőt kézzel kell feltenni.
   it('a kártyát fedő gomb nem húzódik össze lenyomva', () => {
     const fajlok = (konyvtar: string): string[] =>
       readdirSync(join(REPO, konyvtar), { withFileTypes: true }).flatMap((bejegyzes) => {
@@ -311,21 +315,29 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
         return bejegyzes.isDirectory() ? fajlok(ut) : [ut]
       })
     const osszes = fajlok('.').map((ut) => relative('.', ut))
-    // Az érték nulla, ha minden tagja 0 (`inset: 0 0 0 0`, `!important`-tal is).
+    // Az érték fed, ha minden tagja nulla vagy negatív hossz (`inset: 0 0 0 0`,
+    // `0rem`, `-0px`, `calc(0px)`, `-1px`; `!important`-tal is): a negatív
+    // érték a szülőn túl is kiterjeszt.
     const nulla = (ertek: string | undefined) =>
       ertek !== undefined &&
       ertek
         .replace(/!important/i, '')
         .trim()
         .split(/\s+/)
-        .every((tag) => /^0(px|%)?$/.test(tag))
+        .every((tag) => {
+          const szam = /^(?:calc\()?(-?\d*\.?\d+)([a-z%]*)\)?$/i.exec(tag)
+          return szam !== null && Number(szam[1]) <= 0
+        })
     const teljes = (ertek: string | undefined) =>
       ertek?.replace(/!important/i, '').trim() === '100%'
     // Szelektoronként összegyűjtött deklarációk: a több szabályra bontott és a
     // beágyazott (`&::after`) írásmód is egy helyre kerül.
     const deklaraciok = new Map<string, Map<string, string>>()
     const teljesSzelektor = (rule: Rule, szelektor: string): string[] => {
-      const szulo = rule.parent
+      // A szabályon belüli at-rule (`.x { @media … { &::after {…} } }`) nem
+      // töri meg a láncot: az `&` a legközelebbi szabály-ősre oldódik.
+      let szulo = rule.parent
+      while (szulo?.type === 'atrule') szulo = szulo.parent
       if (szulo?.type !== 'rule') return [szelektor]
       return (szulo as Rule).selectors.flatMap((ős) =>
         teljesSzelektor(

@@ -258,4 +258,25 @@ describe('scroll-scrub.css: a pin eltolása', () => {
     expect(statikus!.params).toBe(`(prefers-reduced-motion: reduce), ${POSZTER_LEKERDEZES}`)
     expect(pinTop(statikus!)).toEqual(['0'])
   })
+
+  // A statikus pin alatt a sütisáv a CTA-ra eshet (a tábla a nézet aljára
+  // zárja a szöveget), ezért a film-hero.css sütisávos alsó térköze a
+  // poszter-mód TELJES szélességi tartományára él. 860 px-ig 861 és 899 px
+  // között a sáv kezdéskor a CTA-t fedte (880×600-on mérve, 2026-10-17).
+  it('a sütisávos térköz a film-hero.css-ben a poszter-mód szélességi határáig él', () => {
+    const filmHero = postcss.parse(
+      readFileSync('src/app/(frontend)/styles/blocks/film-hero.css', 'utf8'),
+    )
+    const sutisavos = filmHero.nodes.filter(
+      (node): node is AtRule =>
+        node.type === 'atrule' &&
+        node.name === 'media' &&
+        node.some(
+          (rule) =>
+            rule.type === 'rule' &&
+            rule.selector === '.kc-has-consent-banner .kc-film-hero .scroll-scrub__chapter-pin',
+        ),
+    )
+    expect(sutisavos.map((at) => at.params)).toEqual([POSZTER_LEKERDEZES.split(',')[0].trim()])
+  })
 })
