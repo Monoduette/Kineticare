@@ -625,15 +625,15 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     // nélküli: a Payload a hiányzó `deletedAt`-et a legutóbbi verzióból tölti.
     const craftedTrash = (id: number) =>
       save(id, staff, { deletedAt: new Date().toISOString(), _status: 'published' })
-    // Payload 3.90-től a lomtárban álló sor közzététele validált mentés: az
+    // Payload 3.90.2-től a lomtárban álló sor közzététele validált mentés: az
     // őr már itt elutasítja a piszkozat árát, a sor piszkozat és lomtárban
     // marad. A lenti visszaállítási szerződés ugyanaz.
     const publishWhileTrashed = async (id: number) => {
       expect(await save(id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
-      const published = await saveWhere(id, staff, { _status: 'published' }, { trashed: true })
-      return published === 'OK'
-        ? 'OK'
-        : (expect(published).toEqual([expect.stringContaining('Ár (Ft)')]), 'OK')
+      expect(await saveWhere(id, staff, { _status: 'published' }, { trashed: true })).toEqual([
+        expect.stringContaining('Ár (Ft)'),
+      ])
+      return 'OK' as const
     }
     const cases = [
       { key: 'trash-pub-5', draft: { priceInHUF: 5 }, field: 'Ár (Ft)', trash: craftedTrash },
@@ -1076,6 +1076,10 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     const row = await mainRow(copy.id)
     expect(row._status).toBe('published')
     expect(row.priceInHUFEnabled).toBeNull()
+    // A kirakati állapot (`status`) is owner-only, a másolaton piszkozat: az
+    // igénylés ezért is elutasított. Hogy az üres ár-pipa önmagában sem
+    // ingyenes, azt a courses és a free-course-grant egységtesztje őrzi.
+    expect(row.status).toBe('draft')
     expect((await claimAsStranger(copy.id, 'dup2')).status).toBe('course-not-available')
   }, 120_000)
 
@@ -1117,6 +1121,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     expect(liveRow._status).toBe('published')
     expect(liveRow.priceInHUFEnabled).toBeNull()
     expect(liveRow.priceInHUF).toBeNull()
+    expect(liveRow.status).toBe('draft')
     expect((await claimAsStranger(live.id, 'dup-live')).status).toBe('course-not-available')
     // Az admin Másolás gombja (piszkozat-másolat) a munkatársnak is működik
     // (külön forrásról: az élő másolat már elfoglalta a másolati cikkszámot).
