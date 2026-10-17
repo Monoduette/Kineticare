@@ -27,11 +27,11 @@ A verziók a `package.json`-ból, mind pontosan rögzítve (`^` nélkül).
 | Réteg            | Csomag és verzió                                                                                                                                                                                             |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Futtatókörnyezet | Node **24.20.0**, npm **11.19.0** (`engines`, `.nvmrc`, `engine-strict`)                                                                                                                                     |
-| Keretrendszer    | `next` 16.3.6 (App Router), `react` / `react-dom` 19.3.0, TypeScript 5.9.3 (strict)                                                                                                                          |
-| CMS              | `payload` 3.88.0, `@payloadcms/next`, `@payloadcms/db-postgres`, `@payloadcms/richtext-lexical`, `@payloadcms/translations`, `@payloadcms/plugin-ecommerce`, `@payloadcms/plugin-form-builder` (mind 3.88.0) |
+| Keretrendszer    | `next` 16.3.8 (App Router), `react` / `react-dom` 19.3.0, TypeScript 5.9.3 (strict)                                                                                                                          |
+| CMS              | `payload` 3.90.2, `@payloadcms/next`, `@payloadcms/db-postgres`, `@payloadcms/richtext-lexical`, `@payloadcms/translations`, `@payloadcms/plugin-ecommerce`, `@payloadcms/plugin-form-builder` (mind 3.90.2) |
 | Adatbázis        | PostgreSQL (élesben a Railway `Postgres-c8Rg` szolgáltatása, kötettel)                                                                                                                                       |
 | Egyéb            | `sharp` 0.35.5 (képek), `sass` 1.104.1, `posthog-js` 1.430.3, `tus-js-client` 4.3.1 (admin videófeltöltés), `graphql` 16.14.2 (a Payload GraphQL-je ki van kapcsolva)                                        |
-| Teszt és minőség | `vitest` 4.1.11, `eslint` 9.39.5 + `eslint-config-next` 16.3.6, `prettier` 3.9.6                                                                                                                             |
+| Teszt és minőség | `vitest` 4.1.11, `eslint` 9.39.5 + `eslint-config-next` 16.3.8, `prettier` 3.9.6                                                                                                                             |
 
 ### Külső szolgáltatások
 
@@ -407,7 +407,7 @@ A teljes, mérvadó lista a [`CLAUDE.md`](CLAUDE.md)-ben (TILOS ZÓNÁK).
 - Migrációt kézzel írni vagy meglévőt módosítani tilos, a CI őrei
   (`docs/ci-orok.md`) ezt meg is fogják.
 - Access-control módosítás csak emberi jóváhagyással.
-- A `@payloadcms/*` verziók pontosan rögzítve (3.88.0), emelés csak külön
+- A `@payloadcms/*` verziók pontosan rögzítve (3.90.2), emelés csak külön
   kérésre, külön PR-ben.
 - Felületi munka előtt a `.claude/skills/termektervezes/SKILL.md` betöltése
   kötelező.

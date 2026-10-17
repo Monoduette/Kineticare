@@ -54,8 +54,8 @@ link. The usual buyer path is:
 article or homepage → `/kurzusok/{slug}` → `/penztar?termek={id}` →
 Barion → `/fizetes/koszonom` → `/kurzusaim/{id}`
 
-Pinned stack you must know: Next.js 16.3.6 App Router, React 19.3.0,
-Payload CMS 3.88.0, `@payloadcms/plugin-ecommerce` 3.88.0 (beta),
+Pinned stack you must know: Next.js 16.3.8 App Router, React 19.3.0,
+Payload CMS 3.90.2, `@payloadcms/plugin-ecommerce` 3.90.2 (beta),
 PostgreSQL, Node 24.20.0. `package.json` is the source of truth for
 versions. Every `@payloadcms/*` version is exact. Caret ranges (`^`)
 are forbidden.

@@ -600,8 +600,8 @@ const NEM_ELERHETO: readonly Kizaras[] = [
     igazolas: {
       mod: 'kikapcsolt',
       forras:
-        'node_modules/@payloadcms/next/dist/views/ForgotPassword/ForgotPasswordForm/index.js:101',
-      reszlet: 'loginWithUsername ? t("authentication:forgotPasswordUsernameInstructions")',
+        'node_modules/@payloadcms/next/dist/views/ForgotPassword/ForgotPasswordForm/index.js:164',
+      reszlet: "loginWithUsername ? t('authentication:forgotPasswordUsernameInstructions')",
       kikapcsolva: (config) =>
         authGyujtemenyek(config).every((gyujtemeny) => !gyujtemeny.auth.loginWithUsername),
     },
@@ -611,8 +611,8 @@ const NEM_ELERHETO: readonly Kizaras[] = [
     indok: 'Az API-kulcs mező csak useAPIKey mellett jelenik meg, az pedig nincs bekapcsolva.',
     igazolas: {
       mod: 'kikapcsolt',
-      forras: 'node_modules/@payloadcms/ui/dist/views/Edit/Auth/index.js:304',
-      reszlet: 'useAPIKey && _jsx("div"',
+      forras: 'node_modules/@payloadcms/ui/dist/views/Edit/Auth/index.js:237',
+      reszlet: 'const showAPIKeyBlock = useAPIKey && canManageAPIKey;',
       kikapcsolva: (config) =>
         authGyujtemenyek(config).every((gyujtemeny) => !gyujtemeny.auth.useAPIKey),
     },
@@ -624,7 +624,7 @@ const NEM_ELERHETO: readonly Kizaras[] = [
         'Az e-mail-cím megerősítő levele csak auth.verify mellett megy ki, az ki van kapcsolva.',
       igazolas: {
         mod: 'kikapcsolt',
-        forras: 'node_modules/payload/dist/collections/operations/create.js:230',
+        forras: 'node_modules/payload/dist/collections/operations/create.js:327',
         reszlet: 'collectionConfig.auth && collectionConfig.auth.verify && result.email',
         kikapcsolva: (config) =>
           authGyujtemenyek(config).every((gyujtemeny) => !gyujtemeny.auth.verify),
@@ -636,7 +636,7 @@ const NEM_ELERHETO: readonly Kizaras[] = [
     indok: 'Csak auth.verify mellett dobja a belépés, az ki van kapcsolva.',
     igazolas: {
       mod: 'kikapcsolt',
-      forras: 'node_modules/payload/dist/auth/operations/login.js:184',
+      forras: 'node_modules/payload/dist/auth/operations/login.js:187',
       reszlet: 'if (collectionConfig.auth.verify && user._verified === false)',
       kikapcsolva: (config) =>
         authGyujtemenyek(config).every((gyujtemeny) => !gyujtemeny.auth.verify),
@@ -649,7 +649,7 @@ const NEM_ELERHETO: readonly Kizaras[] = [
         'A Payload alap jelszó-visszaállító levele; a saját sablon (src/lib/email/users-auth.ts:46-60) felülírja.',
       igazolas: {
         mod: 'kikapcsolt',
-        forras: 'node_modules/payload/dist/auth/operations/forgotPassword.js:101',
+        forras: 'node_modules/payload/dist/auth/operations/forgotPassword.js:178',
         reszlet: "typeof collectionConfig.auth.forgotPassword?.generateEmailHTML === 'function'",
         kikapcsolva: (config) =>
           authGyujtemenyek(config).every(
@@ -1106,6 +1106,8 @@ interface MegerositoAblak {
 
 const ABLAK_HIVAS = /\(ConfirmationModal,\s*\{/g
 const SAJAT_JOVAHAGYO = /confirmLabel:\s*(?:i18n\.)?t\(\s*['"`]([\w-]+:\w+)['"`]/
+/** Fordítás nélküli, beégetett felirat: a kulcs helyén `szoveg:<felirat>` áll. */
+const BEEGETETT_JOVAHAGYO = /confirmLabel:\s*"([^"]+)"/
 
 let ablakGyorsitotar: readonly MegerositoAblak[] | undefined
 
@@ -1121,8 +1123,10 @@ const megerositoAblakok = (): readonly MegerositoAblak[] => {
         // confirmLabel után áll: a kettő között a hívás saját propjai vannak.
         const vege = forras.indexOf('modalSlug', kezdet)
         const propok = forras.slice(kezdet, vege === -1 ? undefined : vege)
+        const beegetett = BEEGETETT_JOVAHAGYO.exec(propok)?.[1]
         const kulcs = propok.includes('confirmLabel:')
-          ? (SAJAT_JOVAHAGYO.exec(propok)?.[1] ?? 'ismeretlen-kifejezes')
+          ? (SAJAT_JOVAHAGYO.exec(propok)?.[1] ??
+            (beegetett ? `szoveg:${beegetett}` : 'ismeretlen-kifejezes'))
           : 'general:confirm'
         return { fajl: relative(REPO_GYOKER, ut).split(sep).join('/'), kulcs }
       })
@@ -1131,7 +1135,7 @@ const megerositoAblakok = (): readonly MegerositoAblak[] => {
   return ablakGyorsitotar
 }
 
-/** A 3.88.0 minden megerősítő ablaka és a jóváhagyó gomb kulcsa. */
+/** A 3.90.2 minden megerősítő ablaka és a jóváhagyó gomb kulcsa. */
 const VART_ABLAKOK: readonly MegerositoAblak[] = [
   {
     fajl: 'node_modules/@payloadcms/next/dist/views/Account/ResetPreferences/index.js',
@@ -1168,10 +1172,6 @@ const VART_ABLAKOK: readonly MegerositoAblak[] = [
   {
     fajl: 'node_modules/@payloadcms/ui/dist/elements/FolderView/Drawers/MoveToFolder/index.js',
     kulcs: 'general:move',
-  },
-  {
-    fajl: 'node_modules/@payloadcms/ui/dist/elements/GenerateConfirmation/index.js',
-    kulcs: 'authentication:generate',
   },
   {
     fajl: 'node_modules/@payloadcms/ui/dist/elements/LeaveWithoutSaving/index.js',
@@ -1214,6 +1214,11 @@ const VART_ABLAKOK: readonly MegerositoAblak[] = [
     fajl: 'node_modules/@payloadcms/ui/dist/elements/UnpublishMany/DrawerContent.js',
     kulcs: 'general:confirm',
   },
+  { fajl: 'node_modules/@payloadcms/ui/dist/views/Edit/Auth/APIKey.js', kulcs: 'szoveg:Revoke' },
+  {
+    fajl: 'node_modules/@payloadcms/ui/dist/views/Edit/Auth/APIKeyGenerationModal.js',
+    kulcs: 'authentication:generate',
+  },
 ]
 
 /** Az E/1 igealak: egyes szám első személy, tárgyas (-om, -em, -öm, -m) vagy alanyi (-ok, -ek, -ök). */
@@ -1233,6 +1238,12 @@ const NEM_E1_JOVAHAGYO: readonly {
   {
     kulcs: 'authentication:generate',
     indok: 'Az API-kulcs újragenerálásának ablaka; a useAPIKey sehol nincs bekapcsolva.',
+    igazolt: (config) => authGyujtemenyek(config).every((gyujtemeny) => !gyujtemeny.auth.useAPIKey),
+  },
+  {
+    kulcs: 'szoveg:Revoke',
+    indok:
+      'Az API-kulcs visszavonásának ablaka, a Payload angolul égeti be; csak bekapcsolt useAPIKey mellett jelenik meg, ami sehol nincs bekapcsolva.',
     igazolt: (config) => authGyujtemenyek(config).every((gyujtemeny) => !gyujtemeny.auth.useAPIKey),
   },
   {

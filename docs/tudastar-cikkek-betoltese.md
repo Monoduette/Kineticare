@@ -30,9 +30,12 @@ Ez alattomos hibaforrás: egy táblázatot tartalmazó cikk az adatbázisban
 hiánytalannak látszana, miközben a látogató nem látja a felét. Ezért a fordító
 minden fel nem ismert szerkezetre **kivételt dob**, nem ugorja át. A 7. és 8.
 cikk törzsében összehasonlító táblák vannak: ezeket a fordító ismert
-csomópontokra (felsorolás, „Fejléc: érték”) alakítja, mert a storefront és a
-Payload alapszerkesztője nem ismer `table` csomópontot. Kódblokk és második H1
-továbbra is dob.
+csomópontokra alakítja (soronként egy félkövér bekezdés, a sor címe, és egy
+felsorolás „Fejléc: érték” tételekkel), mert a storefront és a Payload
+alapszerkesztője nem ismer `table` csomópontot. A sorok közötti bekezdés
+szándékos: a Payload 3.90.2 szerkesztője (Lexical 0.50) az egymás melletti
+felsorolásokat az első szerkesztéskor egybefűzné, és a mentés a sorhatárokat
+eltüntetné. Kódblokk és második H1 továbbra is dob.
 
 ## 3. Mi kerül be a cikkből, és mi nem
 
@@ -60,8 +63,8 @@ vágva, legfeljebb 200 karakter.
 | `4-pattano-ujj.md` | `pattano-ujj` |
 | `5-csuklo-es-kezfajdalom.md` | `csuklo-es-kezfajdalom` |
 | `6-csuklotores-utani-gyogytorna.md` | `csuklotores-utani-gyogytorna` |
-| `7-inhuvelygyulladas.md` | `inhuvelygyulladas` (csak `/blog/…`; nincs gyökér pages-hub) |
-| `8-befagyott-vall.md` | `befagyott-vall` (csak `/blog/…`; kategória `vall-es-konyok`) |
+| `7-inhuvelygyulladas.md` | `inhuvelygyulladas` (`/blog/…`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi) |
+| `8-befagyott-vall.md` | `befagyott-vall` (`/blog/…`, kategória `vall-es-konyok`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi) |
 | `9-peace-and-love-friss-serules.md` | `peace-and-love-friss-serules` (tulajdonosi cikk, 5.1; kategória `kez-es-csuklo`) |
 | `10-gipszben-a-kezed.md` | `gipszben-a-kezed` (tulajdonosi cikk, 5.1; kategória `tores-es-mutet-utan`) |
 

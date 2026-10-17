@@ -924,6 +924,19 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     ).toBe(true)
   })
 
+  it('a munkatárs új (create) kurzusa nem indulhat kivett „Fizetős kurzus” pipával', async () => {
+    // Payload 3.88-on a munkatárs duplikálása így hozta a tulajdonos kivett
+    // pipáját (BRK-D1); 3.90.2-től a mező-jogosultság már a duplikálásnál
+    // kiszűri, ez az őr a saját határunkon marad a második védvonal.
+    const staffCreate = fakeReq({ role: 'staff' })
+    expect(
+      await validatePriceInHUFEnabled(
+        false,
+        checkboxOpts({ req: staffCreate.req, operation: 'create', id: undefined }),
+      ),
+    ).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+  })
+
   it('H2: a munkatárs közzététele nem teheti ingyenessé a tulajdonos piszkozatban kivett pipájával', async () => {
     // A munkatárs értéke a legutóbbi verzió, vagyis a tulajdonos autosave-es,
     // meg nem erősített piszkozata (priceInHUFEnabled: false).

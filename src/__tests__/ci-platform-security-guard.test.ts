@@ -39,13 +39,13 @@ const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
 
 const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
 const EXPECTED_INSTALL_VERIFIER_SHA256 =
-  '579b81cd7fe7c249107930c612aefd706eaba8a4fdcee1eeb249fd36e29e20ed'
+  '103d0f85bbc5f0f62ef8d2293f593f5a29789f8f34b6d41374719992de1788ce'
 const EXPECTED_EXACT_NPM_CLI_SHA256 =
   'b548d388e4f0d7f6997733c925890a95f386e74c4cdf657b6f3c625e785398c6'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
-  'd8b05621946fc73db2762e3ef0fd9a410617004f551f36a51edd770bd9ec65f4'
+  '21734cf6be374a401b1c1007c65e758371505c593877df32e25b4b5a47b4b149'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
-  'a8fda021ef55d87dc871a5a2313c8d38b9a8baaa4c5c7d9170b32a145749bf60'
+  '275fe9ee86b04ea7e8a0dbebef5e003853cd13705d942728972165adafc26de6'
 const EXPECTED_RAILWAY_SHA256 = '9a8708fa3ea6a3cba99f5fe3fd2a5c3603c9e2ed340a35883ceca464d176703d'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
@@ -55,21 +55,21 @@ const EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256 =
 
 const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@eslint/eslintrc': '3.3.7',
-  '@payloadcms/db-postgres': '3.88.0',
-  '@payloadcms/next': '3.88.0',
-  '@payloadcms/plugin-ecommerce': '3.88.0',
-  '@payloadcms/plugin-form-builder': '3.88.0',
-  '@payloadcms/richtext-lexical': '3.88.0',
-  '@payloadcms/translations': '3.88.0',
+  '@payloadcms/db-postgres': '3.90.2',
+  '@payloadcms/next': '3.90.2',
+  '@payloadcms/plugin-ecommerce': '3.90.2',
+  '@payloadcms/plugin-form-builder': '3.90.2',
+  '@payloadcms/richtext-lexical': '3.90.2',
+  '@payloadcms/translations': '3.90.2',
   '@types/json-schema': '7.0.15',
   '@types/node': '24.13.4',
   '@types/react': '19.3.0',
   '@types/react-dom': '19.3.0',
   eslint: '9.39.5',
-  'eslint-config-next': '16.3.6',
+  'eslint-config-next': '16.3.8',
   graphql: '16.14.2',
-  next: '16.3.6',
-  payload: '3.88.0',
+  next: '16.3.8',
+  payload: '3.90.2',
   'posthog-js': '1.430.3',
   prettier: '3.9.6',
   react: '19.3.0',

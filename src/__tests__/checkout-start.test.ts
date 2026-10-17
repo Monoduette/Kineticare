@@ -2652,13 +2652,22 @@ describe('T-063 — plugin-adapter-kontroll', () => {
       payload: { update },
       user: mockUser,
     }
+    // A plugin 3.90-től a rendelés véglegesítését (tranzakció-zár, rendelés,
+    // kosár- és készletmozgás) a `finalizeOrder` hívással adja át az
+    // adapternek; ennek sem szabad lefutnia.
+    const finalizeOrder = vi.fn()
 
     await expect(
-      barionPaymentAdapter.confirmOrder({ data: { paymentID: 'x' }, req: fakeReq as never }),
+      barionPaymentAdapter.confirmOrder({
+        data: { paymentID: 'x' },
+        finalizeOrder,
+        req: fakeReq as never,
+      }),
     ).rejects.toThrowError(/confirmOrder nem ellenőrzi a fizetés tényleges státuszát/)
 
     // Bizonyíték: semmilyen rendelés-módosítás (paid-re állítás) nem történt.
     expect(update).not.toHaveBeenCalled()
+    expect(finalizeOrder).not.toHaveBeenCalled()
   })
 
   it('a withoutPluginPaymentEndpoints szűrő eltávolítja a plugin payment-végpontjait', () => {
