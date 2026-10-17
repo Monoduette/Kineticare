@@ -228,16 +228,33 @@ Railway új build nélkül a régi képet indítja. Két korlát:
   (`docs/adatbazis-mentes.md`) történhet. Az adatbázis-szolgáltatást törölni,
   újraindítani vagy újra létrehozni rollback címén tilos: a `Postgres-c8Rg` az
   éles adat, a régi `Postgres` kötet nélküli tartalék.
-- **Payload 3.90 alá nem szabad visszaállni mentés nélkül** (a #329 óta). A
+- **Payload 3.90 alá nem szabad egyszerűen visszaállni** (a #329 óta). A
   3.90 belépéskor, regisztrációkor, jelszó-visszaállításkor és jelszócserekor
   a jelszó-hasht új formátumba (`pbkdf2-sha256-v1:`) írja át, és ezt a 3.88
   nem tudja ellenőrizni. A 3.88-as képre visszaállva mindenki, aki a 3.90
   alatt belépett (a tulajdonos is), helyes jelszóval is „Hibás e-mail-cím vagy
-  jelszó” üzenetet kap, öt próbálkozás után a fiók 10 percre zárol. Ilyenkor
-  az előre javítás (új deploy a 3.90-en) az út; ha mégis vissza kell állni,
-  csak a deploy előtti mentésből (`npm run backup:db`, `docs/adatbazis-mentes.md`),
-  vagy minden érintett fiókra jelszó-visszaállító e-maillel (a tulajdonossal
-  kezdve, működő Resenddel).
+  jelszó” üzenetet kap, öt próbálkozás után a fiók 10 percre zárol.
+  - **Az alapút az előre javítás**: új deploy a 3.90-en.
+  - **A teljes adatbázis visszatöltése a deploy előtti mentésből** mindent
+    töröl, ami a deploy óta keletkezett: fizetett rendeléseket (a Barion a
+    pénzt már levonta), a NAV-nak már beküldött Számlázz.hu-számlák
+    hivatkozásait, visszatérítéseket, hozzáféréseket, új fiókokat és
+    haladást. Csak közvetlenül a deploy után, rendelés előtt elfogadható.
+  - **Adatkímélő út**: a mentésből csak a `users` tábla `hash`, `salt`,
+    `login_attempts` és `lock_until` oszlopát kell visszaírni az élő
+    adatbázisba (a deploy után regisztrált fiókoknak nincs régi hashük, nekik
+    jelszó-visszaállítás kell). A Railway PITR-je
+    (`docs/adatbazis-mentes.md`) testvér-szolgáltatásba állít vissza, onnan is
+    kiolvasható ugyanez.
+  - **Jelszó-visszaállító e-maillel** is helyreáll a belépés (a 3.88 régi
+    formátumú hasht ír), működő Resenddel; a 3.88 a zárolást ilyenkor nem
+    oldja fel, a már zárolt fiók 10 percet vár. A tulajdonos, ha újra bejut,
+    a munkatársak jelszavát az adminban közvetlenül beállíthatja.
+  - **A mentés ideje**: a `Kineticare` szolgáltatás a `main` minden pushára
+    automatikusan deployol, ezért a mentést a #329 MERGE-e előtt kell
+    elkészíteni (`npm run backup:db`: helyi `pg_dump`/`pg_restore` 18-as vagy
+    újabb főverzió és a TCP-proxys `DATABASE_PUBLIC_URL` kell hozzá, a
+    privát `DATABASE_URI` kívülről nem érhető el; `docs/adatbazis-mentes.md`).
 
 ## 7. Job-szolgáltatások (egyszeri scriptek a Railway-en)
 
