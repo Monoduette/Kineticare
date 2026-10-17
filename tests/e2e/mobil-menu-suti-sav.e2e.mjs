@@ -5,9 +5,11 @@
  * az, amikor valaki a kapcsolatot keresi. Korábban a sáv (z-index 1000) a fiók
  * (z-index 80) fölé került, és kis kijelzőn eltakarta az utolsó menüpontokat.
  * 2026-10-16 óta a fiók natív popover a böngésző felső rétegében, a sáv pedig
- * nyitott fióknál egy sorra csukódik (consent-banner.css). Ha valaki a fiókot
- * kiveszi a felső rétegből, vagy a sáv újra a fiók fölé kerül, a „Kapcsolat”
- * helyén a sáv eleme áll, és ez a teszt bukik.
+ * nyitott fióknál egy sorra csukódik (consent-banner.css). A teszt két
+ * szerződést mér: (1) nyitott fióknál a sáv szövege összecsukódik, és a sáv
+ * alacsonyabb lesz; (2) a fiók a felső rétegben, a sáv FÖLÖTT áll, vagyis a
+ * kettő közös területén a fiók kapja a koppintást. Ha a fiók nem popoverként
+ * nyílik, a teszt saját üzenettel bukik, nem időtúllépéssel.
  *
  * MÉRÉS. 375×667 (iPhone SE) és 320×568 nézetben, friss látogatóval (nincs
  * tárolt süti-döntés, tehát a sáv látszik): a fiók kinyitása és a beúszás
@@ -63,9 +65,17 @@ try {
 
     await page.locator('.kc-site-header__bar .kc-nav-mobile__toggle').first().tap()
     const fiok = page.locator('#kc-mobile-menu')
-    await page.waitForFunction(() =>
-      document.getElementById('kc-mobile-menu')?.matches(':popover-open'),
-    )
+    try {
+      await page.waitForFunction(
+        () => document.getElementById('kc-mobile-menu')?.matches(':popover-open'),
+        null,
+        { timeout: 5_000 },
+      )
+    } catch {
+      hibak.push(`${nev}: a fiók nem nyílt meg popoverként (nincs a felső rétegben)`)
+      await context.close()
+      continue
+    }
     // A beúszó átmenet vége (mozgást engedő beállításnál 200 ms).
     await fiok.evaluate((elem) => Promise.all(elem.getAnimations().map((a) => a.finished)))
 
@@ -80,12 +90,10 @@ try {
     if (gombok.length !== 2 || Math.abs(gombok[0] - gombok[1]) > 1) {
       hibak.push(`${nev}: a sütisáv gombjai nem egy sorban állnak nyitott fióknál`)
     }
-    const szoveg = await page
-      .locator('.kc-consent-banner__text')
-      .evaluate((elem) => ({
-        ...elem.getBoundingClientRect().toJSON(),
-        van: elem.textContent.trim().length > 0,
-      }))
+    const szoveg = await page.locator('.kc-consent-banner__text').evaluate((elem) => ({
+      ...elem.getBoundingClientRect().toJSON(),
+      van: elem.textContent.trim().length > 0,
+    }))
     if (!szoveg.van || szoveg.width > 1 || szoveg.height > 1) {
       hibak.push(
         `${nev}: nyitott fióknál a sütisáv szövege nem csukódott össze (${Math.round(szoveg.width)}×${Math.round(szoveg.height)} px)`,
