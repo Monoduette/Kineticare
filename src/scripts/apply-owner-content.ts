@@ -65,6 +65,7 @@ import {
   verifyMediaRecoveryBytes,
 } from '../lib/media-recovery-provenance'
 import { resolveUploadDir } from '../lib/media-restore'
+import { tablaSorokSzetvalasztasa } from '../lib/tudastar/tabla-sorok'
 import {
   CLINIC_TREATMENTS_ANCHOR,
   LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS,
@@ -469,6 +470,7 @@ export type JavitasSzabaly =
   | 'sin-elrendezes'
   | 'szakembereknek-oldal'
   | 'ajanlat-kartya-kepek'
+  | 'tudastar-tabla-sorok'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -6257,7 +6259,7 @@ const mediaFajlnevek = async (
  */
 async function olvasdLegutobbiVerziot(
   payload: Pick<Payload, 'findByID'>,
-  collection: 'pages' | 'products',
+  collection: 'pages' | 'products' | 'posts',
   id: number,
 ): Promise<{ updatedAt?: string | null; _status?: string | null } | undefined> {
   try {
@@ -6404,6 +6406,110 @@ export async function javitsdAKozzetettAszfet(
       overrideAccess: true,
     })
     eredmeny.irt = true
+  }
+  return eredmeny
+}
+
+/** A táblázat-sor javításhoz szükséges Payload-felület (a teszt csonkkal adja). */
+export type TablaSorokPayload = Pick<Payload, 'find' | 'findByID' | 'update'>
+
+export interface TablaSorokJavitasEredmeny {
+  modositasok: number
+  kihagyasok: number
+  /** true: valamelyik írás kimaradt vagy olvasás hibázott, a futás nem nullás kóddal zár. */
+  hiba: boolean
+  /** Az írt dokumentumok címkéi (collection #id). */
+  irt: string[]
+}
+
+/**
+ * P3 (2026-10-17): a Tudástár TÁROLT tartalmának táblázat-sorai helyben, a
+ * szerkesztői javítások megtartásával (`src/lib/tudastar/tabla-sorok.ts`).
+ *
+ * Mind a cikkeken (`posts`), mind az oldalakon (`pages`, a tünet-oldalak
+ * törzse) végigmegy; csak a régi fordító táblázat-alakú futamaihoz nyúl, a
+ * többi egymás melletti listát HANGOS kihagyásként jelenti. Az írás szabálya
+ * az ÁSZF-javításé (`javitsdAKozzetettAszfet`): a KÖZZÉTETT fő rekord tartalmán
+ * dolgozik, és csak akkor ír, ha a legutóbbi verzió is a közzétett, különben
+ * a Payload a piszkozat címét és állapotát is a fő rekordra írná.
+ */
+export async function javitsdTudastarTablaSorokat(
+  payload: TablaSorokPayload,
+  dryRun: boolean,
+): Promise<TablaSorokJavitasEredmeny> {
+  const eredmeny: TablaSorokJavitasEredmeny = {
+    modositasok: 0,
+    kihagyasok: 0,
+    hiba: false,
+    irt: [],
+  }
+  const szabaly: JavitasSzabaly = 'tudastar-tabla-sorok'
+
+  for (const collection of ['posts', 'pages'] as const) {
+    const talalat = await payload.find({
+      collection,
+      limit: 500,
+      pagination: false,
+      depth: 0,
+      overrideAccess: true,
+    })
+    for (const doc of talalat.docs) {
+      const cimke = `${collection} #${doc.id} („${doc.title ?? doc.slug ?? '?'}”)`
+      const content = (doc as { content?: unknown }).content
+      if (content === null || content === undefined || typeof content !== 'object') continue
+      const javitas = tablaSorokSzetvalasztasa(
+        content as Parameters<typeof tablaSorokSzetvalasztasa>[0],
+      )
+      const kihagyasok: JavitasLepes[] = javitas.egyebFutamok.map((hely) => ({
+        szabaly,
+        uzenet: `${cimke}: egymás melletti listák`,
+        indok: `${hely}; nem táblázat-alak, a szerkesztő egybefűzné, ember döntsön (szándékos-e, vagy bekezdés kell közéjük)`,
+        hangos: true,
+      }))
+      if (javitas.content === null) {
+        naplozdLepeseket({ modositasok: [], kihagyasok }, dryRun)
+        eredmeny.kihagyasok += kihagyasok.length
+        continue
+      }
+      const modositas: JavitasLepes = {
+        szabaly,
+        uzenet: `${cimke}: ${javitas.sorok} táblázat-sor szétválasztva (sor címe félkövér bekezdés + a többi cella felsorolás)`,
+        indok: null,
+      }
+      const legutobbi = await olvasdLegutobbiVerziot(payload, collection, doc.id)
+      if (legutobbi === undefined) {
+        naplozdLepeseket({ modositasok: [], kihagyasok }, dryRun)
+        eredmeny.kihagyasok += kihagyasok.length
+        eredmeny.hiba = true
+        continue
+      }
+      const kozzetett = doc._status === 'published' && legutobbi._status === 'published'
+      if (!kozzetett) {
+        naplozdLepeseket({ modositasok: [], kihagyasok }, dryRun)
+        eredmeny.kihagyasok += kihagyasok.length
+        logger.error(
+          `Tartalom-javítás: ${cimke} táblázat-sorainak szétválasztása ${
+            dryRun ? 'éles futásban KIMARADNA' : 'KIMARADT'
+          }: a dokumentumnak közzé nem tett piszkozata van, vagy nincs közzétéve. Az adminban (Verziók) előbb tedd közzé vagy vesd el a piszkozatot, majd futtasd újra. Addig a cikket NE szerkeszd: az első mentés a táblázat sorait egy listába olvasztaná.`,
+          { publikaltAllapot: doc._status ?? null, legutobbiAllapot: legutobbi._status ?? null },
+        )
+        eredmeny.hiba = true
+        continue
+      }
+      naplozdLepeseket({ modositasok: [modositas], kihagyasok }, dryRun)
+      eredmeny.modositasok += 1
+      eredmeny.kihagyasok += kihagyasok.length
+      if (dryRun) continue
+      await payload.update({
+        collection,
+        id: doc.id,
+        data: { content: javitas.content as typeof doc.content, _status: 'published' },
+        draft: false,
+        depth: 0,
+        overrideAccess: true,
+      })
+      eredmeny.irt.push(`${collection} #${doc.id}`)
+    }
   }
   return eredmeny
 }
@@ -7556,6 +7662,12 @@ async function futtat(): Promise<void> {
       })
     }
   }
+
+  // --- P3: a Tudástár tárolt táblázat-sorainak szétválasztása ----------------
+  const tablaSorok = await javitsdTudastarTablaSorokat(payload, dryRun)
+  modositasokSzama += tablaSorok.modositasok
+  kihagyasokSzama += tablaSorok.kihagyasok
+  hiba = hiba || tablaSorok.hiba
 
   // --- Összesítés -----------------------------------------------------------
   const osszesites = `${modositasokSzama} módosítás, ${kihagyasokSzama} indokolt kihagyás`

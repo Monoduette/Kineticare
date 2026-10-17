@@ -41,32 +41,32 @@ eltüntetné. Kódblokk és második H1 továbbra is dob.
 
 A cikkfájlok felépítése kötött:
 
-| Rész | Sorsa |
-| --- | --- |
-| A H1 fölötti fejléc (forrástáblák, cikkíró jegyzetei) | **kimarad** |
-| A H1 | a bejegyzés **címe** lesz |
-| A törzs a H1-től | a `content` mező |
-| „Kik írták ezt a cikket?", „Forrásjegyzék", „Fontos tudnivaló" | **bent marad** (E-E-A-T és felelősség) |
-| „Állítás és forrás: a cikkíró öntesztje" | **kimarad** |
-| „A vezetőnek szóló jelzések", „A cikkíró javaslata a vezetőnek" | **kimarad** |
+| Rész                                                            | Sorsa                                  |
+| --------------------------------------------------------------- | -------------------------------------- |
+| A H1 fölötti fejléc (forrástáblák, cikkíró jegyzetei)           | **kimarad**                            |
+| A H1                                                            | a bejegyzés **címe** lesz              |
+| A törzs a H1-től                                                | a `content` mező                       |
+| „Kik írták ezt a cikket?", „Forrásjegyzék", „Fontos tudnivaló"  | **bent marad** (E-E-A-T és felelősség) |
+| „Állítás és forrás: a cikkíró öntesztje"                        | **kimarad**                            |
+| „A vezetőnek szóló jelzések", „A cikkíró javaslata a vezetőnek" | **kimarad**                            |
 
 A rövid bevezetőt (`excerpt`) a törzs első bekezdéséből képezzük, mondathatáron
 vágva, legfeljebb 200 karakter.
 
 ## 4. A slugok kötöttek
 
-| Fájl | Slug |
-| --- | --- |
-| `1-miert-zsibbad-a-kezem.md` | `miert-zsibbad-a-kezem` |
-| `2-keztoalagut-szindroma.md` | `keztoalagut-szindroma` |
-| `3-teniszkonyok.md` | `teniszkonyok` |
-| `4-pattano-ujj.md` | `pattano-ujj` |
-| `5-csuklo-es-kezfajdalom.md` | `csuklo-es-kezfajdalom` |
-| `6-csuklotores-utani-gyogytorna.md` | `csuklotores-utani-gyogytorna` |
-| `7-inhuvelygyulladas.md` | `inhuvelygyulladas` (`/blog/…`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi) |
-| `8-befagyott-vall.md` | `befagyott-vall` (`/blog/…`, kategória `vall-es-konyok`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi) |
-| `9-peace-and-love-friss-serules.md` | `peace-and-love-friss-serules` (tulajdonosi cikk, 5.1; kategória `kez-es-csuklo`) |
-| `10-gipszben-a-kezed.md` | `gipszben-a-kezed` (tulajdonosi cikk, 5.1; kategória `tores-es-mutet-utan`) |
+| Fájl                                | Slug                                                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `1-miert-zsibbad-a-kezem.md`        | `miert-zsibbad-a-kezem`                                                                                         |
+| `2-keztoalagut-szindroma.md`        | `keztoalagut-szindroma`                                                                                         |
+| `3-teniszkonyok.md`                 | `teniszkonyok`                                                                                                  |
+| `4-pattano-ujj.md`                  | `pattano-ujj`                                                                                                   |
+| `5-csuklo-es-kezfajdalom.md`        | `csuklo-es-kezfajdalom`                                                                                         |
+| `6-csuklotores-utani-gyogytorna.md` | `csuklotores-utani-gyogytorna`                                                                                  |
+| `7-inhuvelygyulladas.md`            | `inhuvelygyulladas` (`/blog/…`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi)                          |
+| `8-befagyott-vall.md`               | `befagyott-vall` (`/blog/…`, kategória `vall-es-konyok`; a gyökér pages-hubot az `import-hub-oldalak.ts` építi) |
+| `9-peace-and-love-friss-serules.md` | `peace-and-love-friss-serules` (tulajdonosi cikk, 5.1; kategória `kez-es-csuklo`)                               |
+| `10-gipszben-a-kezed.md`            | `gipszben-a-kezed` (tulajdonosi cikk, 5.1; kategória `tores-es-mutet-utan`)                                     |
 
 Ezek a webcímek szerepelnek a `docs/adwords-kampany.md` céloldal-hozzárendelésében
 (7.2). **Eltérni tilos** — a hirdetés különben 404-re vinne.
@@ -85,11 +85,11 @@ Ezért a betöltő mostantól **mind a nyolc cikknek** beírja a kategóriát a
 rögzítve, a slug utólag nem írható át) és a cikkfájlok fejlécében álló
 „Kategória” sor, géppel ellenőrizve (`src/__tests__/tudastar-kategoriak.test.ts`).
 
-| Kategória | Slug | Cikkek |
-| --- | --- | --- |
-| Kéz és csukló | `kez-es-csuklo` | miert-zsibbad-a-kezem, keztoalagut-szindroma, pattano-ujj, csuklo-es-kezfajdalom, inhuvelygyulladas, peace-and-love-friss-serules |
-| Váll és könyök | `vall-es-konyok` | teniszkonyok, befagyott-vall |
-| Törés és műtét után | `tores-es-mutet-utan` | csuklotores-utani-gyogytorna, gipszben-a-kezed |
+| Kategória           | Slug                  | Cikkek                                                                                                                            |
+| ------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Kéz és csukló       | `kez-es-csuklo`       | miert-zsibbad-a-kezem, keztoalagut-szindroma, pattano-ujj, csuklo-es-kezfajdalom, inhuvelygyulladas, peace-and-love-friss-serules |
+| Váll és könyök      | `vall-es-konyok`      | teniszkonyok, befagyott-vall                                                                                                      |
+| Törés és műtét után | `tores-es-mutet-utan` | csuklotores-utani-gyogytorna, gipszben-a-kezed                                                                                    |
 
 Szabályok:
 
@@ -146,8 +146,8 @@ függvény adja minden cikkre (őr-teszt P8: a 9–10. cikknek nincs kivétele).
 Ami eltér a mért nyolc cikktől, az a `CIKKEK` bejegyzés `seoForras`
 jelölése (`CikkBejegyzes`, `src/scripts/import-tudastar-cikkek.ts`):
 
-| Jelölés | Hatás |
-| --- | --- |
+| Jelölés                   | Hatás                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `seoForras: 'cikkfejlec'` | Kulcsszó-mérés még nincs, ezért a `seoTitle` és a `seoDescription` a cikkfájl „Cikk-metaadatok” táblájából jön (`fejlecMetaadat`), ugyanazokkal a hossz- és gondolatjel-korlátokkal, mint a mért célzás. A `seoKeywords` kulcs **kimarad** a payloadból (ugyanaz az elv, mint a GYIK-nél: adminban felvett listát nem töröl). GYIK nincs: mért kérdés nélkül tétel sem születhet. |
 
 A `heroImage` mezőt a script egyik cikknél sem állítja; a két cikkfájl
@@ -219,12 +219,40 @@ service-beállítást, ezért dedikált fájl kell):
    Ezért figyeli a szolgáltatás a `railway.tudastar-job.json` mellett a
    betöltő és a fordító forrásait is: így egy importer-javítás magától friss
    buildet kap, nem kell kézzel kikényszeríteni.
+
 6. **A job végeztével a service törlendő** — a `sleep` csak azért van benne,
    hogy a Railway ne indítsa újra és a log olvasható maradjon.
 
 Alternatíva, ha nem akarsz külön service-t: a cikkek az adminban is
 bemásolhatók, de akkor a markdown és az adatbázis kettéválik, és a következő
 szakmai javításnál kézzel kell szinkronizálni.
+
+## 6a. A tárolt táblázat-sorok a Payload 3.90 után (2026-10-17)
+
+A #329 előtti fordító a markdown-táblát soronként egy-egy felsorolásnak
+írta, egymás mellé. A Payload 3.90.2 szerkesztője (Lexical 0.50) az egymás
+melletti, azonos típusú felsorolásokat betöltéskor egybefűzi, ezért az
+adminban az első mentés a 7. és 8. cikk tábláinak sorhatárait eltüntetné. A
+fordító azóta soronként egy félkövér bekezdést (a sor címe) és egy
+felsorolást ír (`tablaCsomopontok`), és a T7 őr (`tudastar-markdown-lexical.test.ts`)
+a telepített szerkesztővel ellenőrzi, hogy a szerkezet túléli a mentést.
+
+A már tárolt cikkeket NEM kell markdownból újratölteni (az a szerkesztői
+javításokat is felülírná). A tartalomjob `tudastar-tabla-sorok` szabálya
+(`src/scripts/apply-owner-content.ts`, `src/lib/tudastar/tabla-sorok.ts`)
+helyben választja szét a táblázat-alakú futamokat ugyanarra a szerkezetre,
+amit a fordító ír; minden más csomópont változatlan marad. Táblázat-alak: a
+régi fordító lenyomata (legalább két egymás melletti `bullet` lista, csupa
+„Fejléc: érték” tétel, a sor első tétele fejléc nélkül is lehet, ha az első
+oszlop fejléce üres). A nem táblázat-alakú szomszédos listákat a job hangos
+kihagyásként jelenti, és nem bántja. Csak közzétett, piszkozat nélküli
+dokumentumba ír (ugyanaz a szabály, mint az ÁSZF-javításnál).
+
+Futtatás: `npm run content:owner` (próbafutás), majd
+`OWNER_CONTENT_CONFIRM=igen npm run content:owner`; élesben a content-job
+service. Őr: `src/__tests__/tudastar-tabla-sorok.test.ts` (a régi alak a
+szerkesztőben egybeolvad, a szétválasztott nem; a régi alakból pontosan a
+fordító szerkezete lesz).
 
 ## 7. Újrafuttatható
 
@@ -236,15 +264,15 @@ Ha egy cikk szövege változik, elég a markdownt javítani és újra lefuttatni
 
 ## 8. Amit mértünk (2026-08-21, helyi Postgres 16 + friss migrációs lánc)
 
-| Ellenőrzés | Eredmény |
-| --- | --- |
-| Próbafutás írás nélkül | 6 cikk lefordult, **0 sor** került az adatbázisba |
-| Éles futás | 6 létrehozva, `status` és `_status` egyaránt `published` |
-| `/blog` lista | HTTP 200, **6 kártya**, mind a hat cím a helyén |
-| Cikkoldalak | mind a hat HTTP 200; 15–18 `<h2>`, 48–93 `<li>`, 95–119 `<p>`, 5 156–6 423 szó |
-| Kereszthivatkozások | a cikkek egymásra mutató linkjei HTTP 200-at adnak |
-| `sitemap.xml` | mind a hat cikk benne van |
-| Szövegveszteség | **nulla** — őr-teszt méri cikkenként, szószámmal |
+| Ellenőrzés             | Eredmény                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| Próbafutás írás nélkül | 6 cikk lefordult, **0 sor** került az adatbázisba                              |
+| Éles futás             | 6 létrehozva, `status` és `_status` egyaránt `published`                       |
+| `/blog` lista          | HTTP 200, **6 kártya**, mind a hat cím a helyén                                |
+| Cikkoldalak            | mind a hat HTTP 200; 15–18 `<h2>`, 48–93 `<li>`, 95–119 `<p>`, 5 156–6 423 szó |
+| Kereszthivatkozások    | a cikkek egymásra mutató linkjei HTTP 200-at adnak                             |
+| `sitemap.xml`          | mind a hat cikk benne van                                                      |
+| Szövegveszteség        | **nulla** — őr-teszt méri cikkenként, szószámmal                               |
 
 A szövegveszteség-őr mutációval igazolva: ha a fordító eldobja a
 felsorolásokat, az arány 83–91%-ra esik, és a teszt bukik.
@@ -283,15 +311,15 @@ Ez akkor is így van, ha nagy a keresési igény.
 
 Ezt nem ígéretként, hanem őrként tartjuk fenn (`src/__tests__/tudastar-faq.test.ts`):
 
-| Őr | Mit mér |
-| --- | --- |
-| G1 | cikkenként 2–6 tétel (a `maxRows` kemény korlátja 6), nincs ismétlődő kérdés |
-| G2 | a kérdés kérdőjelre végződik, a válasz 2–4 mondat |
-| G3 | a tétel `szakasz` mezője (a választ adó H2) tényleg ott van a cikk törzsében |
-| G4 | minden `horgony` szó szerint megvan a VÁLASZBAN és a cikk TÖRZSÉBEN is |
-| G5 | nincs forrás- vagy tanulmány-hivatkozás (a fordító `FORRAS_JELOLESEK` listájával) |
-| G6 | nincs kvirtmínusz és nincs töltelék gondolatjel (`docs/ui-sztenderdek.md` §3.1) |
-| G7 | a `faqFor` és a `faqMezore` a várt alakot adja |
+| Őr  | Mit mér                                                                           |
+| --- | --------------------------------------------------------------------------------- |
+| G1  | cikkenként 2–6 tétel (a `maxRows` kemény korlátja 6), nincs ismétlődő kérdés      |
+| G2  | a kérdés kérdőjelre végződik, a válasz 2–4 mondat                                 |
+| G3  | a tétel `szakasz` mezője (a választ adó H2) tényleg ott van a cikk törzsében      |
+| G4  | minden `horgony` szó szerint megvan a VÁLASZBAN és a cikk TÖRZSÉBEN is            |
+| G5  | nincs forrás- vagy tanulmány-hivatkozás (a fordító `FORRAS_JELOLESEK` listájával) |
+| G6  | nincs kvirtmínusz és nincs töltelék gondolatjel (`docs/ui-sztenderdek.md` §3.1)   |
+| G7  | a `faqFor` és a `faqMezore` a várt alakot adja                                    |
 
 **Amit a G4 nem fed le:** a horgonyok között nem szereplő mondatrészeket. Egy
 válasz elvben tartalmazhatna a horgonyok mellé csempészett, cikkből nem
@@ -325,14 +353,14 @@ akkor már félig betöltött állapotot hagyna.
 
 ### 9.4 Ami ma benne van (2026-08-21)
 
-| Cikk | Tételek | Miből (mért kifejezések) |
-| --- | --- | --- |
-| `miert-zsibbad-a-kezem` | 6 | okai, éjszaka/alvás közben/alváskor, bal kéz/jobb kéz, ellen/kezelése, cukorbetegség, hirtelen |
-| `keztoalagut-szindroma` | 6 | tünetei, hol fáj, mitől alakul ki/mi az, kezelése házilag/csuklórögzítő, torna, műtét/műtét után |
-| `teniszkonyok` | 6 | mitől alakul ki/kialakulása, tünetei/hol fáj, kezelése/házilag/borogatás, pánt/rögzítő/bandázs, gyógytorna/masszírozása, műtét |
-| `pattano-ujj` | 6 | mitől alakul ki, hüvelykujj/hüvelykujj fájdalom, kezelése házilag, rögzítő, műtét, műtét utáni gyógyulási idő |
-| `csuklo-es-kezfajdalom` | 6 | okai, kezelése/ellen, milyen orvos, terhesség alatt/szülés után, hirtelen, krém |
-| `csuklotores-utani-gyogytorna` | **5** | utáni gyógytorna, gyógyulási ideje, gyakorlatok, mikor lehet dolgozni, gipsz |
+| Cikk                           | Tételek | Miből (mért kifejezések)                                                                                                       |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `miert-zsibbad-a-kezem`        | 6       | okai, éjszaka/alvás közben/alváskor, bal kéz/jobb kéz, ellen/kezelése, cukorbetegség, hirtelen                                 |
+| `keztoalagut-szindroma`        | 6       | tünetei, hol fáj, mitől alakul ki/mi az, kezelése házilag/csuklórögzítő, torna, műtét/műtét után                               |
+| `teniszkonyok`                 | 6       | mitől alakul ki/kialakulása, tünetei/hol fáj, kezelése/házilag/borogatás, pánt/rögzítő/bandázs, gyógytorna/masszírozása, műtét |
+| `pattano-ujj`                  | 6       | mitől alakul ki, hüvelykujj/hüvelykujj fájdalom, kezelése házilag, rögzítő, műtét, műtét utáni gyógyulási idő                  |
+| `csuklo-es-kezfajdalom`        | 6       | okai, kezelése/ellen, milyen orvos, terhesség alatt/szülés után, hirtelen, krém                                                |
+| `csuklotores-utani-gyogytorna` | **5**   | utáni gyógytorna, gyógyulási ideje, gyakorlatok, mikor lehet dolgozni, gipsz                                                   |
 
 Összesen **35 tétel**. A csuklótörésnél ötnél áll meg, mert a mérés többi
 kifejezésére ez a cikk nem válaszol (lásd a következő szakaszt).
@@ -354,29 +382,29 @@ ad választ, ezért GYIK-tétel sem született belőle.
 
 A többi hiány valódi tartalmi rés:
 
-| Cikk | Mért kérdés, amire nincs válasz | Miért |
-| --- | --- | --- |
-| `miert-zsibbad-a-kezem` | elleni krém, -ra krém, elleni gyógyszer, -ra vitamin, b vitamin | a cikk sem krémet, sem zsibbadás elleni gyógyszert, sem vitamint nem említ |
-| | covid, kéz és arc zsibbadás, hideg kéz, hányinger, hátfájás | nincs róluk mondat (a Raynaud-jelenség szerepel, a hideg kéz mint tünet nem; az isiász szerepel, de a hátból a lábba sugárzó panaszként) |
-| | reggel, bal kéz hüvelykujj | csak egy-egy említés, nincs mögötte szakasz |
-| | terhesség alatt | egyetlen mondat áll róla ebben a cikkben; teljes szakasz az 5. cikkben van, a tétel is ott született |
-| `keztoalagut-szindroma` | **krém** (Trends top **69**, a harmadik legerősebb) | a cikk semmilyen krémet nem említ |
-| | b vitamin, akupunktúra, borogatás | nincsenek a cikkben (borogatás a teniszkönyök-cikkben van, más kórképre) |
-| | műtét ára | a cikk árat nem közöl, és nem is akar |
-| | vizsgálata | **döntés, nem hiány:** a cikk a CTS-6-ról, az ENG/EMG-ről és az MRI-ről ír, de kimondja, hogy a CTS-6 az orvos eszköze. Egy GYIK-válasz itt öndiagnózisra biztatna |
-| | terhesség alatt | a cikk **lefedi**, csak nem fért be a hat tétel közé |
-| `teniszkonyok` | **golfkönyök**, golfkönyök vs teniszkönyök, belső teniszkönyök (Trends top **28**) | a cikk a golfkönyökkel nem foglalkozik |
-| | akupunktúra, homeopátia, csontkovács, alternatív kezelése, tape | a cikk ezekről nem ír |
-| | csonthártyagyulladás, csontkinövés, hogy néz ki | nincsenek a cikkben |
-| | gyógyítása (Trends 7) | a cikk **lefedi** („általában pihenéssel elmúlik, de néha egy évnél tovább is eltarthat”), csak nem fért be |
-| `pattano-ujj` | terhesség alatt | a cikk kockázati tényezői között a terhesség nem szerepel |
-| | műtét videó, műtét vélemények | a cikk nem közöl videót, és nem gyűjt véleményt |
-| | gyógytorna | **részleges:** a cikk csak azt mondja meg, mikor NE gyakorolj, arról nincs adata, hogy a gyakorlás segít-e. Ezért nem lett tétel |
-| `csuklo-es-kezfajdalom` | **kineziológiai tapasz** (a mérés 4. helye) | ez a cikk nem említi. A kéztőalagút-cikk igen, de más kórképről: másik cikk állítását nem vihetjük át |
-| | gyerekeknél | a cikk felnőtteknek szól, gyermekekről nem ír |
-| `csuklotores-utani-gyogytorna` | **tünetei** (a mérés 2. helye) | ez a cikk a gipszlevétel UTÁNI időszakról szól, a törés tüneteit nem sorolja fel (az 5. cikk igen) |
-| | gipsz helyett | a cikk nem ír a gipsz alternatíváiról |
-| | műtét | **részleges:** a cikk a „gipszlevétel vagy a műtét után” időzítést többször említi, de azt nem mondja meg, mikor kell műtét |
+| Cikk                           | Mért kérdés, amire nincs válasz                                                    | Miért                                                                                                                                                              |
+| ------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `miert-zsibbad-a-kezem`        | elleni krém, -ra krém, elleni gyógyszer, -ra vitamin, b vitamin                    | a cikk sem krémet, sem zsibbadás elleni gyógyszert, sem vitamint nem említ                                                                                         |
+|                                | covid, kéz és arc zsibbadás, hideg kéz, hányinger, hátfájás                        | nincs róluk mondat (a Raynaud-jelenség szerepel, a hideg kéz mint tünet nem; az isiász szerepel, de a hátból a lábba sugárzó panaszként)                           |
+|                                | reggel, bal kéz hüvelykujj                                                         | csak egy-egy említés, nincs mögötte szakasz                                                                                                                        |
+|                                | terhesség alatt                                                                    | egyetlen mondat áll róla ebben a cikkben; teljes szakasz az 5. cikkben van, a tétel is ott született                                                               |
+| `keztoalagut-szindroma`        | **krém** (Trends top **69**, a harmadik legerősebb)                                | a cikk semmilyen krémet nem említ                                                                                                                                  |
+|                                | b vitamin, akupunktúra, borogatás                                                  | nincsenek a cikkben (borogatás a teniszkönyök-cikkben van, más kórképre)                                                                                           |
+|                                | műtét ára                                                                          | a cikk árat nem közöl, és nem is akar                                                                                                                              |
+|                                | vizsgálata                                                                         | **döntés, nem hiány:** a cikk a CTS-6-ról, az ENG/EMG-ről és az MRI-ről ír, de kimondja, hogy a CTS-6 az orvos eszköze. Egy GYIK-válasz itt öndiagnózisra biztatna |
+|                                | terhesség alatt                                                                    | a cikk **lefedi**, csak nem fért be a hat tétel közé                                                                                                               |
+| `teniszkonyok`                 | **golfkönyök**, golfkönyök vs teniszkönyök, belső teniszkönyök (Trends top **28**) | a cikk a golfkönyökkel nem foglalkozik                                                                                                                             |
+|                                | akupunktúra, homeopátia, csontkovács, alternatív kezelése, tape                    | a cikk ezekről nem ír                                                                                                                                              |
+|                                | csonthártyagyulladás, csontkinövés, hogy néz ki                                    | nincsenek a cikkben                                                                                                                                                |
+|                                | gyógyítása (Trends 7)                                                              | a cikk **lefedi** („általában pihenéssel elmúlik, de néha egy évnél tovább is eltarthat”), csak nem fért be                                                        |
+| `pattano-ujj`                  | terhesség alatt                                                                    | a cikk kockázati tényezői között a terhesség nem szerepel                                                                                                          |
+|                                | műtét videó, műtét vélemények                                                      | a cikk nem közöl videót, és nem gyűjt véleményt                                                                                                                    |
+|                                | gyógytorna                                                                         | **részleges:** a cikk csak azt mondja meg, mikor NE gyakorolj, arról nincs adata, hogy a gyakorlás segít-e. Ezért nem lett tétel                                   |
+| `csuklo-es-kezfajdalom`        | **kineziológiai tapasz** (a mérés 4. helye)                                        | ez a cikk nem említi. A kéztőalagút-cikk igen, de más kórképről: másik cikk állítását nem vihetjük át                                                              |
+|                                | gyerekeknél                                                                        | a cikk felnőtteknek szól, gyermekekről nem ír                                                                                                                      |
+| `csuklotores-utani-gyogytorna` | **tünetei** (a mérés 2. helye)                                                     | ez a cikk a gipszlevétel UTÁNI időszakról szól, a törés tüneteit nem sorolja fel (az 5. cikk igen)                                                                 |
+|                                | gipsz helyett                                                                      | a cikk nem ír a gipsz alternatíváiról                                                                                                                              |
+|                                | műtét                                                                              | **részleges:** a cikk a „gipszlevétel vagy a műtét után” időzítést többször említi, de azt nem mondja meg, mikor kell műtét                                        |
 
 A „bno”, a „bno kód”, az „angolul”, a „carpal tunnel syndrome” és a
 „carpalis alagút szindróma” szándékosan hiányzik: kódtár- és fordítás-kérdések,
