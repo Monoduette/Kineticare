@@ -298,6 +298,12 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
   // zárja ki. Az őr a jelölőt keresi: bármelyik CSS-ben kiterjesztett réteget
   // kapó osztály, ha gombon (`<Button>` vagy `kc-button` osztályú elem) áll,
   // ugyanabban a className-sorban a jelölőt is viselje.
+  // Amit felismer: `position: absolute` és `inset` (bármely nulla alak,
+  // `!important`-tal is), `inset-block` + `inset-inline`, a négy oldal 0-ja,
+  // vagy `top`/`left` 0 és 100%-os méret; egy- és kétkettőspontos
+  // `:after`/`::before`, több szabályra bontva és beágyazva (`&::after`) is.
+  // Amit NEM követ: ha az osztálynév konstansból vagy egy burkoló komponens
+  // propjából érkezik a gombra; ilyenkor a jelölőt kézzel kell feltenni.
   it('a kártyát fedő gomb nem húzódik össze lenyomva', () => {
     const fajlok = (konyvtar: string): string[] =>
       readdirSync(join(REPO, konyvtar), { withFileTypes: true }).flatMap((bejegyzes) => {
@@ -305,31 +311,62 @@ describe('azonnali nyomás-visszajelzés (:active)', () => {
         return bejegyzes.isDirectory() ? fajlok(ut) : [ut]
       })
     const osszes = fajlok('.').map((ut) => relative('.', ut))
-    const nulla = (ertek: string | undefined) => ertek === '0' || ertek === '0px'
-    const kiterjesztett = new Set<string>()
+    // Az érték nulla, ha minden tagja 0 (`inset: 0 0 0 0`, `!important`-tal is).
+    const nulla = (ertek: string | undefined) =>
+      ertek !== undefined &&
+      ertek
+        .replace(/!important/i, '')
+        .trim()
+        .split(/\s+/)
+        .every((tag) => /^0(px|%)?$/.test(tag))
+    const teljes = (ertek: string | undefined) =>
+      ertek?.replace(/!important/i, '').trim() === '100%'
+    // Szelektoronként összegyűjtött deklarációk: a több szabályra bontott és a
+    // beágyazott (`&::after`) írásmód is egy helyre kerül.
+    const deklaraciok = new Map<string, Map<string, string>>()
+    const teljesSzelektor = (rule: Rule, szelektor: string): string[] => {
+      const szulo = rule.parent
+      if (szulo?.type !== 'rule') return [szelektor]
+      return (szulo as Rule).selectors.flatMap((ős) =>
+        teljesSzelektor(
+          szulo as Rule,
+          szelektor.includes('&') ? szelektor.replaceAll('&', ős) : `${ős} ${szelektor}`,
+        ),
+      )
+    }
     for (const fajl of osszes.filter((ut) => ut.endsWith('.css'))) {
       postcss.parse(olvas(fajl)).walkRules((rule) => {
-        const ertek = (prop: string) =>
-          rule.nodes
-            .find((node) => node.type === 'decl' && node.prop === prop)
-            ?.toString()
-            .split(':')
-            .slice(1)
-            .join(':')
-            .trim()
-        const fed =
-          nulla(ertek('inset')) || ['top', 'right', 'bottom', 'left'].every((p) => nulla(ertek(p)))
-        if (ertek('position') !== 'absolute' || !fed) return
-        for (const szelektor of rule.selectors) {
-          if (!/::(after|before)\s*$/.test(szelektor)) continue
-          const utolso =
-            szelektor
-              .trim()
-              .split(/[\s>+~]+/)
-              .at(-1) ?? ''
-          for (const [, osztaly] of utolso.matchAll(/\.([\w-]+)/g)) kiterjesztett.add(osztaly)
+        for (const szelektor of rule.selectors.flatMap((sz) => teljesSzelektor(rule, sz))) {
+          const kulcs = szelektor.trim().replace(/\s+/g, ' ')
+          const props = deklaraciok.get(kulcs) ?? new Map<string, string>()
+          for (const node of rule.nodes) {
+            if (node.type === 'decl') props.set(node.prop, node.value)
+          }
+          deklaraciok.set(kulcs, props)
         }
       })
+    }
+    const kiterjesztett = new Set<string>()
+    for (const [szelektor, props] of deklaraciok) {
+      if (!/::?(after|before)$/.test(szelektor)) continue
+      const ertek = (prop: string) => props.get(prop)
+      const fed =
+        nulla(ertek('inset')) ||
+        (nulla(ertek('inset-block')) && nulla(ertek('inset-inline'))) ||
+        ['top', 'right', 'bottom', 'left'].every((p) => nulla(ertek(p))) ||
+        (nulla(ertek('top')) &&
+          nulla(ertek('left')) &&
+          teljes(ertek('width')) &&
+          teljes(ertek('height')))
+      if (
+        ertek('position')
+          ?.replace(/!important/i, '')
+          .trim() !== 'absolute' ||
+        !fed
+      )
+        continue
+      const utolso = szelektor.split(/[\s>+~]+/).at(-1) ?? ''
+      for (const [, osztaly] of utolso.matchAll(/\.([\w-]+)/g)) kiterjesztett.add(osztaly)
     }
 
     const gombon: string[] = []
