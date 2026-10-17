@@ -239,9 +239,15 @@ main > .kc-film-hero:first-of-type {
   }
 }
 
-/* Nagyon alacsony nézetben a szöveg természetesen görgethető marad;
-   a film sticky vászna és a feliratok időzítése változatlan. */
-@media (max-width: 860px) and (max-height: 480px) {
+/* Nagyon alacsony nézetben (fekvő telefon) a jelenet-szöveg természetesen
+   görgethető marad, a tűzött vászon nem tolja a képernyő alá. 900 px alatt a
+   statikus elrendezés úgyis ezt adja (scroll-scrub.css); a szélességi
+   feltétel nélkül ez a 900–932 px széles, kb. 430 px magas fekvő nézetre
+   (például iPhone 14 Plus és Pro Max) is érvényes, ahol a CTA addig
+   egyetlen görgetési helyzetben sem volt kattintható: a tűzött fejezet
+   magasabb volt a nézetnél, és mire a gomb a képbe ért, a szöveg már
+   kiúszott. A film kockázása és a feliratok időzítése itt változatlan. */
+@media (max-height: 480px) {
   .kc-film-hero .scroll-scrub__chapter-pin {
     position: relative;
   }

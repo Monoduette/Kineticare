@@ -16,7 +16,9 @@ describe('film hero short-mobile text layout', () => {
       (node): node is AtRule =>
         node.type === 'atrule' &&
         node.name === 'media' &&
-        node.params === '(max-width: 860px) and (max-height: 480px)',
+        // 2026-10-16 óta szélességi feltétel nélkül: a 900–932 px széles fekvő
+        // telefonon is (film-hero.css).
+        node.params === '(max-height: 480px)',
     )
     expect(reading).toBeDefined()
     expect(reading!.nodes).toHaveLength(1)

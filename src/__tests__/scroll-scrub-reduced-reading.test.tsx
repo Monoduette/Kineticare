@@ -24,6 +24,12 @@ const declaration = (nodes: (Rule | AtRule)[], selector: string, prop: string) =
 }
 
 describe('reduced-motion static reading', () => {
+  it('a mobil poszter-mód (900 px alatt) ugyanezt a statikus elrendezést kapja', () => {
+    // A scroll-scrub.tsx `posterOnly` (max-width: 899px) klipet nem tölt; a
+    // filmsáv ezért nem maradhat három képernyő magas egy álló kép fölött.
+    expect(reduced.params.split(',').map((query) => query.trim())).toContain('(max-width: 899px)')
+  })
+
   it('keeps the main copy and its scrim fully visible before and after the old handoff', () => {
     for (const progress of [0, 0.31, 180 / 470.8, 0.8, 1]) {
       expect(sceneCopyOpacity(progress, 0.31, true)).toBe(1)
