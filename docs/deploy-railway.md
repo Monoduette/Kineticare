@@ -228,6 +228,16 @@ Railway új build nélkül a régi képet indítja. Két korlát:
   (`docs/adatbazis-mentes.md`) történhet. Az adatbázis-szolgáltatást törölni,
   újraindítani vagy újra létrehozni rollback címén tilos: a `Postgres-c8Rg` az
   éles adat, a régi `Postgres` kötet nélküli tartalék.
+- **Payload 3.90 alá nem szabad visszaállni mentés nélkül** (a #329 óta). A
+  3.90 belépéskor, regisztrációkor, jelszó-visszaállításkor és jelszócserekor
+  a jelszó-hasht új formátumba (`pbkdf2-sha256-v1:`) írja át, és ezt a 3.88
+  nem tudja ellenőrizni. A 3.88-as képre visszaállva mindenki, aki a 3.90
+  alatt belépett (a tulajdonos is), helyes jelszóval is „Hibás e-mail-cím vagy
+  jelszó” üzenetet kap, öt próbálkozás után a fiók 10 percre zárol. Ilyenkor
+  az előre javítás (új deploy a 3.90-en) az út; ha mégis vissza kell állni,
+  csak a deploy előtti mentésből (`npm run backup:db`, `docs/adatbazis-mentes.md`),
+  vagy minden érintett fiókra jelszó-visszaállító e-maillel (a tulajdonossal
+  kezdve, működő Resenddel).
 
 ## 7. Job-szolgáltatások (egyszeri scriptek a Railway-en)
 
