@@ -10,7 +10,7 @@ import { exactNodeChildEnv, resolveAdjacentNpmCli } from './exact-npm-cli.mjs'
 const NODE_VERSION = '24.20.0'
 const NPM_VERSION = '11.19.0'
 const CHECKSUM_MANIFEST_SHA256 =
-  '21734cf6be374a401b1c1007c65e758371505c593877df32e25b4b5a47b4b149'
+  '35ad793c2f75a59032a60e54031a5c82d5f22d53eb22243d255b300145a89e20'
 const CHECKSUM_TARGETS = [
   'scripts/verify-install-script-lock.mjs',
   'scripts/exact-npm-cli.mjs',
