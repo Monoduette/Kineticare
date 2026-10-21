@@ -1,6 +1,8 @@
 import type { Payload } from 'payload'
 import { describe, expect, it, vi } from 'vitest'
 
+import { MS_PER_DAY } from '../lib/course-access'
+import { resolveSingleCourseAccess } from '../lib/course-access-lookup'
 import { grantPurchase } from '../lib/grant-purchase'
 import type { Logger } from '../lib/logger'
 import type { AccessGrantRow } from '../lib/access-grants'
@@ -40,7 +42,7 @@ interface MockOptions {
   productExists?: boolean
   /** A felhasználó kezdeti purchases-listája. */
   purchases?: number[]
-  /** A termék accessDurationDays értéke (hiányzó/null/0 = korlátlan). */
+  /** A termék accessDurationDays értéke (hiányzó/null = korlátlan). */
   accessDurationDays?: number | null
   /** Paid rendelések a hozzáférés-lejárat számításához. */
   paidOrders?: PaidOrderSeed[]
@@ -328,9 +330,68 @@ describe('grantPurchase — kimeneti ágak', () => {
     expect(updates).toHaveLength(0)
   })
 
-  it('duration-required: új ajándéknál üres/0 napos óra — nem ír', async () => {
-    for (const accessDurationDays of [null, 0] as const) {
-      const { payload, updates } = createMockPayload({
+  it('üres hozzáférés-hossz: az ajándék sikeres és lejárat nélküli, mint fizetésnél', async () => {
+    const { payload, updates, product } = createMockPayload({
+      purchases: [11],
+      accessDurationDays: null,
+    })
+
+    const result = await grantPurchase({
+      payload,
+      email: EMAIL,
+      productIdOrSku: SKU,
+      reason: 'ajándék',
+      logger: silentLogger(),
+    })
+
+    expect(result.status).toBe('granted')
+    expect(updates).toHaveLength(1)
+    expect(updates[0]?.data).toMatchObject({ purchases: [11, 42] })
+    expect(updates[0]?.data.accessGrants).toEqual([
+      expect.objectContaining({ product: 42, sourceKind: 'independent' }),
+    ])
+    const access = await resolveSingleCourseAccess({
+      payload,
+      userId: 7,
+      product,
+      now: new Date(Date.now() + 10 * 365 * MS_PER_DAY),
+      logger: silentLogger(),
+    })
+    expect(access).toEqual({ hasAccess: true, expiresAt: null, reason: 'unlimited' })
+  })
+
+  it('30 napos kurzus: az ajándék a 30. napon lejár', async () => {
+    const { payload, updates, product } = createMockPayload({ accessDurationDays: 30 })
+
+    const result = await grantPurchase({
+      payload,
+      email: EMAIL,
+      productIdOrSku: SKU,
+      logger: silentLogger(),
+    })
+
+    expect(result.status).toBe('granted')
+    const grantedAt = Date.parse(
+      (updates[0]?.data.accessGrants as Array<{ grantedAt: string }>)[0].grantedAt,
+    )
+    const accessAt = (offsetMs: number) =>
+      resolveSingleCourseAccess({
+        payload,
+        userId: 7,
+        product,
+        now: new Date(grantedAt + offsetMs),
+        logger: silentLogger(),
+      })
+    expect((await accessAt(30 * MS_PER_DAY - 1)).reason).toBe('active')
+    const expired = await accessAt(30 * MS_PER_DAY)
+    expect(expired).toMatchObject({ hasAccess: false, reason: 'expired' })
+    expect(expired.expiresAt?.getTime()).toBe(grantedAt + 30 * MS_PER_DAY)
+  })
+
+  it.each([0, -5, 1.5])(
+    'duration-invalid: érvénytelen hozzáférés-hossz (%s) — hiba, nem ír',
+    async (accessDurationDays) => {
+      const { payload, updates, creates } = createMockPayload({
         purchases: [11],
         accessDurationDays,
       })
@@ -342,12 +403,11 @@ describe('grantPurchase — kimeneti ágak', () => {
         logger: silentLogger(),
       })
 
-      expect(result.status, `accessDurationDays=${String(accessDurationDays)}`).toBe(
-        'duration-required',
-      )
+      expect(result.status).toBe('duration-invalid')
       expect(updates).toHaveLength(0)
-    }
-  })
+      expect(creates).toHaveLength(0)
+    },
+  )
 
   it('user-not-found: ismeretlen e-mail-cím', async () => {
     const { payload, updates } = createMockPayload({ userExists: false })
