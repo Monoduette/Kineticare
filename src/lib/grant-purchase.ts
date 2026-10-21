@@ -3,7 +3,6 @@ import type { Payload } from 'payload'
 import type { User } from '../payload-types'
 import {
   accessGrantsForWrite,
-  durationDaysFromProduct,
   grantRowsFromUnknown,
   validateAccessGrantRows,
   withUpsertedAccessGrant,
@@ -17,15 +16,29 @@ import { withUserPurchasesLock } from './user-purchases-lock'
 /**
  * Manuális kurzus-hozzáférés (grant) — transportfüggetlen szolgáltatás.
  * Ugyanaz a purchases-RMW, mint fizetésnél (`withUserPurchasesLock`, field-access
- * zárt). Idempotens; új ajándéknál kötelező pozitív `accessDurationDays`.
+ * zárt). Idempotens. Az üres `accessDurationDays` lejárat nélküli ajándék,
+ * ugyanúgy, mint fizetésnél; csak az érvénytelen érték (0, negatív, tört) hiba.
  */
 
 export type GrantPurchaseStatus =
-  'granted' | 'already-had' | 'user-not-found' | 'product-not-found' | 'duration-required'
+  'granted' | 'already-had' | 'user-not-found' | 'product-not-found' | 'duration-invalid'
 
-/** Új ajándéknál nincs megadva, hány napig él a hozzáférés — CMS-zsargon nélkül. */
-export const GRANT_DURATION_REQUIRED_MESSAGE =
-  'Ehhez a kurzushoz nincs megadva, hány napig él az ajándék. Állítsd be a kurzusnál a hozzáférés hosszát napokban, aztán ajándékozd újra.'
+/** A kurzus hozzáférési hossza érvénytelen (régi 0/negatív/tört sor) — CMS-zsargon nélkül. */
+export const GRANT_DURATION_INVALID_MESSAGE =
+  'Ennél a kurzusnál hibás a hozzáférés hossza. Csak pozitív egész nap lehet, vagy hagyd üresen, ha a hozzáférés nem jár le. Javítsd a kurzusnál, aztán ajándékozd újra.'
+
+/**
+ * A termék hozzáférési hossza ajándékozáshoz. Üres = lejárat nélküli (a
+ * collection-validátor és a `resolveCourseAccess` szerint is); pozitív egész =
+ * napok; minden más érvénytelen, arra nem írunk új ajándék-órát.
+ */
+export function grantDurationFromProduct(product: {
+  accessDurationDays?: number | null
+}): 'unlimited' | 'invalid' | number {
+  const days = product.accessDurationDays
+  if (days === null || days === undefined) return 'unlimited'
+  return Number.isSafeInteger(days) && days > 0 ? days : 'invalid'
+}
 
 /** A termék-hivatkozás feloldásának módja — a hívó hibaüzenetéhez. */
 export type ProductRefKind = 'id' | 'sku'
@@ -149,59 +162,21 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
 
       const owned = new Set(userPurchaseIds(fresh).map(String))
       const alreadyOwned = owned.has(String(product.id))
-      const durationDays = durationDaysFromProduct(product)
+      const duration = grantDurationFromProduct(product)
       const now = new Date()
       const existingGrants = grantRowsFromUnknown(
         (fresh as User & { accessGrants?: unknown }).accessGrants,
       )
 
-      if (!alreadyOwned && durationDays === null) {
-        log.warn('manuális hozzáférés: a kurzusnál nincs megadva a hozzáférés hossza', {
-          ...audit,
-          userId: user.id,
-          productId: product.id,
-          sku: product.sku,
-          result: 'duration-required',
-        })
-        return {
-          status: 'duration-required' as const,
-          email,
-          productRef: productIdOrSku,
-          productRefKind,
-          userId: user.id,
-          productId: product.id,
-          productLabel,
-        }
-      }
-
-      if (alreadyOwned && durationDays === null) {
-        log.info('manuális hozzáférés: a termék már a vevőnél van — no-op', {
-          ...audit,
-          userId: user.id,
-          productId: product.id,
-          sku: product.sku,
-          result: 'already-had',
-        })
-        return {
-          status: 'already-had' as const,
-          email,
-          productRef: productIdOrSku,
-          productRefKind,
-          userId: user.id,
-          productId: product.id,
-          productLabel,
-        }
-      }
-
-      if (alreadyOwned && durationDays !== null) {
+      if (alreadyOwned) {
         const access = await resolveSingleCourseAccess({
           payload,
           userId: user.id,
           product,
           logger: log,
         })
-        // Élő (active) vagy korlátlan: ne írjuk újra. Lejárt és ismeretlen
-        // kezdőpont: ajándék-óra indítása accessGrants.grantedAt = most.
+        // Élő (active) vagy korlátlan: ne írjuk újra. Lejárt, visszavont és
+        // ismeretlen kezdőpont: ajándék-óra indítása accessGrants.grantedAt = most.
         if (access.reason === 'active' || access.reason === 'unlimited') {
           log.info('manuális hozzáférés: a termék már a vevőnél van — no-op', {
             ...audit,
@@ -222,22 +197,44 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
         }
       }
 
+      if (duration === 'invalid') {
+        log.warn('manuális hozzáférés: a kurzus hozzáférési hossza érvénytelen', {
+          ...audit,
+          userId: user.id,
+          productId: product.id,
+          sku: product.sku,
+          accessDurationDays: product.accessDurationDays,
+          result: 'duration-invalid',
+        })
+        return {
+          status: 'duration-invalid' as const,
+          email,
+          productRef: productIdOrSku,
+          productRefKind,
+          userId: user.id,
+          productId: product.id,
+          productLabel,
+        }
+      }
+
       const validation = validateAccessGrantRows(fresh.accessGrants)
       if (validation !== true) throw new Error(validation)
       const nextPurchases = alreadyOwned
         ? userPurchaseIds(fresh)
         : [...userPurchaseIds(fresh), product.id]
-      const nextGrants =
-        durationDays === null
-          ? existingGrants
-          : withUpsertedAccessGrant(existingGrants, product.id, now, { sourceKind: 'independent' })
+      // A fizetéses ághoz hasonlóan az eredet-sor korlátlan kurzusnál is
+      // íródik: ha a tulajdonos később napokat állít be, az óra az ajándék
+      // napjától indul, nem ismeretlen kezdőponttól.
+      const nextGrants = withUpsertedAccessGrant(existingGrants, product.id, now, {
+        sourceKind: 'independent',
+      })
 
       await payload.update({
         collection: 'users',
         id: user.id,
         data: {
           purchases: nextPurchases,
-          ...(durationDays !== null ? { accessGrants: accessGrantsForWrite(nextGrants) } : {}),
+          accessGrants: accessGrantsForWrite(nextGrants),
         },
         overrideAccess: true,
       })

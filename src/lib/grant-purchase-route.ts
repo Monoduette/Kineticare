@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 
 import { hasStaffOrOwnerRole } from '../access/roles'
-import { GRANT_DURATION_REQUIRED_MESSAGE, grantPurchase } from './grant-purchase'
+import { GRANT_DURATION_INVALID_MESSAGE, grantPurchase } from './grant-purchase'
 import { logger } from './logger'
 import { generateRequestId, getRequestId } from './request-id'
 import { assertSameOrigin } from './security/same-origin'
@@ -123,8 +123,8 @@ export function createGrantPurchaseHandler(
           { status: 404 },
         )
       }
-      if (result.status === 'duration-required') {
-        return Response.json({ error: GRANT_DURATION_REQUIRED_MESSAGE }, { status: 400 })
+      if (result.status === 'duration-invalid') {
+        return Response.json({ error: GRANT_DURATION_INVALID_MESSAGE }, { status: 400 })
       }
 
       return Response.json(

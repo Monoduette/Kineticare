@@ -78,15 +78,17 @@ A szkript a Payload configon át olvassa az adatbázis-kapcsolatot, és
 esetben, `--reason` megadásával futtasd, előtte `npm run backup:db`.
 
 Viselkedése a panelével azonos: idempotens (már meglévő kurzusnál „Már
-megvan…” és 0-s kilépési kód), a meglévő hozzáféréseket megőrzi, időkorlát
-nélküli kurzusnál új ajándékot nem ír (`duration-required`).
+megvan…” és 0-s kilépési kód), a meglévő hozzáféréseket megőrzi. Üres
+hozzáférés-hosszú kurzusnál lejárat nélküli ajándékot ír, ugyanúgy, mint
+fizetésnél; érvénytelen hossz (0, negatív, tört szám) esetén nem ír
+(`duration-invalid`).
 
 ## 5. Hibakódok (szkript)
 
-| Kilépési kód | Jelentés                                                                                                                  |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `0`          | Siker: a hozzáférés beírásra került **vagy** már megvolt.                                                                 |
-| `1`          | Hiba: hiányzó vagy hibás argumentum, ismeretlen e-mail vagy termék, hozzáférés-hossz nélküli kurzus, vagy adatbázis-hiba. |
+| Kilépési kód | Jelentés                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `0`          | Siker: a hozzáférés beírásra került **vagy** már megvolt.                                                                      |
+| `1`          | Hiba: hiányzó vagy hibás argumentum, ismeretlen e-mail vagy termék, érvénytelen hozzáférés-hosszú kurzus, vagy adatbázis-hiba. |
 
 Tipikus hibák:
 

@@ -7,7 +7,7 @@
 import { getPayload } from 'payload'
 
 import {
-  GRANT_DURATION_REQUIRED_MESSAGE,
+  GRANT_DURATION_INVALID_MESSAGE,
   grantPurchase as grantPurchaseService,
 } from '../lib/grant-purchase'
 import { createLogger } from '../lib/logger'
@@ -97,8 +97,8 @@ async function grantPurchase(args: CliArgs): Promise<void> {
         : `Nincs ilyen termék (sku: ${result.productRef}). Ellenőrizd a sku-t az admin felületen.`,
     )
   }
-  if (result.status === 'duration-required') {
-    throw new Error(GRANT_DURATION_REQUIRED_MESSAGE)
+  if (result.status === 'duration-invalid') {
+    throw new Error(GRANT_DURATION_INVALID_MESSAGE)
   }
   if (result.status === 'already-had') {
     console.log(

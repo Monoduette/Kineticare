@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 import { describe, expect, it, vi } from 'vitest'
 
-import { GRANT_DURATION_REQUIRED_MESSAGE } from '../lib/grant-purchase'
+import { GRANT_DURATION_INVALID_MESSAGE } from '../lib/grant-purchase'
 import { createGrantPurchaseHandler } from '../lib/grant-purchase-route'
 
 /**
@@ -223,14 +223,26 @@ describe('grant-purchase route — validálás és 404-ágak', () => {
     expect(body.error).toContain('indok')
   })
 
-  it('400, ha a kurzusnál nincs megadva a hozzáférés hossza', async () => {
+  it('200 granted, ha a kurzusnál üres a hozzáférés hossza (lejárat nélküli ajándék)', async () => {
     const { handler, updates } = handlerFor({ accessDurationDays: null })
+
+    const response = await handler(postRequest(VALID_BODY))
+    const body = (await response.json()) as { status: string }
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe('granted')
+    expect(updates).toHaveLength(1)
+    expect(updates[0].data).toMatchObject({ purchases: [42] })
+  })
+
+  it('400, ha a kurzusnál érvénytelen a hozzáférés hossza', async () => {
+    const { handler, updates } = handlerFor({ accessDurationDays: 0 })
 
     const response = await handler(postRequest(VALID_BODY))
     const body = (await response.json()) as { error: string }
 
     expect(response.status).toBe(400)
-    expect(body.error).toBe(GRANT_DURATION_REQUIRED_MESSAGE)
+    expect(body.error).toBe(GRANT_DURATION_INVALID_MESSAGE)
     expect(updates).toHaveLength(0)
   })
 
