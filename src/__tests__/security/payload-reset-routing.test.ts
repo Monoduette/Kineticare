@@ -1,5 +1,5 @@
 import type { RouteKind } from 'next/dist/server/route-kind'
-import { RouteMatcher } from 'next/dist/server/route-matchers/route-matcher'
+import { RouteMatcher } from './helpers/next-route-matcher'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RATE_LIMIT_RULES } from '../../lib/security/rate-limit'

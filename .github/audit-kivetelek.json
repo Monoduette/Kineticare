@@ -1,8 +1,8 @@
 [
   {
-    "id": "GHSA-vfj7-8cjw-p6xm",
-    "csomag": "braces",
-    "lejar": "2026-11-05",
-    "indok": "2026-10-05: javított braces-változat nincs (minden kiadás <=3.0.3 érintett). Csak lint- és build-idejű úton érkezik (eslint-config-next -> fast-glob/micromatch, @payloadcms/next -> sass -> chokidar); futásidőben vevőtől érkező globmintát nem kap. Javított kiadásnál a kivétel törlendő."
+    "id": "GHSA-834v-8h66-3h79",
+    "csomag": "happy-dom",
+    "lejar": "2026-11-07",
+    "indok": "2026-10-24, felelős: Backend. A javítás a happy-dom 21.0.4-ben van, de nincs olyan upstream kiadás, amely engedné a ^21-et: a @lexical/headless ^20.9-et kér, a @payloadcms/richtext-lexical pedig a lexical 0.50-re van pinnelve. Major override semver-ütközés lenne, és csendben eltörheti a rich-text (HTML -> Lexical) konverziót. A csomag csak az admin szerveroldali rich-text útján fut, vevőtől érkező HTML nem jut el hozzá. Amint az upstream engedi a ^21-et, emelni kell és a kivételt törölni."
   }
 ]
