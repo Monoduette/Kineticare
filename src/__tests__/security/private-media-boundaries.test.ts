@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 
 import type { PayloadRequest } from 'payload'
 import type { RouteKind } from 'next/dist/server/route-kind'
-import { RouteMatcher } from 'next/dist/server/route-matchers/route-matcher'
+import { RouteMatcher } from './helpers/next-route-matcher'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import nextConfig from '../../../next.config'

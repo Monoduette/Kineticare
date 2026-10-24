@@ -39,13 +39,13 @@ const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
 
 const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
 const EXPECTED_INSTALL_VERIFIER_SHA256 =
-  'df5cfa441816741b04407aa1f9537e7ea95bd862c4d76fa3e1e26b9598a38d4f'
+  '4eb4ce98416fb573e1ecd59bec81178e96816c3536a580ecc3a38f09b4ef931c'
 const EXPECTED_EXACT_NPM_CLI_SHA256 =
   'b548d388e4f0d7f6997733c925890a95f386e74c4cdf657b6f3c625e785398c6'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
-  '35ad793c2f75a59032a60e54031a5c82d5f22d53eb22243d255b300145a89e20'
+  '196b7da7919f4315c30d7f4e2609f9ca17d16f38071eb097d3488347ab62606d'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
-  'c870a3034c7d3aaa3dd37cc00002b45bac1429f9f8448ece0adba12de0352def'
+  'dab11a872f80a874ff3718cebd1e0d15b44bdb6714fa76dee72c1a1ea22758c7'
 const EXPECTED_RAILWAY_SHA256 = '9a8708fa3ea6a3cba99f5fe3fd2a5c3603c9e2ed340a35883ceca464d176703d'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
@@ -66,9 +66,9 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@types/react': '19.3.0',
   '@types/react-dom': '19.3.0',
   eslint: '9.39.5',
-  'eslint-config-next': '16.3.8',
+  'eslint-config-next': '16.4.3',
   graphql: '16.14.2',
-  next: '16.3.8',
+  next: '16.4.3',
   payload: '3.90.2',
   'posthog-js': '1.430.3',
   prettier: '3.9.6',
