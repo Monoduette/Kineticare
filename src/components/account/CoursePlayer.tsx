@@ -879,6 +879,7 @@ export function CoursePlayer({
                 <iframe
                   allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
                   allowFullScreen
+                  referrerPolicy="strict-origin-when-cross-origin"
                   className="kc-player__frame"
                   key={playingSrc}
                   ref={iframeRef}

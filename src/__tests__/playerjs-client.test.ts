@@ -780,6 +780,12 @@ describe('a Bunny-fogadó referrer-függése', () => {
       new URL('../components/account/CoursePlayer.tsx', import.meta.url),
       'utf8',
     )
-    expect(player).not.toMatch(/referrerPolicy/i)
+    // Saját referrerPolicy csak origint MEGTARTÓ értékkel megengedett: a Bunny
+    // a domain-ellenőrzéshez is az iframe-kérés Refererét nézi (Brave-javítás).
+    const policies = [...player.matchAll(/referrerPolicy="([^"]+)"/gi)].map((m) => m[1])
+    expect(player.match(/referrerPolicy/gi)?.length ?? 0).toBe(policies.length)
+    for (const policy of policies) {
+      expect(['strict-origin-when-cross-origin', 'strict-origin', 'origin']).toContain(policy)
+    }
   })
 })
