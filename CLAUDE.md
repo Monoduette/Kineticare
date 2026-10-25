@@ -129,6 +129,76 @@ ez a projektváltozat az irányadó.
 Forrás: az OpenClaw `test-audit` skillje (MIT), 2026-09-24-én a Kineticare-re
 szabva.
 
+## Kódírási és átnézési elvek (Ponytail)
+
+Forrás: a `DietrichGebert/ponytail` v5.3.2 (MIT) promptjai, 2026-10-17-én
+tanulmányozva. A pluginból semmi nincs telepítve; az elvek alább, a
+Kineticare szabályai alá rendelve. Ütközésnél a TILOS ZÓNÁK, a `teszt-audit`
+és a `termektervezes` skill az irányadó. A README számai (kevesebb kód, több
+teszt) a szerző saját mérései, nem független eredmények.
+
+**Írás előtt:** olvasd el a feladatot és az érintett kódot. Sorold fel, hova
+kell elérnie a változásnak (hívók, tesztek, fixtúrák, konfiguráció,
+exportok), és mit törhet el a felhasználónál. Ez a hatókör; a kéretlen
+funkció nem az.
+
+**A legkisebb teljes változás:** az első működő fokon állj meg.
+
+1. Kell-e egyáltalán? A kéretlen funkciót, opciót egy sorban nevezd meg.
+2. Megvan-e már a kódbázisban? Úgy használd, ahogy a környező kód.
+3. Tudja-e a standard könyvtár vagy a platform? A házi komponens előbbre
+   való a natív elemnél.
+4. Megoldja-e egy már telepített függőség? Néhány sorért új függőség nem jár.
+5. Elfér-e egy elsőre érthető sorban?
+6. Csak ezután jöhet a minimális új kód.
+
+- A megoldásban lusta, a változásban és az olvasásban soha: minden hívót,
+  tesztet és fixtúrát, amit a változás eltör, ugyanabban a körben rendbe kell
+  tenni.
+- Nincs kéretlen absztrakció, csomagoló, opció, konfiguráció vagy „későbbre”
+  kód. A törlés előbbre való a hozzáadásnál, a meglévő rétegek és
+  konvenciók maradnak.
+- Hibajavítás előtt grep minden hívóra, és a gyökérokot egyszer, a közös
+  kódban kell javítani.
+- Az áthelyezett vagy összevont kód megtartja a hibakezelését és a
+  validálását. Egyforma méretnél az éleseteken helyes változat nyer.
+- Az új, nem triviális logika (ág, ciklus, parser, pénz, biztonság) egy kis
+  tesztet hagy maga után (a `teszt-audit` írási kapuján át).
+- Tudatos, ismert korlátú egyszerűsítés jelölése a kódban:
+  `shortcut: <a korlát>, <mikor kell továbblépni>`. Továbblépési feltétel
+  nélkül a jelölés elrohad.
+- Soha nem vágható: validálás a bizalmi határon, adatvesztést megelőző
+  hibakezelés, biztonság, akadálymentesség, és bármi, amit kértek.
+- A válasz végén egy-két sor: mi maradt ki vagy ellenőrizetlen, és milyen
+  kockázatot kell tudni.
+
+**Átnézés és audit:**
+
+- Sorrend: helyes, biztonságos, bírja a valós terhelést, tesztelt, gyors,
+  karcsú.
+- Nem elég a diff: a hívókat, a hívottakat és a teszteket is el kell olvasni.
+  Aláírás, visszatérési érték vagy viselkedés változásakor grep minden
+  hívóra, mert a változás érintetlen fájlt is eltörhet.
+- A várható terhelést a repóból kell kiolvasni (README, deploy-konfig), és ki
+  kell mondani, mit feltételeztél.
+- Terhelési minták: ellenőrzés-majd-írás verseny, ugyanaz a munka minden
+  processzben, csak növő lista vagy memória, tételenkénti lekérdezés, O(n²)
+  nagy bemeneten, processzenkénti állapot, aminek közösnek kellene lennie.
+- Minden találathoz konkrét eset kell („ez a bemenet ezt a rossz eredményt
+  adja”); eset nélkül nincs találat. Jelentés előtt igazolni kell, hogy a
+  hívó létezik, az érték tényleg lehet üres, a kód tényleg nincs használva
+  (grep a teljes fán, tesztekkel, fixtúrákkal, konfiggal, dinamikus
+  hivatkozással együtt).
+- Forma: két-három mondat arról, mit csinál a változás; találatok globális
+  számozással „Javítandó”, „Érdemes javítani”, „Apróság” csoportban;
+  mindegyikben: mi ez, mi a baj, mi a javítás, mi lesz, ha kimarad. A végén
+  ítélet és az, ami ellenőrizetlen maradt. Ízlés, „érdemes lehet” és
+  homályos aggály nem találat; a legkisebb, lehetőleg törlő javítás nyer.
+
+**Eszköz-tanulság:** a Claude Code `SessionStart` hookjának kontextusa nem jut
+el a subagentekhez. Ha egy szabálynak a subagentekre is hatnia kell, azt a
+`SubagentStart` hook adja be, vagy a feladatkiírásban kell szerepelnie.
+
 ## Branch-konvenció
 
 - Formátum: `feat/<ticket-id>-<rovid-nev>` — pl. `feat/KIN-12-barion-callback`.
