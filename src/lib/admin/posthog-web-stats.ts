@@ -48,14 +48,33 @@ function posthogQueryUrl(): string {
   return `${POSTHOG_EMBED_ORIGIN}/api/projects/${POSTHOG_PROJECT_ID}/query/`
 }
 
-/** Egy lekérdezés időkorlátja. A PostHog maga 10 mp végrehajtási időt enged. */
-const REQUEST_TIMEOUT_MS = 8_000
+/**
+ * A négy lekérdezés KÖZÖS határideje. A PostHog maga 10 mp végrehajtási időt
+ * enged. Közös, nem kérésenkénti: hideg gyorsítótárnál lassú PostHog mellett
+ * sem tarthatja fel a nézetet (és vele az adatbázis-számokat) 8 mp-nél tovább.
+ */
+const REQUEST_DEADLINE_MS = 8_000
 
 /** A gyorsítótár frissessége másodpercben (a nézet megjegyzése: 5 perc). */
 export const POSTHOG_WEB_STATS_REVALIDATE_SECONDS = 300
 
 /** A táblák sorainak száma. */
 const TABLE_LIMIT = 5
+
+/**
+ * Az oldal-táblához ennyi sort kérünk, és helyben rendezzük megtekintés
+ * szerint. A PostHog a WebStatsTableQuery-t alapból látogatószám szerint
+ * rendezi, így 5-ös limitnél kieshetne a legnézettebb oldal. Az `orderBy`
+ * mezőt az API itt elérhető sémája nem mutatja, ezért nem küldjük.
+ */
+const PAGES_FETCH_LIMIT = 20
+
+/**
+ * Ennél régebbi gyorsítótár-adatnál a nézet jelzi, hogy a frissítés elakadt.
+ * Az `unstable_cache` sikertelen újraérvényesítésnél a régi értéket adja
+ * tovább (stale-while-revalidate), ezt a lekérés időpontja teszi láthatóvá.
+ */
+export const POSTHOG_WEB_STATS_STALE_AFTER_MS = 15 * 60 * 1000
 
 const DATE_RANGE = { date_from: '-7d' } as const
 
@@ -76,6 +95,8 @@ export interface WebStatsRow {
 }
 
 export interface WebStatsData {
+  /** A PostHog-lekérés időpontja (ISO 8601). */
+  fetchedAt: string
   overview: WebOverview | null
   pages: WebStatsRow[] | null
   channels: WebStatsRow[] | null
@@ -238,7 +259,12 @@ function readApiKey(): string | null {
 type Block = 'overview' | 'pages' | 'channels' | 'devices'
 
 /** Egy lekérdezés futtatása; hibánál null + figyelmeztetés (kulcs és törzs nélkül). */
-async function runQuery(apiKey: string, block: Block, query: unknown): Promise<unknown> {
+async function runQuery(
+  apiKey: string,
+  block: Block,
+  query: unknown,
+  signal: AbortSignal,
+): Promise<unknown> {
   let response: Response
   try {
     response = await fetch(posthogQueryUrl(), {
@@ -248,7 +274,7 @@ async function runQuery(apiKey: string, block: Block, query: unknown): Promise<u
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query, name: `kineticare-admin-webanalitika-${block}` }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal,
     })
   } catch (error) {
     logger.warn('posthog-webstat: a lekérdezés nem futott le', {
@@ -276,13 +302,41 @@ function warnIfMalformed<T>(block: Block, body: unknown, parsed: T | null): T | 
   return parsed
 }
 
-function tableQuery(breakdownBy: string) {
+/** Megtekintés szerint csökkenő sorrend (holtversenyben látogató szerint), az első 5. */
+function mostViewedFirst(rows: WebStatsRow[]): WebStatsRow[] {
+  return [...rows]
+    .sort((a, b) => b.views - a.views || b.visitors - a.visitors)
+    .slice(0, TABLE_LIMIT)
+}
+
+/** Igaz, ha a lekérés régebbi a frissességi küszöbnél (vagy az időpont olvashatatlan). */
+export function isWebStatsStale(fetchedAt: string, now: number = Date.now()): boolean {
+  const time = Date.parse(fetchedAt)
+  return Number.isNaN(time) || now - time > POSTHOG_WEB_STATS_STALE_AFTER_MS
+}
+
+/** A lekérés időpontja budapesti idő szerint, pl. „nov. 6. 21:20”. */
+export function formatFetchedAtHu(fetchedAt: string): string {
+  const time = Date.parse(fetchedAt)
+  if (Number.isNaN(time)) {
+    return 'ismeretlen időpont'
+  }
+  return new Intl.DateTimeFormat('hu-HU', {
+    timeZone: 'Europe/Budapest',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(time)
+}
+
+function tableQuery(breakdownBy: string, limit: number = TABLE_LIMIT) {
   return {
     kind: 'WebStatsTableQuery',
     breakdownBy,
     dateRange: DATE_RANGE,
     filterTestAccounts: true,
-    limit: TABLE_LIMIT,
+    limit,
     properties: [],
   }
 }
@@ -290,20 +344,28 @@ function tableQuery(breakdownBy: string) {
 async function fetchWebStats(apiKey: string): Promise<WebStatsData> {
   // Előbb az összesítő, utána a három tábla együtt: így egyszerre legfeljebb
   // három lekérdezés fut, a PostHog projekt-szintű párhuzamossági korlátja.
-  const overviewBody = await runQuery(apiKey, 'overview', {
-    kind: 'WebOverviewQuery',
-    dateRange: DATE_RANGE,
-    filterTestAccounts: true,
-    properties: [],
-  })
+  const signal = AbortSignal.timeout(REQUEST_DEADLINE_MS)
+  const overviewBody = await runQuery(
+    apiKey,
+    'overview',
+    {
+      kind: 'WebOverviewQuery',
+      dateRange: DATE_RANGE,
+      filterTestAccounts: true,
+      properties: [],
+    },
+    signal,
+  )
   const [pagesBody, channelsBody, devicesBody] = await Promise.all([
-    runQuery(apiKey, 'pages', tableQuery('Page')),
-    runQuery(apiKey, 'channels', tableQuery('InitialChannelType')),
-    runQuery(apiKey, 'devices', tableQuery('DeviceType')),
+    runQuery(apiKey, 'pages', tableQuery('Page', PAGES_FETCH_LIMIT), signal),
+    runQuery(apiKey, 'channels', tableQuery('InitialChannelType'), signal),
+    runQuery(apiKey, 'devices', tableQuery('DeviceType'), signal),
   ])
+  const pages = warnIfMalformed('pages', pagesBody, parseWebStatsTable(pagesBody))
   return {
+    fetchedAt: new Date().toISOString(),
     overview: warnIfMalformed('overview', overviewBody, parseWebOverview(overviewBody)),
-    pages: warnIfMalformed('pages', pagesBody, parseWebStatsTable(pagesBody)),
+    pages: pages === null ? null : mostViewedFirst(pages),
     channels: warnIfMalformed(
       'channels',
       channelsBody,
@@ -339,7 +401,7 @@ const cachedWebStats = unstable_cache(
     }
     return data
   },
-  ['admin-posthog-web-stats-v1'],
+  ['admin-posthog-web-stats-v2'],
   { revalidate: POSTHOG_WEB_STATS_REVALIDATE_SECONDS },
 )
 

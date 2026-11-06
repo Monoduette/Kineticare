@@ -106,6 +106,7 @@ const {
   VISITOR_STATS_HEADING,
   VISITOR_STATS_MISSING_STAFF_MESSAGE,
   VISITOR_STATS_NOTE,
+  VISITOR_STATS_STALE_MESSAGE,
   VISITOR_STATS_UNAVAILABLE_MESSAGE,
   WebAnalyticsView,
 } = await import('../components/admin/WebAnalyticsView')
@@ -228,6 +229,7 @@ describe('Webanalitika K13: azonosítható külső linkek, szerepkör szerinti b
 /** Egy sikeres PostHog-válasz, ahogy a betöltő adja (magyarított nevekkel). */
 const VISITOR_STATS: PosthogWebStats = {
   status: 'ok',
+  fetchedAt: new Date().toISOString(),
   overview: {
     visitors: 12560,
     views: 183,
@@ -284,6 +286,18 @@ describe('Webanalitika: látogatói számok a PostHogból', () => {
     expect(text).toContain('|Közvetlen||26||77|')
     expect(text).toContain('|Telefon||40||120|')
     expect(section).toContain(VISITOR_STATS_NOTE)
+    expect(section).toContain('Utolsó frissítés:')
+    expect(section).not.toContain(VISITOR_STATS_STALE_MESSAGE)
+  })
+
+  it('a gyorsítótárban ragadt régi adatot nem mutatja frissnek', async () => {
+    loadPosthogWebStats.mockResolvedValueOnce({
+      ...VISITOR_STATS,
+      fetchedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    } as PosthogWebStats)
+    const section = visitorSection(renderToStaticMarkup(await WebAnalyticsView(props())))
+    expect(section).toContain(VISITOR_STATS_STALE_MESSAGE)
+    expect(section.match(/<table/g)).toHaveLength(3)
   })
 
   it('kulcs nélkül a tulajdonos a beállítás módját kapja, a munkatárs a teendőt', async () => {

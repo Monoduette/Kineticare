@@ -6,7 +6,9 @@ import { hasOwnerRole, hasStaffOrOwnerRole } from '../../access/roles'
 import {
   formatCountHu,
   formatDurationHu,
+  formatFetchedAtHu,
   formatPercentHu,
+  isWebStatsStale,
   loadPosthogWebStats,
   type PosthogWebStats,
   type WebOverview,
@@ -114,7 +116,10 @@ export const WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE =
 export const VISITOR_STATS_HEADING = 'Látogatók az elmúlt 7 napban'
 
 export const VISITOR_STATS_NOTE =
-  'A számok legfeljebb 5 percesek, a belső és a teszt-forgalom nélkül. Csak azokat a látogatókat látjuk, akik hozzájárultak a sütikhez.'
+  'A számok 5 percenként frissülnek, a belső és a teszt-forgalom nélkül. Csak azokat a látogatókat látjuk, akik hozzájárultak a sütikhez.'
+
+export const VISITOR_STATS_STALE_MESSAGE =
+  'A PostHog most nem ad friss adatot, ezért a legutóbbi elérhető számokat látod.'
 
 export const VISITOR_STATS_MISSING_STAFF_MESSAGE =
   'A látogatói számok még nincsenek bekötve. Szólj a tulajdonosnak.'
@@ -240,7 +245,14 @@ function VisitorStatsSection({ stats, owner }: { stats: PosthogWebStats; owner: 
         <p style={leadInSectionStyle}>{VISITOR_STATS_UNAVAILABLE_MESSAGE}</p>
       ) : (
         <>
-          <p style={leadInSectionStyle}>{VISITOR_STATS_NOTE}</p>
+          <p style={leadInSectionStyle}>
+            {VISITOR_STATS_NOTE} Utolsó frissítés: {formatFetchedAtHu(stats.fetchedAt)}.
+          </p>
+          {isWebStatsStale(stats.fetchedAt) ? (
+            <p style={{ ...noticeStyle, marginBottom: 'var(--kc-as-space-4, 1rem)' }}>
+              {VISITOR_STATS_STALE_MESSAGE}
+            </p>
+          ) : null}
           {stats.overview === null ? (
             <p style={{ ...noticeStyle, marginBottom: 'var(--kc-as-space-4, 1rem)' }}>
               Az összesítő számok most nem érhetők el.

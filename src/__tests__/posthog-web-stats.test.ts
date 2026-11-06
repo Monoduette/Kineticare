@@ -17,8 +17,15 @@ vi.mock('next/cache', () => ({
   unstable_cache: <T extends (...args: never[]) => unknown>(fn: T) => fn,
 }))
 
-const { channelLabelHu, deviceLabelHu, formatDurationHu, formatPercentHu, loadPosthogWebStats } =
-  await import('../lib/admin/posthog-web-stats')
+const {
+  channelLabelHu,
+  deviceLabelHu,
+  formatDurationHu,
+  formatFetchedAtHu,
+  formatPercentHu,
+  isWebStatsStale,
+  loadPosthogWebStats,
+} = await import('../lib/admin/posthog-web-stats')
 
 const DUMMY_KEY = 'DUMMY-posthog-personal-key-for-tests'
 
@@ -133,6 +140,11 @@ describe('loadPosthogWebStats: a kérés alakja', () => {
       expect(query.filterTestAccounts).toBe(true)
       expect(query.dateRange).toEqual({ date_from: '-7d' })
     }
+    // Közös határidő: mind a négy kérés ugyanazt a jelzőt kapja.
+    const signals = new Set(fetchMock.mock.calls.map(([, init]) => init.signal))
+    expect(signals.size).toBe(1)
+    // Az oldal-tábla bővebb listát kér, a helyi megtekintés-rendezéshez.
+    expect(queries.map((query) => query.limit ?? null)).toEqual([null, 20, 5, 5])
     expect(queries.map((query) => [query.kind, query.breakdownBy ?? null])).toEqual([
       ['WebOverviewQuery', null],
       ['WebStatsTableQuery', 'Page'],
@@ -149,6 +161,7 @@ describe('loadPosthogWebStats: a válasz érvényesítése', () => {
     const stats = await loadPosthogWebStats()
     expect(stats).toEqual({
       status: 'ok',
+      fetchedAt: expect.any(String),
       overview: {
         visitors: 56,
         views: 183,
@@ -173,6 +186,28 @@ describe('loadPosthogWebStats: a válasz érvényesítése', () => {
       ],
     })
     expect(warnKem).not.toHaveBeenCalled()
+  })
+
+  it('a Legnézettebb oldalak megtekintés szerint rendez, nem látogató szerint', async () => {
+    vi.stubEnv('POSTHOG_PERSONAL_API_KEY', DUMMY_KEY)
+    // A PostHog látogató szerint rendezve adja vissza: a 6. sor a legnézettebb.
+    const rows = [
+      ['/a', [50, null], [60, null], 0.2, ''],
+      ['/b', [40, null], [50, null], 0.2, ''],
+      ['/c', [30, null], [40, null], 0.2, ''],
+      ['/d', [20, null], [30, null], 0.2, ''],
+      ['/e', [10, null], [20, null], 0.2, ''],
+      ['/sokat-olvasott', [5, null], [500, null], 0.1, ''],
+    ]
+    stubPosthog({ tables: { ...TABLES, Page: table(rows) } })
+    const stats = await loadPosthogWebStats()
+    expect(stats.status === 'ok' && stats.pages?.map((row) => row.name)).toEqual([
+      '/sokat-olvasott',
+      '/a',
+      '/b',
+      '/c',
+      '/d',
+    ])
   })
 
   it('az oszlopokat név szerint keresi: az eltolt sorrend is jó számot ad', async () => {
@@ -264,6 +299,15 @@ describe('loadPosthogWebStats: a válasz érvényesítése', () => {
 })
 
 describe('magyar címkék és formázás', () => {
+  it('a lekérés időpontja: 15 percnél régebbi vagy olvashatatlan → elavult', () => {
+    const now = Date.parse('2026-11-06T21:20:00Z')
+    expect(isWebStatsStale('2026-11-06T21:10:00Z', now)).toBe(false)
+    expect(isWebStatsStale('2026-11-06T21:04:00Z', now)).toBe(true)
+    expect(isWebStatsStale('nem dátum', now)).toBe(true)
+    expect(formatFetchedAtHu('2026-11-06T20:20:00Z')).toMatch(/21:20/)
+    expect(formatFetchedAtHu('nem dátum')).toBe('ismeretlen időpont')
+  })
+
   it('a csatorna- és eszközneveket magyarítja, az ismeretlent változatlanul hagyja', () => {
     expect(
       [
