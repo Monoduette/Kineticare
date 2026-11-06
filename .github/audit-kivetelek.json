@@ -2,7 +2,13 @@
   {
     "id": "GHSA-834v-8h66-3h79",
     "csomag": "happy-dom",
-    "lejar": "2026-11-07",
-    "indok": "2026-10-24, felelős: Backend. A javítás a happy-dom 21.0.4-ben van, de nincs olyan upstream kiadás, amely engedné a ^21-et: a @lexical/headless ^20.9-et kér, a @payloadcms/richtext-lexical pedig a lexical 0.50-re van pinnelve. Major override semver-ütközés lenne, és csendben eltörheti a rich-text (HTML -> Lexical) konverziót. A csomag csak az admin szerveroldali rich-text útján fut, vevőtől érkező HTML nem jut el hozzá. Amint az upstream engedi a ^21-et, emelni kell és a kivételt törölni."
+    "lejar": "2026-12-06",
+    "indok": "2026-10-24, felelős: Backend; meghosszabbítva 2026-11-06-án. A javítás a happy-dom 21.0.4-ben van, és 20.x-es javított kiadás nincs (a 20.14.6 az utolsó). A @lexical/headless 0.50 ^20.9-et kér, a ^21-et csak a 0.53 engedi, a @payloadcms/richtext-lexical pedig a 3.90.2-ben és a legfrissebb 3.93.0-ban is a lexical 0.50-re van pinnelve. Major override semver-ütközés lenne. A sérülékeny kódhoz futás közben nem jutunk el: a happy-dom-ot csak a @lexical/headless/dom (withDOM) tölti be, ezt a richtext-lexical 3.90.2 nem importálja (csak a createHeadlessEditort), a saját kódunk sem; a csomagot csak a saját tesztjeink használják, rögzített teszt-HTML-lel. Amint az upstream engedi a ^21-et, emelni kell és a kivételt törölni."
+  },
+  {
+    "id": "GHSA-c8p4-j97h-3vg8",
+    "csomag": "happy-dom",
+    "lejar": "2026-12-06",
+    "indok": "2026-11-06, felelős: Backend. SSRF: a happy-dom alapbeállítással valódi szerveroldali HTTP-kérést indít, ha a feldolgozott HTML-ben <iframe> vagy <link rel=\"stylesheet\"> van; ehhez a támadónak a feldolgozott HTML-t kell irányítania. Érintett a <=20.14.6, a javítás a 21.0.0-ban van, 20.x-es javított kiadás nincs. A @lexical/headless 0.50 ^20.9-et kér, a @payloadcms/richtext-lexical (3.90.2 és 3.93.0 is) a lexical 0.50-re van pinnelve, így a ^21 csak semver-ütköző major override-dal jönne be. Nálunk nem érhető el: a happy-dom-ot csak a @lexical/headless/dom (withDOM) tölti be, ezt sem a richtext-lexical, sem a saját kódunk nem importálja; a csomagot csak a saját tesztjeink használják, rögzített teszt-HTML-lel, vevőtől vagy kívülről érkező HTML nem jut el hozzá. Amint az upstream engedi a ^21-et, emelni kell és a kivételt törölni."
   }
 ]
