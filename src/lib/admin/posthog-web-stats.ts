@@ -62,12 +62,15 @@ export const POSTHOG_WEB_STATS_REVALIDATE_SECONDS = 300
 const TABLE_LIMIT = 5
 
 /**
- * Az oldal-táblához ennyi sort kérünk, és helyben rendezzük megtekintés
- * szerint. A PostHog a WebStatsTableQuery-t alapból látogatószám szerint
- * rendezi, így 5-ös limitnél kieshetne a legnézettebb oldal. Az `orderBy`
- * mezőt az API itt elérhető sémája nem mutatja, ezért nem küldjük.
+ * A „Legnézettebb oldalak” HogQL-lekérdezése. A WebStatsTableQuery a sorokat
+ * látogatószám szerint rendezi és vágja le, így bármilyen helyi rendezés
+ * előtt kieshetne egy kevés látogatójú, de sokszor megnyitott oldal. Itt a
+ * PostHog maga rendez megtekintés szerint. A `{filters}` helyőrzőt a
+ * `filters.filterTestAccounts` tölti ki (belső és teszt-forgalom nélkül).
+ * Az oszlopnevek a WebStatsTableQuery-éval egyeznek, így ugyanaz az
+ * értelmező olvassa.
  */
-const PAGES_FETCH_LIMIT = 20
+const TOP_PAGES_HOGQL = `SELECT properties.$pathname AS breakdown_value, uniq(person_id) AS visitors, count() AS views FROM events WHERE event = '$pageview' AND timestamp >= now() - INTERVAL 7 DAY AND {filters} GROUP BY breakdown_value ORDER BY views DESC, visitors DESC LIMIT ${TABLE_LIMIT}`
 
 /**
  * Ennél régebbi gyorsítótár-adatnál a nézet jelzi, hogy a frissítés elakadt.
@@ -302,13 +305,6 @@ function warnIfMalformed<T>(block: Block, body: unknown, parsed: T | null): T | 
   return parsed
 }
 
-/** Megtekintés szerint csökkenő sorrend (holtversenyben látogató szerint), az első 5. */
-function mostViewedFirst(rows: WebStatsRow[]): WebStatsRow[] {
-  return [...rows]
-    .sort((a, b) => b.views - a.views || b.visitors - a.visitors)
-    .slice(0, TABLE_LIMIT)
-}
-
 /** Igaz, ha a lekérés régebbi a frissességi küszöbnél (vagy az időpont olvashatatlan). */
 export function isWebStatsStale(fetchedAt: string, now: number = Date.now()): boolean {
   const time = Date.parse(fetchedAt)
@@ -330,13 +326,13 @@ export function formatFetchedAtHu(fetchedAt: string): string {
   }).format(time)
 }
 
-function tableQuery(breakdownBy: string, limit: number = TABLE_LIMIT) {
+function tableQuery(breakdownBy: string) {
   return {
     kind: 'WebStatsTableQuery',
     breakdownBy,
     dateRange: DATE_RANGE,
     filterTestAccounts: true,
-    limit,
+    limit: TABLE_LIMIT,
     properties: [],
   }
 }
@@ -357,15 +353,19 @@ async function fetchWebStats(apiKey: string): Promise<WebStatsData> {
     signal,
   )
   const [pagesBody, channelsBody, devicesBody] = await Promise.all([
-    runQuery(apiKey, 'pages', tableQuery('Page', PAGES_FETCH_LIMIT), signal),
+    runQuery(
+      apiKey,
+      'pages',
+      { kind: 'HogQLQuery', query: TOP_PAGES_HOGQL, filters: { filterTestAccounts: true } },
+      signal,
+    ),
     runQuery(apiKey, 'channels', tableQuery('InitialChannelType'), signal),
     runQuery(apiKey, 'devices', tableQuery('DeviceType'), signal),
   ])
-  const pages = warnIfMalformed('pages', pagesBody, parseWebStatsTable(pagesBody))
   return {
     fetchedAt: new Date().toISOString(),
     overview: warnIfMalformed('overview', overviewBody, parseWebOverview(overviewBody)),
-    pages: pages === null ? null : mostViewedFirst(pages),
+    pages: warnIfMalformed('pages', pagesBody, parseWebStatsTable(pagesBody)),
     channels: warnIfMalformed(
       'channels',
       channelsBody,
