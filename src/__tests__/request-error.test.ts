@@ -7,6 +7,7 @@ import {
   parseStackFrames,
   pathWithoutQuery,
   POSTHOG_EXCEPTION_EVENT,
+  REQUEST_ERROR_BENIGN_LOG_MSG,
   REQUEST_ERROR_LOG_MSG,
   throttleKey,
   type RequestErrorContext,
@@ -285,6 +286,111 @@ describe('createRequestErrorReporter — PostHog $exception', () => {
     report(new Error('hiba'), keres({ headers: {} }), ROUTE_KORNYEZET)
 
     expect(hivasok[0].distinctId).toBe('veletlen-azonosito')
+  })
+})
+
+/**
+ * Ártalmatlan kérés-hibák (2026-11-06-i PostHog-audit): 15 db „The destination
+ * stream closed early.” (kliens-megszakítás streamelt SSR közben) és 1 db
+ * Next `DynamicServerError` (digest: DYNAMIC_SERVER_USAGE) szennyezte a
+ * hibakövetést. Ezekre nem mehet `$exception`, de egy info sor marad.
+ */
+const RENDER_KORNYEZET: RequestErrorContext = {
+  routerKind: 'App Router',
+  routePath: '/(frontend)/[slug]/page',
+  routeType: 'render',
+  revalidateReason: undefined,
+}
+
+/** Az élesben látott React-hiba, csak Next-belső veremmel. */
+function streamLezarultHiba(): Error {
+  const error = new Error('The destination stream closed early.')
+  error.stack = [
+    'Error: The destination stream closed early.',
+    '    at PassThrough.<anonymous> (/app/node_modules/next/dist/compiled/next-server/app-page-turbo.runtime.prod.js:2:1)',
+  ].join('\n')
+  return error
+}
+
+/** A Next `ResponseAborted` hibájának alakja (next-request.js 39–42. sor). */
+function responseAbortedHiba(): Error {
+  const error = new Error('')
+  error.name = 'ResponseAborted'
+  return error
+}
+
+/** A Next `DynamicServerError` alakja (hooks-server-context.js 23–27. sor). */
+function dinamikusHasznalatHiba(): Error {
+  const error = new Error(
+    'Dynamic server usage: Page with dynamic = "force-dynamic" won\'t be rendered statically.',
+  )
+  Object.assign(error, { digest: 'DYNAMIC_SERVER_USAGE' })
+  return error
+}
+
+describe('createRequestErrorReporter — ártalmatlan kérés-hibák', () => {
+  it.each([
+    ['React „destination stream closed early”', streamLezarultHiba, 'client_abort'],
+    ['Next ResponseAborted', responseAbortedHiba, 'client_abort'],
+    ['Next DYNAMIC_SERVER_USAGE digest', dinamikusHasznalatHiba, 'next_control_flow'],
+  ] as const)('%s: nincs PostHog, egy info sor reason-nel', (_nev, hiba, reason) => {
+    const report = createRequestErrorReporter({
+      logger: createLogger(),
+      capture: tiltottCapture,
+      shouldSend: () => true,
+    })
+
+    report(hiba(), keres({ method: 'GET', path: '/rolunk?utm=x' }), RENDER_KORNYEZET)
+
+    const sorok = naplosorok()
+    expect(sorok).toHaveLength(1)
+    const [sor] = sorok
+    expect(sor.level).toBe('info')
+    expect(sor.msg).toBe(REQUEST_ERROR_BENIGN_LOG_MSG)
+    expect(sor.requestId).toBe(REQUEST_ID)
+    expect(sor.context).toMatchObject({
+      reason,
+      method: 'GET',
+      path: '/rolunk',
+      routePath: '/(frontend)/[slug]/page',
+      routeType: 'render',
+    })
+  })
+
+  it('a csak „stream”-et tartalmazó, de más üzenetű hiba valódi hiba marad', () => {
+    const { capture, hivasok } = rogzitoCapture()
+    const report = createRequestErrorReporter({
+      logger: createLogger(),
+      capture,
+      shouldSend: () => true,
+    })
+
+    report(
+      new Error('Failed to read stream: the destination stream closed early.'),
+      keres({ method: 'GET' }),
+      RENDER_KORNYEZET,
+    )
+
+    expect(hivasok).toHaveLength(1)
+    const [sor] = naplosorok()
+    expect(sor.level).toBe('error')
+    expect(sor.msg).toBe(REQUEST_ERROR_LOG_MSG)
+  })
+
+  it('a sima AbortError (pl. saját, leállított fetch) valódi hiba marad', () => {
+    const { capture, hivasok } = rogzitoCapture()
+    const report = createRequestErrorReporter({
+      logger: createLogger(),
+      capture,
+      shouldSend: () => true,
+    })
+    const error = new Error('This operation was aborted')
+    error.name = 'AbortError'
+
+    report(error, keres(), ROUTE_KORNYEZET)
+
+    expect(hivasok).toHaveLength(1)
+    expect(naplosorok()[0].level).toBe('error')
   })
 })
 
