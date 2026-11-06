@@ -104,6 +104,61 @@ describe('LogoRail', () => {
     },
   )
 
+  it('ResizeObserver-jelzésre a következő képkockában, egyszer mér, és unmountkor mindent elenged', async () => {
+    let notify: (() => void) | undefined
+    const disconnect = vi.fn()
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          notify = callback
+        }
+        observe() {}
+        disconnect = disconnect
+      },
+    )
+    const frames = new Map<number, FrameRequestCallback>()
+    let nextFrame = 0
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((callback: FrameRequestCallback) => {
+        nextFrame += 1
+        frames.set(nextFrame, callback)
+        return nextFrame
+      }),
+    )
+    const cancel = vi.fn((frame: number) => frames.delete(frame))
+    vi.stubGlobal('cancelAnimationFrame', cancel)
+    const runFrames = () => {
+      const pending = [...frames.values()]
+      frames.clear()
+      pending.forEach((callback) => callback(0))
+    }
+
+    await renderRail()
+    const viewport = container.querySelector<HTMLElement>('.kc-press__viewport')
+    expect(viewport?.style.getPropertyValue('--kc-press-viewport-width')).toBe('390px')
+
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(500)
+    await act(async () => {
+      notify?.()
+      notify?.()
+    })
+    expect(viewport?.style.getPropertyValue('--kc-press-viewport-width')).toBe('390px')
+    expect(frames.size).toBe(1)
+
+    await act(async () => runFrames())
+    expect(viewport?.style.getPropertyValue('--kc-press-viewport-width')).toBe('500px')
+    expect(viewport?.style.getPropertyValue('--kc-press-cycle-width')).toBe('500px')
+
+    await act(async () => notify?.())
+    const pendingFrame = nextFrame
+    await act(async () => root.unmount())
+    expect(disconnect).toHaveBeenCalledTimes(1)
+    expect(cancel).toHaveBeenCalledWith(pendingFrame)
+    expect(frames.size).toBe(0)
+  })
+
   it('a gomb tartósan szünetelteti, majd ugyanonnan újraindítja a sort', async () => {
     await renderRail()
     const button = container.querySelector<HTMLButtonElement>('.kc-press__control')

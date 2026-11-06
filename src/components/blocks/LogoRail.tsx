@@ -90,11 +90,28 @@ function MotionRail({ children, id }: { children: ReactNode; id: string }) {
     measure()
 
     if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
+    // A mérés a megfigyelt elemek CSS-változóit írja, ami az ő elrendezésüket
+    // változtatja. Ha ez még a ResizeObserver visszahívásában, ugyanabban a
+    // képkockában történik, a böngésző „ResizeObserver loop completed with
+    // undelivered notifications” hibát ad (PostHog, 2026-11-06, főleg iOS
+    // Safari). Ezért a mérés a következő képkockára kerül, és az egy képkockán
+    // belüli visszahívások egyetlen mérésbe olvadnak.
+    let frame: number | null = null
+    const scheduleMeasure = () => {
+      if (frame !== null) return
+      frame = requestAnimationFrame(() => {
+        frame = null
+        measure()
+      })
+    }
+    const observer = new ResizeObserver(scheduleMeasure)
     observer.observe(viewportElement)
     observer.observe(rowElement)
     Array.from(rowElement.children).forEach((item) => observer.observe(item))
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
   }, [])
 
   function keepFocusedLogoVisible(event: FocusEvent<HTMLDivElement>) {
