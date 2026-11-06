@@ -3,6 +3,17 @@ import type { AdminViewServerProps } from 'payload'
 import Link from 'next/link'
 
 import { hasOwnerRole, hasStaffOrOwnerRole } from '../../access/roles'
+import {
+  formatCountHu,
+  formatDurationHu,
+  formatFetchedAtHu,
+  formatPercentHu,
+  isWebStatsStale,
+  loadPosthogWebStats,
+  type PosthogWebStats,
+  type WebOverview,
+  type WebStatsRow,
+} from '../../lib/admin/posthog-web-stats'
 import { EXTERNAL_ANALYTICS_LINKS, posthogEmbedUrl } from '../../lib/admin/web-analytics-config'
 import { logger } from '../../lib/logger'
 import { queryCourseEngagement } from '../../lib/statistics/engagement-query'
@@ -13,14 +24,21 @@ import { AdminChrome, AdminViewFrame } from './AdminChrome'
 import { StatCard } from './statistics/StatCard'
 import { RESZLEGES_LEVONVA, RESZLEGES_NINCS_LEVONVA } from './statistics/TotalsCards'
 import {
+  captionStyle,
   cardRowStyle,
   headingStyle,
   leadInSectionStyle,
   leadStyle,
   noticeStyle,
+  numericStyle,
   pageStyle,
+  rowHeaderStyle,
   sectionStyle,
   sectionTopStyle,
+  tableStyle,
+  tableWrapStyle,
+  thNumericStyle,
+  thStyle,
 } from './statistics/styles'
 
 /**
@@ -94,6 +112,168 @@ export const WEB_ANALYTICS_ACCESS_DENIED_MESSAGE =
 
 export const WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE =
   'Az eladás- és haladás-számok most nem érhetők el. A részletes bontást a Statisztika oldalon találod, vagy próbáld újra pár perc múlva.'
+
+export const VISITOR_STATS_HEADING = 'Látogatók az elmúlt 7 napban'
+
+export const VISITOR_STATS_NOTE =
+  'A számok 5 percenként frissülnek, a belső és a teszt-forgalom nélkül. Csak azokat a látogatókat látjuk, akik hozzájárultak a sütikhez.'
+
+export const VISITOR_STATS_STALE_MESSAGE =
+  'A PostHog most nem ad friss adatot, ezért a legutóbbi elérhető számokat látod.'
+
+export const VISITOR_STATS_MISSING_STAFF_MESSAGE =
+  'A látogatói számok még nincsenek bekötve. Szólj a tulajdonosnak.'
+
+export const VISITOR_STATS_UNAVAILABLE_MESSAGE =
+  'A látogatói számok most nem érhetők el. Próbáld újra pár perc múlva.'
+
+/** Egy blokk hiánya a sikeres válaszon belül (a többi blokk megjelenik). */
+export const VISITOR_STATS_BLOCK_MISSING_MESSAGE = 'Ez a rész most nem érhető el.'
+
+export const VISITOR_TABLE_EMPTY_MESSAGE = 'Ebben az időszakban nincs adat.'
+
+const NO_VALUE = 'nincs adat'
+
+function visitorCards(overview: WebOverview): Array<{ label: string; value: string }> {
+  const count = (value: number | null) => (value === null ? NO_VALUE : formatCountHu(value))
+  return [
+    { label: 'Látogatók', value: count(overview.visitors) },
+    { label: 'Oldalmegtekintések', value: count(overview.views) },
+    { label: 'Munkamenetek', value: count(overview.sessions) },
+    {
+      label: 'Átlagos munkamenet-hossz',
+      value:
+        overview.sessionDurationSeconds === null
+          ? NO_VALUE
+          : formatDurationHu(overview.sessionDurationSeconds),
+    },
+    {
+      label: 'Visszafordulási arány',
+      value:
+        overview.bounceRatePercent === null
+          ? NO_VALUE
+          : formatPercentHu(overview.bounceRatePercent),
+    },
+  ]
+}
+
+/**
+ * A három kis tábla rácsa. Egy tábla legalább 18 rem széles, keskeny lapon a
+ * rács egy oszlopra áll (WCAG 2.2 SC 1.4.10 Reflow); a tábla saját
+ * görgetőkonténere a statisztika-táblák mintája (tableWrapStyle).
+ */
+const visitorTablesGridStyle: CSSProperties = {
+  display: 'grid',
+  gap: 'var(--kc-as-space-4, calc(var(--base) * 1))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))',
+  marginBottom: 'var(--kc-as-space-4, calc(var(--base) * 1))',
+}
+
+/** A kis táblának nem kell a statisztika-tábla 576 px-es padlója. */
+const visitorTableStyle: CSSProperties = { ...tableStyle, minWidth: 0 }
+
+function VisitorTable({
+  caption,
+  firstColumn,
+  rows,
+}: {
+  caption: string
+  firstColumn: string
+  rows: WebStatsRow[] | null
+}) {
+  return (
+    <div style={tableWrapStyle}>
+      <table style={visitorTableStyle}>
+        <caption style={captionStyle}>{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col" style={thStyle}>
+              {firstColumn}
+            </th>
+            <th scope="col" style={thNumericStyle}>
+              Látogatók
+            </th>
+            <th scope="col" style={thNumericStyle}>
+              Megtekintések
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows === null || rows.length === 0 ? (
+            <tr>
+              <td colSpan={3} style={rowHeaderStyle}>
+                {rows === null ? VISITOR_STATS_BLOCK_MISSING_MESSAGE : VISITOR_TABLE_EMPTY_MESSAGE}
+              </td>
+            </tr>
+          ) : (
+            rows.map((row, index) => (
+              <tr key={`${row.name}-${index}`}>
+                <th scope="row" style={{ ...rowHeaderStyle, overflowWrap: 'anywhere' }}>
+                  {row.name}
+                </th>
+                <td style={numericStyle}>{formatCountHu(row.visitors)}</td>
+                <td style={numericStyle}>{formatCountHu(row.views)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * A látogatói számok szekciója. A kártyák és a táblák a lap meglévő
+ * nyelvét viszik (StatCard, statistics/styles), a számoszlop jobbra igazít.
+ */
+function VisitorStatsSection({ stats, owner }: { stats: PosthogWebStats; owner: boolean }) {
+  return (
+    <section aria-label={VISITOR_STATS_HEADING} style={sectionStyle}>
+      <h2 style={headingStyle}>{VISITOR_STATS_HEADING}</h2>
+      {stats.status === 'not_configured' ? (
+        owner ? (
+          <p style={leadInSectionStyle}>
+            A látogatói számokhoz a Railway-en be kell állítani a{' '}
+            <code>POSTHOG_PERSONAL_API_KEY</code> változót. A kulcsot a PostHogban a Settings,
+            Personal API keys oldalon hozhatod létre, csak Query read jogosultsággal és csak a
+            KinetiCare projektre. A következő indulás után a számok itt jelennek meg.
+          </p>
+        ) : (
+          <p style={leadInSectionStyle}>{VISITOR_STATS_MISSING_STAFF_MESSAGE}</p>
+        )
+      ) : stats.status === 'unavailable' ? (
+        <p style={leadInSectionStyle}>{VISITOR_STATS_UNAVAILABLE_MESSAGE}</p>
+      ) : (
+        <>
+          <p style={leadInSectionStyle}>
+            {VISITOR_STATS_NOTE} Utolsó frissítés: {formatFetchedAtHu(stats.fetchedAt)}.
+          </p>
+          {isWebStatsStale(stats.fetchedAt) ? (
+            <p style={{ ...noticeStyle, marginBottom: 'var(--kc-as-space-4, 1rem)' }}>
+              {VISITOR_STATS_STALE_MESSAGE}
+            </p>
+          ) : null}
+          {stats.overview === null ? (
+            <p style={{ ...noticeStyle, marginBottom: 'var(--kc-as-space-4, 1rem)' }}>
+              Az összesítő számok most nem érhetők el.
+            </p>
+          ) : (
+            <div style={cardRowStyle}>
+              {visitorCards(stats.overview).map((stat) => (
+                <StatCard key={stat.label} label={stat.label} value={stat.value} />
+              ))}
+            </div>
+          )}
+          <div style={visitorTablesGridStyle}>
+            <VisitorTable caption="Legnézettebb oldalak" firstColumn="Oldal" rows={stats.pages} />
+            <VisitorTable caption="Honnan érkeznek" firstColumn="Forrás" rows={stats.channels} />
+            <VisitorTable caption="Eszközök" firstColumn="Eszköz" rows={stats.devices} />
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
 
 /**
  * A hat kiemelt szám kiszámítása a Statisztika-lekérdezések jelentéseiből.
@@ -169,6 +349,8 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
     }
   }
 
+  // A PostHog-lekérdezés is csak a kapu UTÁN fut; a betöltő soha nem dob.
+  const visitorStats = await loadPosthogWebStats()
   const embedUrl = posthogEmbedUrl()
 
   return (
@@ -218,6 +400,7 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
             </p>
           ) : null}
         </section>
+        <VisitorStatsSection owner={owner} stats={visitorStats} />
         <h2 style={headingStyle}>Látogatói viselkedés</h2>
         <nav aria-label="Külső elemző-felületek">
           <ul

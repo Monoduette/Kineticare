@@ -26,6 +26,9 @@
 /** A PostHog EU-cloud origin — a CSP frame-src is ezt engedi, ha van URL. */
 export const POSTHOG_EMBED_ORIGIN = 'https://eu.posthog.com'
 
+/** A KinetiCare PostHog-projekt azonosítója (nyilvános útvonal-elem, nem titok). */
+export const POSTHOG_PROJECT_ID = '253152'
+
 /**
  * A megosztási token megengedett alakja. A PostHog rövid, URL-biztos
  * azonosítót ad; a szűk karakterkészlet a lényeg, nem a pontos hossz —
@@ -69,12 +72,20 @@ export function posthogEmbedUrl(): string | null {
 /**
  * A külső elemző-felületek linkjei — egy helyen, hogy a nézet és a doksi ne
  * csússzon szét. Ezek NEM titkok: bejelentkezés nélkül csak a Google/PostHog
- * saját belépőjét adják. A PostHog-link a projekt űrlapja; a projekt-azonosító
- * nyilvános útvonal-elem, nem hitelesítő adat.
+ * saját belépőjét adják. A Search Console-link a kineticare.hu domain-tulajdonra,
+ * a PostHog-link a projekt Webanalitika oldalára nyit; a projekt-azonosító
+ * nyilvános útvonal-elem, nem hitelesítő adat. A Google Analytics és a Google
+ * Ads fiókazonosítója nem ismert, ezért ott a kezdőlap marad.
  */
 export const EXTERNAL_ANALYTICS_LINKS: ReadonlyArray<{ label: string; href: string }> = [
   { label: 'Google Analytics', href: 'https://analytics.google.com/' },
-  { label: 'Search Console', href: 'https://search.google.com/search-console' },
+  {
+    label: 'Search Console',
+    href: 'https://search.google.com/search-console?resource_id=sc-domain%3Akineticare.hu',
+  },
   { label: 'Google Ads', href: 'https://ads.google.com/' },
-  { label: 'PostHog', href: 'https://eu.posthog.com/project/253152' },
+  {
+    label: 'PostHog webanalitika',
+    href: `${POSTHOG_EMBED_ORIGIN}/project/${POSTHOG_PROJECT_ID}/web`,
+  },
 ]

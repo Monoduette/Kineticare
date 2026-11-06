@@ -383,7 +383,7 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
       'Külső elemző-felület tulajdonneve az admin Webanalitika-fülön — ugyanaz a szerep, mint a „Google Analytics" soré: a link a megnevezett külső eszközre visz, nem cselekvésgomb.',
   },
   {
-    felirat: 'PostHog',
+    felirat: 'PostHog webanalitika',
     fajl: 'lib/admin/web-analytics-config.ts',
     kategoria: 'nem-cta',
     indok:

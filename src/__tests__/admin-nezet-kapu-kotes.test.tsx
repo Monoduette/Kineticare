@@ -37,6 +37,16 @@ vi.mock('../lib/statistics/engagement-query', () => ({
   },
 }))
 
+const posthogKem = vi.fn()
+
+vi.mock('../lib/admin/posthog-web-stats', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/admin/posthog-web-stats')>()),
+  loadPosthogWebStats: async () => {
+    posthogKem()
+    return { status: 'not_configured' }
+  },
+}))
+
 vi.mock('../components/admin/BunnyLibraryPanel', () => ({
   BunnyVideoLibrary: (panelProps: unknown) => {
     bunnyPanelKem(panelProps)
@@ -136,6 +146,7 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
   beforeEach(() => {
     revenueKem.mockClear()
     engagementKem.mockClear()
+    posthogKem.mockClear()
   })
 
   // 2026-08-27 óta a nézet a Statisztika lekérdezőit is hívja (eladás- és
@@ -149,6 +160,7 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
         engagementKem,
         'a kurzus-hatás lekérdezés lefutott a tiltott ágon',
       ).not.toHaveBeenCalled()
+      expect(posthogKem, 'a PostHog-lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
       expect(html).toContain('data-keret="frame"')
       expect(html).toContain(WEB_ANALYTICS_ACCESS_DENIED_MESSAGE)
       expect(html).not.toContain('<iframe')
@@ -162,6 +174,7 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
     // magyarázat áll, miközben a viselkedés-rész (linkek) változatlanul él.
     const html = renderToStaticMarkup(await WebAnalyticsView(props({ role: 'staff' })))
     expect(revenueKem, 'staffnál sem indult el a bevétel-lekérdezés').toHaveBeenCalledTimes(1)
+    expect(posthogKem, 'staffnál sem indult el a PostHog-lekérdezés').toHaveBeenCalledTimes(1)
     expect(html).toContain(WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE)
     expect(html).toContain('Külső elemző-felületek')
     expect(html).toContain('https://analytics.google.com/')

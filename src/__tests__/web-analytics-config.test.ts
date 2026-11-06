@@ -87,10 +87,19 @@ describe('EXTERNAL_ANALYTICS_LINKS', () => {
       'Google Analytics',
       'Search Console',
       'Google Ads',
-      'PostHog',
+      'PostHog webanalitika',
     ])
     for (const tool of EXTERNAL_ANALYTICS_LINKS) {
       expect(tool.href.startsWith('https://'), tool.href).toBe(true)
     }
+  })
+
+  it('a PostHog és a Search Console a projekt saját oldalára nyit, nem a kezdőlapra', () => {
+    // Tulajdonosi kérés (2026-11-06): a kezdőlapról még keresgélni kellett.
+    const href = new Map(EXTERNAL_ANALYTICS_LINKS.map((tool) => [tool.label, tool.href]))
+    expect(href.get('PostHog webanalitika')).toBe('https://eu.posthog.com/project/253152/web')
+    expect(href.get('Search Console')).toBe(
+      'https://search.google.com/search-console?resource_id=sc-domain%3Akineticare.hu',
+    )
   })
 })
