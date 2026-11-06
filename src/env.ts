@@ -265,6 +265,13 @@ export const optionalBunnyStreamEnvVars = [
  * megosztott dashboard a link birtokában amúgy is megnyitható, ezért csak
  * összesített viselkedés-adat lehet rajta. A CSP-fejléc miatt a beállítása
  * után szintén újrabuild kell.
+ *
+ * Szintén szerveroldali a `POSTHOG_PERSONAL_API_KEY`: TITOK, PostHog személyes
+ * API-kulcs csak `query:read` jogosultsággal, a KinetiCare projektre szűkítve.
+ * Az admin Webanalitika-fül látogatói számait kérdezi le vele a szerver
+ * (src/lib/admin/posthog-web-stats.ts). Hiányában a nézet a beüzemelési
+ * útmutatót mutatja, hálózati hívás nélkül. Futásidőben olvasott, ezért
+ * újrabuild nem kell hozzá.
  */
 export const optionalAnalyticsEnvVars = [
   'NEXT_PUBLIC_POSTHOG_KEY',
