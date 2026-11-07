@@ -105,7 +105,7 @@ indul. Titok soha nem kerül a repóba: helyben `.env` (gitignore-olt),
 | Számlázás        | `SZAMLAZZ_AGENT_KEY`, `SZAMLAZZ_AFAKULCS` (`27` vagy `AAM`, hibás értékkel az app nem indul)                                                                                                                                         |
 | E-mail           | `RESEND_API_KEY` vagy `SMTP_HOST`, mellette kötelezően `EMAIL_FROM`; `CONTACT_STAFF_EMAILS` (űrlap-értesítők címzettjei)                                                                                                             |
 | Videó            | `BUNNY_STREAM_TOKEN_AUTH_KEY`, `BUNNY_STREAM_LIBRARY_API_KEY`, `BUNNY_STREAM_PUBLIC_LIBRARY_API_KEY`, `NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID`, `NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID`, `NEXT_PUBLIC_BUNNY_STREAM_PULL_ZONE_HOST` |
-| Analitika        | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`, `NEXT_PUBLIC_GA_MEASUREMENT_ID`, `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`, `NEXT_PUBLIC_BARION_PIXEL_ID`                                                                        |
+| Analitika        | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`, `NEXT_PUBLIC_GA_MEASUREMENT_ID`, `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`, `NEXT_PUBLIC_BARION_PIXEL_ID`, `POSTHOG_SHARED_DASHBOARD_URL`                                        |
 | Spam-védelem     | `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (csak párban; élesben a fél pár indulási hiba)                                                                                                                                         |
 | Domain és SEO    | `NEXT_PUBLIC_ALLOW_INDEXING` (csak `true` nyitja az indexelést), `EXTRA_ALLOWED_ORIGINS` (CORS/CSRF a domain-átállás idejére)                                                                                                        |
 | Üzemeltetés      | `PAYLOAD_MEDIA_DIR` (a média-kötet útja), `TRUST_CF_CONNECTING_IP`, `TRUSTED_PROXY_HOP_COUNT` (kliens-IP a kérés-korláthoz)                                                                                                          |
@@ -330,7 +330,7 @@ Kód: `src/lib/szamlazz/`, `src/jobs/tasks/`; leírás: `docs/szamlazz-storno.md
 - **Saját nézetek:** Kezdőlap, Kezdőlapi videó szövegei (a nyitó videó
   feliratai, üresen a beépített szöveg; `src/lib/film-captions.ts`),
   Statisztika (havi bevétel közönség szerint, funnel, haladás), Webanalitika
-  (PostHog-számok a szerveroldali Query API-ból), Videótár (Bunny library, feltöltés TUS-szal).
+  (PostHog-számok a szerveroldali Query API-ból és a beágyazott PostHog-dashboard), Videótár (Bunny library, feltöltés TUS-szal).
 - **Fotóhelyek:** a kezdőlapi mozgó fotósor négy íve és a „Kurzusaink”
   jelenet három fotója név szerint cserélhető, üresen a beépített fotóval
   (`src/lib/kep-helyek.ts`).

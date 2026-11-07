@@ -13,7 +13,7 @@ afterEach(() => {
 describe('admin-only TUS CSP', () => {
   it('adds only the documented origin to admin connect-src', () => {
     const storefront = buildContentSecurityPolicy()
-    const admin = buildContentSecurityPolicy(undefined, undefined, undefined, true)
+    const admin = buildContentSecurityPolicy(undefined, undefined, undefined, undefined, true)
     expect(storefront).not.toContain('https://video.bunnycdn.com')
     expect(admin).toContain("connect-src 'self' https://video.bunnycdn.com")
     expect(
@@ -27,12 +27,7 @@ describe('admin-only TUS CSP', () => {
     expect(config.indexOf("source: '/admin/:path*'")).toBeGreaterThan(
       config.indexOf("source: '/:path*'"),
     )
-    // A pozicionális hívás: a Barion Pixel után a negyedik argumentum az
-    // adminVideoUploads. Az admin szabály true-t ad, a vevői false-t.
-    expect(config).toMatch(/NEXT_PUBLIC_BARION_PIXEL_ID,\s+true,/)
-    expect(config).toMatch(
-      /NEXT_PUBLIC_BARION_PIXEL_ID,\s+false,\s+process\.env\.NEXT_PUBLIC_META_PIXEL_ID,/,
-    )
+    expect(config).toMatch(/POSTHOG_SHARED_DASHBOARD_URL,\s+true,/)
   })
   it('resolves actual header rules for admin, storefront, consumer API and lookalike paths', async () => {
     vi.stubGlobal(
@@ -43,9 +38,7 @@ describe('admin-only TUS CSP', () => {
     )
     vi.stubEnv('NEXT_PUBLIC_GA_MEASUREMENT_ID', '')
     vi.stubEnv('NEXT_PUBLIC_BARION_PIXEL_ID', '')
-    // A 2026-11-07-én kivezetett változó egy régi Railway-beállításban még
-    // ott lehet: érvényes alakú értékkel sem nyithatja meg a frame-src-t.
-    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://eu.posthog.com/shared/AbCd1234xyz')
+    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', '')
     const config = (await import('../../../next.config')).default
     const rules = await config.headers!()
     for (const path of [
@@ -70,7 +63,6 @@ describe('admin-only TUS CSP', () => {
       expect(headers.get('x-content-type-options')).toBe('nosniff')
       expect(headers.get('x-frame-options')).toBe('SAMEORIGIN')
       expect(csp).not.toContain("'unsafe-eval'")
-      expect(csp, path).not.toContain('eu.posthog.com')
     }
   })
 })

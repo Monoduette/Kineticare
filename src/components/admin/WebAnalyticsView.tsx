@@ -28,7 +28,9 @@ import {
   VISITOR_STATS_BLOCK_MISSING_MESSAGE,
   VISITOR_TABLE_EMPTY_MESSAGE,
 } from './webanalitika/BreakdownTables'
+import { POSTHOG_EMBED_ORIGIN, posthogEmbedUrl } from '../../lib/admin/web-analytics-config'
 import { DailyVisitorsChart } from './webanalitika/DailyVisitorsChart'
+import { PosthogDashboardEmbed } from './webanalitika/PosthogDashboardEmbed'
 import { PeriodSwitch } from './webanalitika/PeriodSwitch'
 import {
   cardRowStyle,
@@ -249,6 +251,49 @@ function VisitorStatsSection({
   )
 }
 
+export const POSTHOG_EMBED_HEADING = 'Folyamatok és grafikonok az elmúlt 30 napból'
+
+export const POSTHOG_EMBED_LEAD =
+  'Hol tartanak a vevők a kurzusban, meddig jutnak el a vásárlásban, mire kattintanak, és hogyan nézik a videókat. A grafikonokat a PostHog rajzolja.'
+
+export const POSTHOG_EMBED_MISSING_STAFF_MESSAGE =
+  'A grafikonok még nincsenek bekötve. Szólj a tulajdonosnak.'
+
+/**
+ * A megosztott PostHog-dashboard szekciója (tulajdonosi kérés, 2026-11-07:
+ * a nem technikai munkatársaknak a PostHog saját grafikonjai kellenek: kurzus-
+ * haladás, tölcsérek, kattintások, videók). A saját látogatói rész alatt áll,
+ * ugyanazon a tint-sávon. A dashboard tartalmát a PostHogban kell szerkeszteni
+ * („Kineticare — látogatók és érdeklődés”); a megosztott linken csak
+ * összesített viselkedés-adat lehet, eladás- és névadat nem. Ha a link nincs
+ * beállítva, a tulajdonos a teendőt látja, a munkatárs egy rövid üzenetet.
+ */
+function PosthogEmbedSection({ owner }: { owner: boolean }) {
+  const embedUrl = posthogEmbedUrl()
+  return (
+    <section
+      aria-label={POSTHOG_EMBED_HEADING}
+      className="kc-as-tint-section"
+      style={visitorSectionStyle}
+    >
+      <h2 style={headingStyle}>{POSTHOG_EMBED_HEADING}</h2>
+      <p style={leadInSectionStyle}>{POSTHOG_EMBED_LEAD}</p>
+      {embedUrl ? (
+        <PosthogDashboardEmbed origin={POSTHOG_EMBED_ORIGIN} src={embedUrl} />
+      ) : owner ? (
+        <p style={leadInSectionStyle}>
+          A PostHogban keresd meg azt a kimutatást, amelynek a nevében a „látogatók és érdeklődés”
+          szerepel, kapcsold be a megosztását (Share gomb), a kapott linket pedig állítsd be a
+          Railway-en a <code>POSTHOG_SHARED_DASHBOARD_URL</code> változóba. A következő indulás után
+          a grafikonok itt jelennek meg.
+        </p>
+      ) : (
+        <p style={leadInSectionStyle}>{POSTHOG_EMBED_MISSING_STAFF_MESSAGE}</p>
+      )}
+    </section>
+  )
+}
+
 /**
  * A hat kiemelt szám kiszámítása a Statisztika-lekérdezések jelentéseiből.
  *
@@ -379,6 +424,7 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
           ) : null}
         </section>
         <VisitorStatsSection owner={owner} periodDays={periodDays} stats={visitorStats} />
+        <PosthogEmbedSection owner={owner} />
       </div>
     </AdminChrome>
   )
