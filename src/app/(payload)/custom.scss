@@ -133,6 +133,22 @@ html {
      hairline-alapú, csendes felület-nyelvét (tokens.css 215–222. sor)
      törné meg, a hover viszont csak akkor jelenik meg, amikor kell. */
   --kc-as-surface-hover: #e6f0f8;
+  /* Szekció-sáv a PostHogból behúzott látogatói adatoknak (tulajdonosi kérés,
+     2026-11-07: „a frissen behúzott adatoknak add ezt a halvány kék
+     hátteret”). Ugyanaz a hűvös tint (tokens.css --kc-color-tint-cool), amit a
+     storefront is sávháttérnek használ; NEM új szín. A sávon belül a kártyák,
+     a diagram és a táblák a saját fehér felületükön maradnak, ezért a táblasor
+     hover-tintje fehéren látszik, nem olvad bele a sávba.
+     SZÁMOLT kontrasztok (WCAG 2.x relatív fénysűrűség) a #e6f0f8 sávon:
+     - --kc-as-text #10243e: 13,53:1; --kc-as-text-muted #33495f: 8,05:1
+       (SC 1.4.3, ≥ 4,5:1);
+     - --kc-as-link-hover #2f6e9f: 4,72:1;
+     - --kc-as-hairline-strong #6b7f94 (időszak-link kerete): 3,57:1, az
+       akcent #3d78aa (kijelölt időszak kitöltése): 4,07:1 (SC 1.4.11, ≥ 3:1);
+     - a fehér kártya a sávon 1,15:1, a paper föld és a sáv 1,09:1. Ezek a
+       határok csak csoportosítanak, nem hordoznak információt; a tábla- és
+       diagram-keret a hairline-strong (3,57:1). */
+  --kc-as-surface-tint: #e6f0f8;
   /* A felvezető sor (eyebrow) színe. 2026-08-21-i ÖSSZEVETÉS a storefronttal
      (mindkét lap Chromiumban renderelve, számított értékek 1920 px-en): a
      `.kc-eyebrow` a vevői oldalon `--kc-color-primary` = accent-deep, itt
@@ -282,6 +298,19 @@ html {
   .kc-adminstat .kc-as-card {
     flex-basis: 100%;
     min-width: 0;
+  }
+}
+
+/* A látogatói tint-sáv keskeny lapon a lap oldalmargójába nyúlik, pontosan
+   annyival, amennyi a belső térköze (ugyanaz a clamp(), mint a nézet inline
+   paddingja: 16 px, 534 px fölött legfeljebb 18 px). Így a sáv belseje ugyanolyan széles marad, mint sáv
+   nélkül volt. MÉRVE (Chromium, 390 px, 15 tábla): kinyúlás nélkül 15
+   táblából 15 a saját dobozában görgetett, sáv nélkül 6, kinyúlással
+   ugyanannyi, mint sáv nélkül; a lap maga egyik esetben sem görget
+   vízszintesen (WCAG 2.2 SC 1.4.10). */
+@media (max-width: 599px) {
+  .kc-adminstat .kc-as-tint-section {
+    margin-inline: calc(-1 * clamp(var(--kc-as-space-4), 3vw, var(--kc-as-space-5)));
   }
 }
 
@@ -440,6 +469,13 @@ html {
      hozzáférés: 2026-08-21). Minden rajta futó szöveg SZÁMOLVA a fenti
      jegyzőkönyvben (legkisebb: accent-quiet 5,36:1). */
   --kc-as-surface-hover: #22456b;
+  /* A látogatói sáv sötéten: a kiemelt táblasor sötét párja (#22456b), tehát
+     itt sem új szín. Az ink-földhöz képest 1,59:1, így a sáv sötéten
+     jobban elválik, mint világosban (1,09:1). A rajta futó elemek SZÁMOLVA:
+     fehér szöveg 9,85:1, accent-quiet (halkított szöveg, kijelölt időszak)
+     5,36:1, hairline-strong keret 3,77:1. Az emelt kártya (#1a3757) a sávon
+     1,23:1, a táblák és a diagram a hairline-strong kerettel határolódnak. */
+  --kc-as-surface-tint: #22456b;
   /* A felvezető sor sötéten NEM viheti az accent-deepet: MÉRVE 2,87:1 az
      ink-földön, tehát megbukna a WCAG 2.2 SC 1.4.3-on. A storefront ugyanezt
      a váltást teszi (content.css: `.kc-section--dark .kc-eyebrow { color:

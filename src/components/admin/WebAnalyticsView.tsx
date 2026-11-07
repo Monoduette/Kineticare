@@ -15,7 +15,6 @@ import {
   type WebOverview,
   type WebStatsPeriodDays,
 } from '../../lib/admin/posthog-web-stats'
-import { EXTERNAL_ANALYTICS_LINKS, posthogEmbedUrl } from '../../lib/admin/web-analytics-config'
 import { logger } from '../../lib/logger'
 import { queryCourseEngagement } from '../../lib/statistics/engagement-query'
 import type { CourseEngagementReport } from '../../lib/statistics/engagement'
@@ -46,14 +45,20 @@ import {
  * Admin Webanalitika nézet (`/admin/webanalitika`).
  *
  * A tulajdonos kérése (2026-08-27): a munkatársaknak NE kelljen a PostHogba
- * belépniük és ott tájékozódniuk — a válogatott dashboard (Kineticare —
- * látogatók és érdeklődés) jelenjen meg az adminon belül, mellette pedig egy
- * helyen legyenek a külső elemző-felületek linkjei (GA4, Search Console,
- * Google Ads, PostHog). Második kérés (ugyanaznap): az eladás- és
- * kurzushaladás-számok is EZEN a képernyőn legyenek. Harmadik kérés
- * (2026-11-07): 7 és 30 nap között lehessen választani (`?idoszak=7|30`), és
- * a PostHog Web analytics felületének minden adata itt is látszódjon (napi
- * diagram, oldalak, források, eszközök, földrajz).
+ * belépniük és ott tájékozódniuk, a látogatói adatok az adminon belül
+ * látszódjanak. Második kérés (ugyanaznap): az eladás- és kurzushaladás-számok
+ * is EZEN a képernyőn legyenek. Harmadik kérés (2026-11-07): 7 és 30 nap
+ * között lehessen választani (`?idoszak=7|30`), és a PostHog Web analytics
+ * felületének minden adata itt is látszódjon (napi diagram, oldalak, források,
+ * eszközök, földrajz). A PostHog-adat azóta natív: a szerver kérdezi le, a
+ * nézet saját kártyákkal, diagrammal és táblákkal mutatja.
+ *
+ * Negyedik kérés (2026-11-07): a korábbi „Látogatói viselkedés” rész (a GA4,
+ * Search Console, Google Ads és PostHog külső linkjei, valamint a beágyazott
+ * PostHog-kimutatás) kikerült, mert a natív adat kiváltotta. Ugyanekkor a
+ * PostHogból behúzott látogatói szekció a márka hűvös tintjét kapta háttérnek
+ * (`--kc-as-surface-tint`, custom.scss), hogy a friss adat egy pillantással
+ * elváljon az adatbázis-számoktól.
  *
  * ═══ HOVA KERÜLHET ELADÁS-ADAT ÉS HOVA NEM ═══
  * A számok az ADMIN-NÉZET tetejére kerülnek, adatbázisból, a szerepkör-kapu
@@ -70,46 +75,6 @@ import {
  * adatvédelmi teherviselő — a kapu-kötést őr-teszt méri
  * (admin-nezet-kapu-kotes.test.tsx).
  */
-
-/**
- * A külső linkek sora. A célfelület legalább 44 px magas (a repó saját
- * célértéke, docs/ui-sztenderdek.md §3), a linkek új lapon nyílnak, így az
- * admin munkamenetét nem hagyjuk el.
- *
- * K13 (admin-audit, 2026-09-22): a korábbi, aláhúzás nélküli linket csak egy
- * 1,29:1-es (sötétben 1,42:1-es) keret jelezte. Most:
- * - a szín, az aláhúzás és a hover-vastagodás a .kc-adminstat link-nyelvéből
- *   jön (custom.scss), ezért inline szín nincs, különben a hover nem hatna;
- * - a keret a --kc-as-hairline-strong token (világoson 3,91:1, sötéten
- *   5,97:1 a mért jegyzőkönyv szerint, WCAG 2.2 SC 1.4.11);
- * - a „(új lapon nyílik)” a link szövegének része (GOV.UK Links: „include the
- *   words 'opens in new tab' as part of the link”,
- *   https://design-system.service.gov.uk/styles/links/; NN/g: „let users
- *   know about it before they click”,
- *   https://www.nngroup.com/articles/new-browser-windows-and-tabs/).
- */
-const toolLinkStyle: CSSProperties = {
-  alignItems: 'center',
-  border: '1px solid var(--kc-as-hairline-strong)',
-  borderRadius: 'var(--kc-as-radius-md)',
-  display: 'inline-flex',
-  minHeight: '44px',
-  padding: '0 calc(var(--base) * 0.75)',
-}
-
-/** A beágyazott kimutatás és a helyét jelző doboz dekoratív kerete. */
-const embedFrameStyle: CSSProperties = {
-  border: '1px solid var(--kc-as-hairline)',
-  borderRadius: 'var(--kc-as-radius-md)',
-}
-
-export const NEW_TAB_SUFFIX = '(új lapon nyílik)'
-
-/** A kimutatás helyét jelző doboz címe; a munkatársi bekezdés ezt NEM ismételheti. */
-export const EMBED_MISSING_TITLE = 'A beágyazott kimutatás még nincs bekötve'
-
-export const EMBED_MISSING_STAFF_MESSAGE =
-  'A bekötést a tulajdonos végzi. Szólj neki, ha szeretnéd itt látni a kimutatást.'
 
 export const WEB_ANALYTICS_ACCESS_DENIED_MESSAGE =
   'A Webanalitikát csak munkatárs vagy tulajdonos nézheti meg.'
@@ -173,7 +138,7 @@ function visitorCards(overview: WebOverview): Array<{ label: string; value: stri
 
 /**
  * A látogatói számok törzse. Külön async szerver-komponens, hogy a lap többi
- * része (eladás-számok, linkek, beágyazás) NE várjon a PostHogra: a
+ * része (az eladás-számok) NE várjon a PostHogra: a
  * `<Suspense>` határ a törzs helyén rövid betöltés-szöveget mutat, a Next.js
  * pedig a kész törzset utólag streameli be (React Server Components,
  * https://nextjs.org/docs/app/getting-started/fetching-data#streaming). A
@@ -234,6 +199,25 @@ export async function VisitorStatsBody({
 }
 
 /**
+ * A PostHogból behúzott látogatói szekció felülete: a hűvös tint-sáv
+ * (`--kc-as-surface-tint`, a kontrasztok custom.scss-ben számolva). A kártyák,
+ * a diagram és a táblák a saját emelt (fehér) felületükön maradnak, így a
+ * táblasor hover-színe (ugyanaz a tint) fehéren jelenik meg, nem olvad bele a
+ * sávba. A sáv önmagában választja el a szekciót, ezért a felső hairline
+ * elmarad. A belső térköz 320 px-en 16 px, széles lapon 24 px (a 4 px-es rács
+ * két lépcsője); 600 px alatt a sáv a lap oldalmargójába nyúlik
+ * (`.kc-as-tint-section`, custom.scss), így a táblák nem keskenyednek
+ * (WCAG 2.2 SC 1.4.10).
+ */
+const visitorSectionStyle: CSSProperties = {
+  background: 'var(--kc-as-surface-tint, transparent)',
+  borderRadius: 'var(--kc-as-radius-md, 0)',
+  marginBottom: 0,
+  marginTop: 'var(--kc-as-space-6, calc(var(--base) * 1.5))',
+  padding: 'clamp(var(--kc-as-space-4, 1rem), 3vw, var(--kc-as-space-5, calc(var(--base) * 0.75)))',
+}
+
+/**
  * A látogatói számok szekciója. A cím és az időszak-választó azonnal
  * megjelenik, a számok a Suspense-határ mögött érkeznek. A kártyák és a táblák
  * a lap meglévő nyelvét viszik (StatCard, statistics/styles).
@@ -249,7 +233,7 @@ function VisitorStatsSection({
 }) {
   const heading = visitorStatsHeading(periodDays)
   return (
-    <section aria-label={heading} style={sectionStyle}>
+    <section aria-label={heading} className="kc-as-tint-section" style={visitorSectionStyle}>
       <h2 style={headingStyle}>{heading}</h2>
       <PeriodSwitch current={periodDays} />
       <Suspense
@@ -325,9 +309,9 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
   const visitorStats = loadPosthogWebStats(periodDays).catch((): PosthogWebStats => ({
     status: 'unavailable',
   }))
-  // A számok hibája nem döntheti el az oldalt: a viselkedés-rész (linkek +
-  // dashboard) ilyenkor is megjelenik, a szekció helyén magyar magyarázat áll
-  // (a StatisticsView hibakezelési mintája).
+  // A számok hibája nem döntheti el az oldalt: a látogatói szekció ilyenkor is
+  // megjelenik, az eladás-szekció helyén magyar magyarázat áll (a
+  // StatisticsView hibakezelési mintája).
   let report: RevenueReport | null = null
   let engagement: CourseEngagementReport | null = null
   try {
@@ -347,15 +331,13 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
     }
   }
 
-  const embedUrl = posthogEmbedUrl()
-
   return (
     <AdminChrome props={props} title="Webanalitika">
       <div className="kc-adminstat" style={pageStyle}>
         <h1 style={headingStyle}>Webanalitika</h1>
         <p style={leadStyle}>
-          Egy képernyőn a legfontosabb számok és a látogatói viselkedés. A részletes bontás (havi
-          bevétel-grafikon, kurzusonkénti haladás, név szerinti lista) a{' '}
+          Egy képernyőn az eladások, a kurzushaladás és a látogatók legfontosabb számai. A részletes
+          bontás (havi bevétel-grafikon, kurzusonkénti haladás, név szerinti lista) a{' '}
           <Link href="/admin/statisztika" prefetch={false}>
             Statisztika
           </Link>{' '}
@@ -397,52 +379,6 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
           ) : null}
         </section>
         <VisitorStatsSection owner={owner} periodDays={periodDays} stats={visitorStats} />
-        <h2 style={headingStyle}>Látogatói viselkedés</h2>
-        <nav aria-label="Külső elemző-felületek">
-          <ul
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 'calc(var(--base) * 0.5)',
-              listStyle: 'none',
-              margin: 'calc(var(--base) * 0.75) 0',
-              padding: 0,
-            }}
-          >
-            {EXTERNAL_ANALYTICS_LINKS.map((tool) => (
-              <li key={tool.href}>
-                <a href={tool.href} rel="noopener noreferrer" style={toolLinkStyle} target="_blank">
-                  {tool.label} {NEW_TAB_SUFFIX}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        {embedUrl ? (
-          <iframe
-            src={embedUrl}
-            style={{ ...embedFrameStyle, height: '90rem', width: '100%' }}
-            title="Látogatói kimutatás (PostHog)"
-          />
-        ) : (
-          <div style={{ ...embedFrameStyle, maxWidth: '42rem', padding: 'calc(var(--base) * 1)' }}>
-            <h3 style={{ marginTop: 0 }}>{EMBED_MISSING_TITLE}</h3>
-            {/* K13: a bekötés lépései (és a környezeti változó neve) csak a
-                tulajdonosé; a munkatárs a teendőt kapja. Csak megjelenítés: a
-                nézet kapuja (hasStaffOrOwnerRole) változatlan. */}
-            {owner ? (
-              <p>
-                A PostHogban nyisd meg a Dashboards listát, és keresd meg azt a kimutatást, amelynek
-                a nevében a „látogatók és érdeklődés” szerepel. Kapcsold be a megosztását (Share
-                gomb), a kapott linket pedig állítsd be a Railway-en a{' '}
-                <code>POSTHOG_SHARED_DASHBOARD_URL</code> változóba. A következő indulás után a
-                kimutatás itt jelenik meg.
-              </p>
-            ) : (
-              <p>{EMBED_MISSING_STAFF_MESSAGE}</p>
-            )}
-          </div>
-        )}
       </div>
     </AdminChrome>
   )

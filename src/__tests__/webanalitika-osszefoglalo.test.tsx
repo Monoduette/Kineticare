@@ -106,9 +106,6 @@ vi.mock('../lib/admin/posthog-web-stats', async (importOriginal) => ({
 }))
 
 const {
-  EMBED_MISSING_STAFF_MESSAGE,
-  EMBED_MISSING_TITLE,
-  NEW_TAB_SUFFIX,
   VISITOR_STATS_LOADING_MESSAGE,
   VISITOR_STATS_MISSING_STAFF_MESSAGE,
   VISITOR_STATS_NOTE,
@@ -132,32 +129,6 @@ async function renderFull(searchParams: Record<string, string> = {}, role = 'sta
     progressiveChunkSize: Number.POSITIVE_INFINITY,
   })
   return new Response(prelude).text()
-}
-
-/** A tulajdonosi bekötési útmutató, szó szerint (a <code> a változó neve). */
-const OWNER_GUIDE =
-  'A PostHogban nyisd meg a Dashboards listát, és keresd meg azt a kimutatást, amelynek a nevében a „látogatók és érdeklődés” szerepel. Kapcsold be a megosztását (Share gomb), a kapott linket pedig állítsd be a Railway-en a <code>POSTHOG_SHARED_DASHBOARD_URL</code> változóba. A következő indulás után a kimutatás itt jelenik meg.'
-
-/** Mondatokra bontás összevetéshez: kisbetű, záró írásjel nélkül. */
-function sentences(text: string): string[] {
-  return text
-    .replace(/<[^>]+>/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) =>
-      sentence
-        .replace(/[.!?]+$/, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase(),
-    )
-    .filter(Boolean)
-}
-
-/** A kimutatás-doboz címe és bekezdése a renderelt HTML-ből. */
-function embedBox(html: string): { title: string; paragraph: string } {
-  const match = /<h3[^>]*>([^<]*)<\/h3><p>(.*?)<\/p>/.exec(html)
-  expect(match, 'a kimutatás-doboz címe és bekezdése hiányzik').not.toBeNull()
-  return { title: match![1], paragraph: match![2] }
 }
 
 function props(role = 'staff', searchParams: Record<string, string> = {}) {
@@ -189,68 +160,6 @@ describe('Webanalitika: eladás- és haladás-összefoglaló sikeres lekérdezé
     expect(html).toContain('>11<')
     expect(html).toContain('Be is fejezte')
     expect(html).toContain('>5<')
-  })
-})
-
-describe('Webanalitika K13: azonosítható külső linkek, szerepkör szerinti bekötési útmutató', () => {
-  it('minden külső link aláhúzott (a .kc-adminstat link-nyelve), token-keretes, és kimondja az új lapot', async () => {
-    const html = renderToStaticMarkup(await WebAnalyticsView(props()))
-    const links = html.match(/<a [^>]*target="_blank"[^>]*>[^<]*<\/a>/g) ?? []
-    expect(links).toHaveLength(4)
-    for (const link of links) {
-      expect(link).toContain(NEW_TAB_SUFFIX)
-      expect(link).toContain('border:1px solid var(--kc-as-hairline-strong)')
-      // Inline szín vagy text-decoration:none felülírná a lap link-nyelvét.
-      expect(link).not.toMatch(/color:|text-decoration:none/)
-    }
-    expect(html).not.toContain('--theme-elevation-150')
-  })
-
-  it('munkatársnak nincs környezeti változó, csak a teendő', async () => {
-    const html = renderToStaticMarkup(await WebAnalyticsView(props('staff')))
-    expect(html).toContain(EMBED_MISSING_STAFF_MESSAGE)
-    expect(EMBED_MISSING_STAFF_MESSAGE).toBe(
-      'A bekötést a tulajdonos végzi. Szólj neki, ha szeretnéd itt látni a kimutatást.',
-    )
-    expect(html).not.toContain('POSTHOG_SHARED_DASHBOARD_URL')
-    expect(html).not.toContain('Railway')
-  })
-
-  it('a doboz címe és a bekezdése nem ugyanazt a mondatot mondja (mindkét szerepkörnél)', async () => {
-    for (const role of ['staff', 'owner']) {
-      const { title, paragraph } = embedBox(
-        renderToStaticMarkup(await WebAnalyticsView(props(role))),
-      )
-      expect(title).toBe(EMBED_MISSING_TITLE)
-      expect(title).toBe('A beágyazott kimutatás még nincs bekötve')
-      const [heading] = sentences(title)
-      expect(sentences(paragraph), `${role}: a bekezdés megismétli a címet`).not.toContain(heading)
-      expect(paragraph.toLowerCase()).not.toContain(heading)
-    }
-  })
-
-  it('a tulajdonos a bekötés lépéseit kapja, a PostHogban kereshető névrésszel', async () => {
-    const html = renderToStaticMarkup(await WebAnalyticsView(props('owner')))
-    expect(html).toContain('POSTHOG_SHARED_DASHBOARD_URL')
-    expect(html).not.toContain(EMBED_MISSING_STAFF_MESSAGE)
-    expect(embedBox(html).paragraph).toBe(OWNER_GUIDE)
-  })
-
-  it('a felületi szövegekben nincs gondolatjel és „dashboard” szó', async () => {
-    // Kulcs nélküli és sikeres PostHog-állapotban is: a diagram és a 14 tábla
-    // szövege is felületi szöveg.
-    for (const stats of [{ status: 'not_configured' } as const, VISITOR_STATS]) {
-      loadPosthogWebStats.mockResolvedValueOnce(stats)
-      const html = await renderFull({}, 'owner')
-      // A környezeti változó neve kód, nem felületi szöveg.
-      const text = html.replace(/<code>[^<]*<\/code>/g, ' ').replace(/<[^>]+>/g, ' ')
-      expect(text, stats.status).not.toMatch(/[–—]/)
-      // Egyetlen kivétel: a PostHog saját menüpontjának neve („Dashboards”),
-      // mert a tulajdonos ott erre a szóra keres (külső felület tényleges
-      // neve). A Kineticare saját szövege továbbra is „kimutatás”.
-      expect(text.match(/dashboard/gi), stats.status).toEqual(['Dashboard'])
-      expect(text.replace('a Dashboards listát', ' ')).not.toMatch(/dashboard/i)
-    }
   })
 })
 
@@ -300,6 +209,38 @@ const VISITOR_STATS: PosthogWebStats = {
   daily: DAILY,
   breakdowns: BREAKDOWNS,
 }
+
+describe('Webanalitika: a külső linkek és a beágyazott kimutatás nincs a lapon (2026-11-07)', () => {
+  it('se link-sor, se iframe, se új lapra nyíló link, és a látogatói szekció tint-hátteret kap', async () => {
+    for (const role of ['staff', 'owner']) {
+      loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
+      const html = await renderFull({}, role)
+      expect(html, role).not.toContain('Külső elemző-felületek')
+      expect(html, role).not.toContain('<iframe')
+      expect(html, role).not.toContain('új lapon nyílik')
+      expect(html, role).not.toContain('target="_blank"')
+      expect(html, role).not.toContain('Látogatói viselkedés')
+      const sectionTag = new RegExp(
+        `<section aria-label="${visitorStatsHeading(7)}"[^>]* style="([^"]*)"`,
+      ).exec(html)
+      expect(sectionTag, `${role}: a látogatói szekció hiányzik`).not.toBeNull()
+      expect(sectionTag![1], role).toContain('background:var(--kc-as-surface-tint')
+    }
+  })
+
+  it('a felületi szövegekben nincs gondolatjel és „dashboard” szó', async () => {
+    // Kulcs nélküli és sikeres PostHog-állapotban is: a diagram és a 14 tábla
+    // szövege is felületi szöveg.
+    for (const stats of [{ status: 'not_configured' } as const, VISITOR_STATS]) {
+      loadPosthogWebStats.mockResolvedValueOnce(stats)
+      const html = await renderFull({}, 'owner')
+      // A környezeti változó neve kód, nem felületi szöveg.
+      const text = html.replace(/<code>[^<]*<\/code>/g, ' ').replace(/<[^>]+>/g, ' ')
+      expect(text, stats.status).not.toMatch(/[–—]/)
+      expect(text, stats.status).not.toMatch(/dashboard/i)
+    }
+  })
+})
 
 /** A PostHog Web analytics bontásai a nézet csoportjaiban, a várt sorrendben. */
 const EXPECTED_GROUPS: Array<[string, string[]]> = [
@@ -375,22 +316,19 @@ describe('Webanalitika: időszak-választó (7 vagy 30 nap)', () => {
 })
 
 describe('Webanalitika: látogatói számok a PostHogból', () => {
-  it('az eladás-szekció UTÁN és a külső linkek ELŐTT áll', async () => {
+  it('az eladás-szekció UTÁN áll', async () => {
     loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
     const html = await renderFull()
     const sales = html.indexOf('aria-label="Eladások és kurzushaladás"')
     const visitors = html.indexOf(`aria-label="${visitorStatsHeading(7)}"`)
-    const links = html.indexOf('aria-label="Külső elemző-felületek"')
     expect(sales).toBeGreaterThan(-1)
     expect(visitors).toBeGreaterThan(sales)
-    expect(links).toBeGreaterThan(visitors)
   })
 
   it('lassú PostHog mellett a lap többi része azonnal megjelenik, a számok helyén betöltés-szöveg', async () => {
     loadPosthogWebStats.mockReturnValueOnce(new Promise<PosthogWebStats>(() => {}))
     const html = renderToStaticMarkup(await WebAnalyticsView(props()))
     expect(html).toContain('Bevétel ebben a hónapban')
-    expect(html).toContain('aria-label="Külső elemző-felületek"')
     const section = visitorSection(html)
     expect(section).toContain('Időszak:')
     expect(section).toMatch(

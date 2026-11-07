@@ -20,7 +20,7 @@ import { WEB_STATS_PERIODS, type WebStatsPeriodDays } from '../../../lib/admin/p
  * - a kijelölt link fehér szövege az akcenten világosban 4,70:1, sötétben a
  *   --kc-as-surface-raised az akcenten 6,61:1 (SC 1.4.3);
  * - a nem kijelölt link kerete a --kc-as-hairline-strong (3,91:1 / 5,97:1,
- *   SC 1.4.11), mint a külső linkeké.
+ *   SC 1.4.11).
  */
 
 export const PERIOD_LABEL = 'Időszak:'

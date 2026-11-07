@@ -1430,7 +1430,6 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | `SEED_CONFIRM_LIVE`                           | `igen` = teljes seed éles URL-en. Hiány éles URL-en = a seed el sem indul, nem dry-run                                                                     |
 | `LOG_LEVEL`                                   | debug\|info\|warn\|error                                                                                                                                   |
 | `CONTACT_STAFF_EMAILS`                        | űrlap-értesítő                                                                                                                                             |
-| `POSTHOG_SHARED_DASHBOARD_URL`                | admin webanalitika iframe; újrabuild                                                                                                                       |
 | `POSTHOG_PERSONAL_API_KEY`                    | TITOK; admin webanalitika számai (szerveroldali Query API), csak `query:read`; újrabuild nem kell                                                          |
 | `TRUSTED_PROXY_HOP_COUNT`                     | `x-forwarded-for` hop jobbról; üres = 1                                                                                                                    |
 | `EMAIL_JOB_ARGS`                              | `railway.email-job.json` script-argumentum; futás után ürítsd                                                                                              |
