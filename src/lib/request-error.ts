@@ -26,6 +26,12 @@
  * ezért nem blokkol (a capture saját időkorláttal fut, és sosem dob), és
  * hibakulcsonként fojtott, hogy egy hibavihar ne árassza el a PostHogot. A
  * naplósor minden előfordulásnál megíródik. A jelentés maga soha nem dob.
+ *
+ * Ártalmatlan (nem hibát jelző) kivételek: a kliens megszakította a streamelt
+ * választ, vagy a Next belső vezérlő jelzése szökött ki. Ezekre NINCS PostHog
+ * `$exception` és nincs error szintű sor, csak egy info szintű
+ * `request_error_benign` sor `reason` mezővel, hogy a Railway naplóban
+ * számolható maradjon (lásd `classifyBenignRequestError`).
  */
 
 import type { Instrumentation } from 'next'
@@ -46,6 +52,77 @@ export type RequestErrorContext = OnRequestErrorParams[2]
 
 /** A naplósor `msg` mezője (a `server_start` mintájára). */
 export const REQUEST_ERROR_LOG_MSG = 'request_error'
+
+/** Az ártalmatlan kérés-hibák info szintű naplósorának `msg` mezője. */
+export const REQUEST_ERROR_BENIGN_LOG_MSG = 'request_error_benign'
+
+/** Miért ártalmatlan egy kérés-hiba. */
+type BenignRequestErrorReason = 'client_abort' | 'next_control_flow'
+
+/**
+ * A React szerveres renderelőjének üzenete, ha a cél-stream a render vége
+ * előtt bezárul (a kliens megszakította a kérést vagy továbbnavigált).
+ * Forrás (next 16.4.3): node_modules/next/dist/compiled/next-server/
+ * app-page-turbo.runtime.prod.js (`e.on("close", …("The destination stream
+ * closed early."))`); a node_modules/next/dist/server/app-render/
+ * stream-ops.node.js 487–490. sora is ezt nevezi meg.
+ */
+const REACT_STREAM_CLOSED_EARLY = 'The destination stream closed early'
+
+/**
+ * A Next saját „a válasz megszakadt” hibájának neve. Forrás (next 16.4.3):
+ * node_modules/next/dist/server/web/spec-extension/adapters/next-request.js
+ * 39–42. sor (`ResponseAbortedName = 'ResponseAborted'`, `class
+ * ResponseAborted`); a stream-ops.node.js 491–494. sora ezzel abortálja a
+ * renderet, a pipe-readable.js 31–33. sora (`isAbortError`) pedig ezt
+ * nyeli le.
+ */
+const NEXT_RESPONSE_ABORTED_NAME = 'ResponseAborted'
+
+/**
+ * A Next `DynamicServerError` digestje. Forrás (next 16.4.3):
+ * node_modules/next/dist/client/components/hooks-server-context.js 23–33.
+ * sor (`DYNAMIC_ERROR_CODE = 'DYNAMIC_SERVER_USAGE'`, `isDynamicServerError`).
+ * Az `isDynamicServerError`-t nem importáljuk: a `next/dist/...` belső út,
+ * nem nyilvános API, a digest-konstans egyezése stabilabb.
+ */
+const NEXT_DYNAMIC_SERVER_USAGE_DIGEST = 'DYNAMIC_SERVER_USAGE'
+
+/**
+ * Ártalmatlan-e a kérés-hiba, és ha igen, miért.
+ *
+ * MIÉRT. A 2026-11-06-i PostHog-audit szerint a hibakövetés eseményeit két
+ * nem hibát jelző fajta szennyezte:
+ *  - 15 db `Error: The destination stream closed early.`, mind GET
+ *    oldalrender (`routeType: render`; `/`, `/rolunk`, `/szakembereknek`,
+ *    `/kurzusok/[slug]`), csak Next-belső veremmel (PassThrough close). Ez a
+ *    kliens megszakítása streamelt SSR közben, rajtunk nem javítható.
+ *  - 1 db `Dynamic server usage: Page with dynamic = "force-dynamic" won't be
+ *    rendered statically.`, egy szkenner `/robots%2etxt` kérésére a
+ *    `/(frontend)/[slug]/page` revalidálásakor. Ez a Next belső vezérlő
+ *    jelzése, amelyet a Next dokumentációja szerint nem szabad alkalmazás-
+ *    hibaként kezelni.
+ *
+ * A sima `AbortError` nevet szándékosan NEM soroljuk ide, bár a Next
+ * `isAbortError`-ja azt is lenyeli: nálunk a saját kimenő hívásaink
+ * (pl. AbortControllerrel leállított fetch) is ilyen nevű hibát dobnak, és
+ * annak a kiszökése valódi hiba.
+ */
+function classifyBenignRequestError(error: unknown): BenignRequestErrorReason | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined
+  }
+  if (readString(error, 'digest') === NEXT_DYNAMIC_SERVER_USAGE_DIGEST) {
+    return 'next_control_flow'
+  }
+  if (readString(error, 'name') === NEXT_RESPONSE_ABORTED_NAME) {
+    return 'client_abort'
+  }
+  if (readString(error, 'message')?.startsWith(REACT_STREAM_CLOSED_EARLY)) {
+    return 'client_abort'
+  }
+  return undefined
+}
 
 /** A PostHog-esemény neve: a hibakövetés ezt dolgozza fel. */
 export const POSTHOG_EXCEPTION_EVENT = '$exception'
@@ -229,6 +306,25 @@ export function createRequestErrorReporter(
       const facts = describeError(error)
       const method = request.method
       const path = pathWithoutQuery(request.path)
+
+      const benignReason = classifyBenignRequestError(error)
+      if (benignReason) {
+        // Nem riaszt: info szint, PostHog nélkül, de számolható marad.
+        log.info(REQUEST_ERROR_BENIGN_LOG_MSG, {
+          reason: benignReason,
+          method,
+          path,
+          routePath: context.routePath,
+          routeType: context.routeType,
+          routerKind: context.routerKind,
+          renderSource: context.renderSource,
+          revalidateReason: context.revalidateReason,
+          errorName: facts.name,
+          errorMessage: facts.message,
+          digest: facts.digest,
+        })
+        return
+      }
 
       log.error(REQUEST_ERROR_LOG_MSG, {
         method,
