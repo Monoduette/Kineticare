@@ -57,8 +57,6 @@ vi.mock('../components/admin/BunnyLibraryPanel', () => ({
 const { StatisticsView } = await import('../components/admin/StatisticsView')
 const { BunnyLibraryView } = await import('../components/admin/BunnyLibraryView')
 const {
-  EMBED_MISSING_STAFF_MESSAGE,
-  EMBED_MISSING_TITLE,
   WebAnalyticsView,
   WEB_ANALYTICS_ACCESS_DENIED_MESSAGE,
   WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE,
@@ -150,10 +148,10 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
   })
 
   // 2026-08-27 óta a nézet a Statisztika lekérdezőit is hívja (eladás- és
-  // haladás-összefoglaló) — a tiltott ágon ezek SEM indulhatnak el, ahogy a
-  // PostHog-iframe és a külső linkek sem jelenhetnek meg.
+  // haladás-összefoglaló), 2026-11-07 óta a PostHog-adatot is natívan kéri
+  // le: a tiltott ágon egyik lekérdezés SEM indulhat el.
   for (const [nev, user] of TILTOTT) {
-    it(`${nev} se lekérdezés, se iframe, se külső link`, async () => {
+    it(`${nev} se DB-, se PostHog-lekérdezés`, async () => {
       const html = renderToStaticMarkup(await WebAnalyticsView(props(user)))
       expect(revenueKem, 'a bevétel-lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
       expect(
@@ -163,54 +161,17 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
       expect(posthogKem, 'a PostHog-lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
       expect(html).toContain('data-keret="frame"')
       expect(html).toContain(WEB_ANALYTICS_ACCESS_DENIED_MESSAGE)
-      expect(html).not.toContain('<iframe')
-      expect(html).not.toContain('Külső elemző-felületek')
     })
   }
 
   it('staff szerepkörrel a lekérdezés ELINDUL, és a hibája nem dönti el az oldalt', async () => {
     // A dobó kém itt is dob — épp ez bizonyítja, hogy a hívás megtörtént; a
     // nézet a saját try/catch-ében kezeli, és a szekció helyén a magyar
-    // magyarázat áll, miközben a viselkedés-rész (linkek) változatlanul él.
+    // magyarázat áll, miközben a látogatói szekció változatlanul megjelenik.
     const html = renderToStaticMarkup(await WebAnalyticsView(props({ role: 'staff' })))
     expect(revenueKem, 'staffnál sem indult el a bevétel-lekérdezés').toHaveBeenCalledTimes(1)
     expect(posthogKem, 'staffnál sem indult el a PostHog-lekérdezés').toHaveBeenCalledTimes(1)
     expect(html).toContain(WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE)
-    expect(html).toContain('Külső elemző-felületek')
-    expect(html).toContain('https://analytics.google.com/')
-    // POSTHOG_SHARED_DASHBOARD_URL nincs beállítva a tesztben → nincs iframe.
-    // K13: a beüzemelés lépései (és a változó neve) csak a tulajdonosé, a
-    // munkatárs a teendőt kapja; a kapu ettől változatlan.
-    expect(html).not.toContain('<iframe')
-    expect(html).not.toContain('POSTHOG_SHARED_DASHBOARD_URL')
-    expect(html).toContain(EMBED_MISSING_STAFF_MESSAGE)
-    expect(html).toContain('Szólj neki')
-    // A doboz címe és a munkatársi bekezdés nem ugyanaz a mondat.
-    expect(html).toContain(`>${EMBED_MISSING_TITLE}</h3>`)
-    expect(EMBED_MISSING_STAFF_MESSAGE.toLowerCase()).not.toContain(
-      EMBED_MISSING_TITLE.toLowerCase(),
-    )
-  })
-
-  it('érvényes megosztási linkkel az iframe az embedded alakra normalizálva jelenik meg', async () => {
-    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://eu.posthog.com/shared/AbCd1234xyz')
-    try {
-      const html = renderToStaticMarkup(await WebAnalyticsView(props({ role: 'owner' })))
-      expect(html).toContain('<iframe')
-      expect(html).toContain('https://eu.posthog.com/embedded/AbCd1234xyz')
-    } finally {
-      vi.unstubAllEnvs()
-    }
-  })
-
-  it('idegen hostra mutató env-vel NINCS iframe (a nézet nem ágyaz be idegen oldalt)', async () => {
-    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://evil.example/shared/AbCd1234xyz')
-    try {
-      const html = renderToStaticMarkup(await WebAnalyticsView(props({ role: 'owner' })))
-      expect(html).not.toContain('<iframe')
-      expect(html).not.toContain('evil.example')
-    } finally {
-      vi.unstubAllEnvs()
-    }
+    expect(html).toContain('aria-label="Látogatók az elmúlt 7 napban"')
   })
 })

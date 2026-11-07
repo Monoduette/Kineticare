@@ -241,21 +241,14 @@ describe('CSP — Meta hostok csak érvényes azonosítóval', () => {
   it('azonosító nélkül (és hibás azonosítóval) a Meta hostjai nincsenek a fejlécben', () => {
     for (const csp of [
       buildContentSecurityPolicy(),
-      buildContentSecurityPolicy(undefined, undefined, undefined, undefined, false, 'abc'),
+      buildContentSecurityPolicy(undefined, undefined, undefined, false, 'abc'),
     ]) {
       expect(csp).not.toContain('facebook')
     }
   })
 
   it('érvényes azonosítóval script-src, img-src és connect-src nyílik', () => {
-    const csp = buildContentSecurityPolicy(
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      false,
-      PIXEL_ID,
-    )
+    const csp = buildContentSecurityPolicy(undefined, undefined, undefined, false, PIXEL_ID)
     expect(directive(csp, 'script-src')).toContain('https://connect.facebook.net')
     expect(directive(csp, 'img-src')).toContain('https://www.facebook.com')
     expect(directive(csp, 'connect-src')).toContain('https://www.facebook.com')

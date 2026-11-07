@@ -28,10 +28,6 @@ vi.mock('@payloadcms/ui', () => ({
 vi.mock('../lib/statistics/query', () => ({ queryRevenueReport: revenue }))
 vi.mock('../lib/statistics/engagement-query', () => ({ queryCourseEngagement: engagement }))
 vi.mock('../lib/logger', () => ({ logger: { error: vi.fn() } }))
-vi.mock('../lib/admin/web-analytics-config', () => ({
-  EXTERNAL_ANALYTICS_LINKS: [{ label: 'PostHog', href: 'https://eu.posthog.com/' }],
-  posthogEmbedUrl: () => 'https://eu.posthog.com/embedded/DUMMY_TEST_DASHBOARD',
-}))
 vi.mock('../components/admin/BunnyLibraryPanel', () => ({
   BunnyVideoLibrary: () => {
     bunnyPanel()
@@ -138,8 +134,6 @@ describe.each(views)('$label: a Payload szerver-kontextus szerződése', (view) 
     expect(engagement).not.toHaveBeenCalled()
     expect(bunnyPanel).not.toHaveBeenCalled()
     expect(html).toContain('csak munkatárs vagy tulajdonos')
-    expect(html).not.toContain('<iframe')
-    expect(html).not.toContain('https://eu.posthog.com/')
     if (role === null) {
       expect(template).not.toHaveBeenCalled()
       expect(stepNav).not.toHaveBeenCalled()
@@ -161,7 +155,6 @@ describe.each(views)('$label: a Payload szerver-kontextus szerződése', (view) 
       expect(revenue).not.toHaveBeenCalled()
       expect(engagement).not.toHaveBeenCalled()
       expect(bunnyPanel).not.toHaveBeenCalled()
-      expect(html).not.toContain('<iframe')
     },
   )
 })

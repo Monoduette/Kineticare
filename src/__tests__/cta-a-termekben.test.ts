@@ -361,34 +361,6 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok:
       'Ugyanannak a jelölőnégyzet-feliratnak a második beágyazott jogi hivatkozása. Az ÁSZF 22. bekezdése EGY jelölőnégyzetet ír le két dokumentumra, ezért a felirat két linket tartalmaz.',
   },
-  {
-    felirat: 'Google Analytics',
-    fajl: 'lib/admin/web-analytics-config.ts',
-    kategoria: 'nem-cta',
-    indok:
-      'Külső elemző-felület TULAJDONNEVE az admin Webanalitika-fül link-során (2026-08-27) — a link neve maga a célfelület, mint a §3.2 N-3 menücímkéi: helyjelölő, nem cselekvés. Admin-belső felület, nem vevői.',
-  },
-  {
-    felirat: 'Search Console',
-    fajl: 'lib/admin/web-analytics-config.ts',
-    kategoria: 'nem-cta',
-    indok:
-      'Külső elemző-felület tulajdonneve az admin Webanalitika-fülön — ugyanaz a szerep, mint a „Google Analytics" soré: a link a megnevezett külső eszközre visz, nem cselekvésgomb.',
-  },
-  {
-    felirat: 'Google Ads',
-    fajl: 'lib/admin/web-analytics-config.ts',
-    kategoria: 'nem-cta',
-    indok:
-      'Külső elemző-felület tulajdonneve az admin Webanalitika-fülön — ugyanaz a szerep, mint a „Google Analytics" soré: a link a megnevezett külső eszközre visz, nem cselekvésgomb.',
-  },
-  {
-    felirat: 'PostHog webanalitika',
-    fajl: 'lib/admin/web-analytics-config.ts',
-    kategoria: 'nem-cta',
-    indok:
-      'Külső elemző-felület tulajdonneve az admin Webanalitika-fülön — ugyanaz a szerep, mint a „Google Analytics" soré: a link a megnevezett külső eszközre visz, nem cselekvésgomb.',
-  },
 ]
 /**
  * FELSŐ KORLÁT. A 2026-08-17-i mérés 98 sort talált, a 2026-08-18-i kör után
@@ -440,8 +412,13 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * hivatkozásaié. Új CTA-felirat nem keletkezett: az oldal két cselekvése
  * (§3.2 #47 és #48) a szótárból olvas. A két sor felvétele a w1-integráció
  * vezetői kiírásának része.
+ *
+ * 2026-11-07: 44 → 40. Az admin Webanalitika-fül négy külső elemző-link
+ * sora (Google Analytics, Search Console, Google Ads, PostHog webanalitika)
+ * tulajdonosi döntésre kikerült a nézetből és a `web-analytics-config.ts`-ből,
+ * a négy kivétel-sor vele együtt. A korlát a szabály szerint LEFELÉ mozdult.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 44
+const KIVETEL_LISTA_FELSO_KORLAT = 40
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy
