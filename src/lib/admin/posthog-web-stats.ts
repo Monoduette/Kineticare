@@ -538,8 +538,19 @@ export function formatFetchedAtHu(fetchedAt: string): string {
  * Az oszlopnevek a WebStatsTableQuery-éval egyeznek, így ugyanaz az
  * értelmező olvassa.
  */
-function topPagesHogql(days: WebStatsPeriodDays): string {
-  return `SELECT properties.$pathname AS breakdown_value, uniq(person_id) AS visitors, count() AS views FROM events WHERE event = '$pageview' AND timestamp >= now() - INTERVAL ${days} DAY AND {filters} GROUP BY breakdown_value ORDER BY views DESC, visitors DESC LIMIT ${WEB_STATS_TABLE_LIMIT}`
+/**
+ * Az időszak KÖZÖS kezdete: az első budapesti nap éjfele. Minden blokk
+ * (összesítő, napi sor, oldalak, bontások) ugyanettől a ponttól számol, így a
+ * számok egymással összeegyeztethetők (Codex-review, 2026-11-07). A
+ * WebOverview/WebStatsTable lekérdezések dátum-alakú `date_from`-ja a
+ * projekt időzónájában (Europe/Budapest) a nap elejét jelenti.
+ */
+function periodStartSql(startDate: string): string {
+  return `toDateTime('${startDate} 00:00:00', '${BUDAPEST_TZ}')`
+}
+
+function topPagesHogql(startDate: string): string {
+  return `SELECT properties.$pathname AS breakdown_value, uniq(person_id) AS visitors, count() AS views FROM events WHERE event = '$pageview' AND timestamp >= ${periodStartSql(startDate)} AND {filters} GROUP BY breakdown_value ORDER BY views DESC, visitors DESC LIMIT ${WEB_STATS_TABLE_LIMIT}`
 }
 
 /**
@@ -547,8 +558,8 @@ function topPagesHogql(days: WebStatsPeriodDays): string {
  * (részlegesen) együtt pontosan `days` nap, azaz a ma kezdete − (days − 1)
  * naptól. A PostHog MCP-n 2026-11-07-én ellenőrizve (7 sor, 11-01…11-07).
  */
-function dailyHogql(days: WebStatsPeriodDays): string {
-  return `SELECT toDate(toTimeZone(timestamp, '${BUDAPEST_TZ}')) AS day, uniq(person_id) AS visitors, count() AS views FROM events WHERE event = '$pageview' AND timestamp >= toStartOfDay(toTimeZone(now(), '${BUDAPEST_TZ}')) - INTERVAL ${days - 1} DAY AND {filters} GROUP BY day ORDER BY day`
+function dailyHogql(startDate: string): string {
+  return `SELECT toDate(toTimeZone(timestamp, '${BUDAPEST_TZ}')) AS day, uniq(person_id) AS visitors, count() AS views FROM events WHERE event = '$pageview' AND timestamp >= ${periodStartSql(startDate)} AND {filters} GROUP BY day ORDER BY day`
 }
 
 function hogqlQuery(query: string) {
@@ -594,11 +605,13 @@ async function runLimited<T>(tasks: ReadonlyArray<() => Promise<T>>, limit: numb
 
 async function fetchWebStats(apiKey: string, days: WebStatsPeriodDays): Promise<WebStatsData> {
   const signal = AbortSignal.timeout(REQUEST_DEADLINE_MS)
-  const dateRange = { date_from: `-${days}d` }
+  const now = Date.now()
+  const startDate = periodDays(days, now)[0]
+  const dateRange = { date_from: startDate }
   const queries: Array<[Block, unknown]> = [
     ['overview', { kind: 'WebOverviewQuery', dateRange, filterTestAccounts: true, properties: [] }],
-    ['daily', hogqlQuery(dailyHogql(days))],
-    ['pages', hogqlQuery(topPagesHogql(days))],
+    ['daily', hogqlQuery(dailyHogql(startDate))],
+    ['pages', hogqlQuery(topPagesHogql(startDate))],
     ...Object.entries(TABLE_BREAKDOWNS).map(([block, { breakdownBy }]): [Block, unknown] => [
       block as Block,
       {
@@ -620,7 +633,6 @@ async function fetchWebStats(apiKey: string, days: WebStatsPeriodDays): Promise<
     MAX_CONCURRENT_QUERIES,
   )
   const bodyOf = new Map<Block, unknown>(queries.map(([block], index) => [block, bodies[index]]))
-  const now = Date.now()
 
   const breakdowns = {} as Record<WebStatsBreakdownKey, WebStatsRow[] | null>
   for (const key of WEB_STATS_BREAKDOWN_KEYS) {

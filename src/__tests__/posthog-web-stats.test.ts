@@ -239,12 +239,14 @@ const EXPECTED_TABLE_BREAKDOWNS = [
 
 describe('loadPosthogWebStats: a kérés alakja', () => {
   it.each([
-    ['alapértelmezés', undefined, 7],
-    ['7 nap', 7, 7],
-    ['30 nap', 30, 30],
+    ['alapértelmezés', undefined, 7, '2026-11-01'],
+    ['7 nap', 7, 7, '2026-11-01'],
+    ['30 nap', 30, 30, '2026-10-09'],
   ] as const)(
-    '%s: a fix EU-végpontra megy, Bearer-kulccsal, az időszak minden lekérdezésben',
-    async (_nev, period, days) => {
+    '%s: a fix EU-végpontra megy, Bearer-kulccsal, minden blokk ugyanattól a budapesti naptól',
+    async (_nev, period, days, start) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-07T10:00:00Z'))
       vi.stubEnv('POSTHOG_PERSONAL_API_KEY', ` ${DUMMY_KEY} `)
       const { fetchMock } = stubPosthog()
       const stats = await loadPosthogWebStats(period)
@@ -273,21 +275,22 @@ describe('loadPosthogWebStats: a kérés alakja', () => {
           expect(String(query.query)).toContain('{filters}')
         } else {
           expect(query.filterTestAccounts).toBe(true)
-          expect(query.dateRange).toEqual({ date_from: `-${days}d` })
+          expect(query.dateRange).toEqual({ date_from: start })
         }
         if (query.kind === 'WebStatsTableQuery') {
           expect(query.limit).toBe(10)
         }
       }
       const [daily, pages] = queries.filter((query) => query.kind === 'HogQLQuery')
-      // A napi bontás a mai nappal együtt pontosan `days` budapesti nap.
-      expect(String(daily.query)).toContain(
-        `timestamp >= toStartOfDay(toTimeZone(now(), 'Europe/Budapest')) - INTERVAL ${days - 1} DAY`,
-      )
+      // A napi sor és az oldal-tábla ugyanattól a budapesti éjféltől számol,
+      // mint az összesítő és a bontások `date_from`-ja.
+      const startSql = `timestamp >= toDateTime('${start} 00:00:00', 'Europe/Budapest')`
+      expect(String(daily.query)).toContain(startSql)
       expect(String(daily.query)).toContain(
         "toDate(toTimeZone(timestamp, 'Europe/Budapest')) AS day",
       )
-      expect(String(pages.query)).toContain(`INTERVAL ${days} DAY`)
+      expect(String(pages.query)).toContain(startSql)
+      expect(String(pages.query)).not.toContain('INTERVAL')
       expect(String(pages.query)).toMatch(/ORDER BY views DESC, visitors DESC LIMIT 10$/)
     },
   )
