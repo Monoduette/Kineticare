@@ -94,6 +94,16 @@ funkciók között: a vásárlás **előtti** viselkedés, a **néma űrlaphibá
 PostHog „38 kurzusindítást" ír, az adatbázis meg 71-et, a tulajdonos nem az
 adatot fogja nézni, hanem elveszti a bizalmát mindkettőben.
 
+**Módosítás (tulajdonosi döntés, 2026-11-07):** az admin Webanalitika oldalán
+a megosztott PostHog-dashboard beágyazva jelenik meg, és rajta lehet a
+vásárlási és a tanulási tölcsér ÖSSZESÍTETT létszáma („5 elkezdte, 1
+befejezte"). A megosztott link jelszó nélkül megnyitható, ezért név, e-mail,
+összeg, bevétel vagy egyénre visszavezethető adat továbbra sem kerülhet rá. A
+fenti kemény szabály enyhített formában él: a PostHog-tölcsér és az
+adatbázis-kártya ugyanazon a lapon szerepelhet, de a nézet kimondja, hogy a
+PostHog csak a sütikhez hozzájáruló látogatókat látja, ezért kisebb számot
+mutathat. A pontos szám mindig az adatbázisé.
+
 **Tulajdonosi döntések ehhez (2026-08-21):** az `identifyUser` **marad**, az
 autocapture **kikapcsolandó**, a GeoIP-finomítás **elmarad**. Az autocapture
 kikapcsolása azért sürgős, mert ma diagnózis-beszédes kattintás-szövegeket

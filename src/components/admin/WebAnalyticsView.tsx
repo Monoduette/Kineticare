@@ -66,9 +66,11 @@ import {
  * A számok az ADMIN-NÉZET tetejére kerülnek, adatbázisból, a szerepkör-kapu
  * mögé — pontosan ugyanazokból a lekérdező modulokból, mint a Statisztika
  * oldal (queryRevenueReport, queryCourseEngagement), tehát a forrás egy
- * marad. A PostHog MEGOSZTOTT dashboardjára viszont TILOS eladás- vagy
- * haladás-adatot tenni: a megosztott link jelszó nélkül, a link birtokában
- * megnyitható, ezért ott kizárólag összesített viselkedés-adat lehet
+ * marad. A PostHog MEGOSZTOTT dashboardja jelszó nélkül, a link birtokában
+ * megnyitható, ezért ott KIZÁRÓLAG ÖSSZESÍTETT adat lehet: látogatói
+ * viselkedés, valamint (tulajdonosi döntés, 2026-11-07) összesített létszámok
+ * a vásárlási és a tanulási tölcsérben. Név, e-mail, összeg, bevétel vagy
+ * bármilyen egyénre visszavezethető adat továbbra is TILOS a megosztott linken
  * (docs/statisztika-audit-2026-08-21.md 4. szakasz).
  *
  * A Payload custom view NYILVÁNOS admin-route, ezért a szerver-oldali
@@ -254,7 +256,7 @@ function VisitorStatsSection({
 export const POSTHOG_EMBED_HEADING = 'Folyamatok és grafikonok az elmúlt 30 napból'
 
 export const POSTHOG_EMBED_LEAD =
-  'Hol tartanak a vevők a kurzusban, meddig jutnak el a vásárlásban, mire kattintanak, és hogyan nézik a videókat. A grafikonokat a PostHog rajzolja.'
+  'Hol tartanak a vevők a kurzusban, meddig jutnak el a vásárlásban, mire kattintanak, és hogyan nézik a videókat. A grafikonokat a PostHog rajzolja. A PostHog csak a sütikhez hozzájáruló látogatókat látja, ezért a számai kisebbek lehetnek, mint a fenti, adatbázisból jövő számok.'
 
 export const POSTHOG_EMBED_MISSING_STAFF_MESSAGE =
   'A grafikonok még nincsenek bekötve. Szólj a tulajdonosnak.'
@@ -265,7 +267,8 @@ export const POSTHOG_EMBED_MISSING_STAFF_MESSAGE =
  * haladás, tölcsérek, kattintások, videók). A saját látogatói rész alatt áll,
  * ugyanazon a tint-sávon. A dashboard tartalmát a PostHogban kell szerkeszteni
  * („Kineticare — látogatók és érdeklődés”); a megosztott linken csak
- * összesített viselkedés-adat lehet, eladás- és névadat nem. Ha a link nincs
+ * összesített adat lehet (lásd fent: viselkedés és tölcsér-létszámok), név-,
+ * összeg- és bevételadat nem. Ha a link nincs
  * beállítva, a tulajdonos a teendőt látja, a munkatárs egy rövid üzenetet.
  */
 function PosthogEmbedSection({ owner }: { owner: boolean }) {
