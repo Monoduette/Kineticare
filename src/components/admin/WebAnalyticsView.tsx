@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { Suspense, type CSSProperties } from 'react'
 import type { AdminViewServerProps } from 'payload'
 import Link from 'next/link'
 
@@ -10,9 +10,10 @@ import {
   formatPercentHu,
   isWebStatsStale,
   loadPosthogWebStats,
+  parseWebStatsPeriod,
   type PosthogWebStats,
   type WebOverview,
-  type WebStatsRow,
+  type WebStatsPeriodDays,
 } from '../../lib/admin/posthog-web-stats'
 import { EXTERNAL_ANALYTICS_LINKS, posthogEmbedUrl } from '../../lib/admin/web-analytics-config'
 import { logger } from '../../lib/logger'
@@ -24,21 +25,21 @@ import { AdminChrome, AdminViewFrame } from './AdminChrome'
 import { StatCard } from './statistics/StatCard'
 import { RESZLEGES_LEVONVA, RESZLEGES_NINCS_LEVONVA } from './statistics/TotalsCards'
 import {
-  captionStyle,
+  BreakdownTables,
+  VISITOR_STATS_BLOCK_MISSING_MESSAGE,
+  VISITOR_TABLE_EMPTY_MESSAGE,
+} from './webanalitika/BreakdownTables'
+import { DailyVisitorsChart } from './webanalitika/DailyVisitorsChart'
+import { PeriodSwitch } from './webanalitika/PeriodSwitch'
+import {
   cardRowStyle,
   headingStyle,
   leadInSectionStyle,
   leadStyle,
   noticeStyle,
-  numericStyle,
   pageStyle,
-  rowHeaderStyle,
   sectionStyle,
   sectionTopStyle,
-  tableStyle,
-  tableWrapStyle,
-  thNumericStyle,
-  thStyle,
 } from './statistics/styles'
 
 /**
@@ -49,7 +50,10 @@ import {
  * látogatók és érdeklődés) jelenjen meg az adminon belül, mellette pedig egy
  * helyen legyenek a külső elemző-felületek linkjei (GA4, Search Console,
  * Google Ads, PostHog). Második kérés (ugyanaznap): az eladás- és
- * kurzushaladás-számok is EZEN a képernyőn legyenek.
+ * kurzushaladás-számok is EZEN a képernyőn legyenek. Harmadik kérés
+ * (2026-11-07): 7 és 30 nap között lehessen választani (`?idoszak=7|30`), és
+ * a PostHog Web analytics felületének minden adata itt is látszódjon (napi
+ * diagram, oldalak, források, eszközök, földrajz).
  *
  * ═══ HOVA KERÜLHET ELADÁS-ADAT ÉS HOVA NEM ═══
  * A számok az ADMIN-NÉZET tetejére kerülnek, adatbázisból, a szerepkör-kapu
@@ -113,7 +117,13 @@ export const WEB_ANALYTICS_ACCESS_DENIED_MESSAGE =
 export const WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE =
   'Az eladás- és haladás-számok most nem érhetők el. A részletes bontást a Statisztika oldalon találod, vagy próbáld újra pár perc múlva.'
 
-export const VISITOR_STATS_HEADING = 'Látogatók az elmúlt 7 napban'
+/** A látogatói szekció címe a választott időszakkal. */
+export function visitorStatsHeading(days: WebStatsPeriodDays): string {
+  return `Látogatók az elmúlt ${days} napban`
+}
+
+/** Az alapértelmezett (7 napos) cím; a meglévő hivatkozások ezt használják. */
+export const VISITOR_STATS_HEADING = visitorStatsHeading(7)
 
 export const VISITOR_STATS_NOTE =
   'A számok 5 percenként frissülnek, a belső és a teszt-forgalom nélkül. Csak azokat a látogatókat látjuk, akik hozzájárultak a sütikhez.'
@@ -127,12 +137,16 @@ export const VISITOR_STATS_MISSING_STAFF_MESSAGE =
 export const VISITOR_STATS_UNAVAILABLE_MESSAGE =
   'A látogatói számok most nem érhetők el. Próbáld újra pár perc múlva.'
 
-/** Egy blokk hiánya a sikeres válaszon belül (a többi blokk megjelenik). */
-export const VISITOR_STATS_BLOCK_MISSING_MESSAGE = 'Ez a rész most nem érhető el.'
+export const VISITOR_STATS_LOADING_MESSAGE = 'A látogatói számok betöltése…'
 
-export const VISITOR_TABLE_EMPTY_MESSAGE = 'Ebben az időszakban nincs adat.'
+export const DAILY_CHART_HEADING = 'Napi látogatók és megtekintések'
 
 const NO_VALUE = 'nincs adat'
+
+const blockNoticeStyle: CSSProperties = {
+  ...noticeStyle,
+  marginBottom: 'var(--kc-as-space-4, 1rem)',
+}
 
 function visitorCards(overview: WebOverview): Array<{ label: string; value: string }> {
   const count = (value: number | null) => (value === null ? NO_VALUE : formatCountHu(value))
@@ -158,119 +172,95 @@ function visitorCards(overview: WebOverview): Array<{ label: string; value: stri
 }
 
 /**
- * A három kis tábla rácsa. Egy tábla legalább 18 rem széles, keskeny lapon a
- * rács egy oszlopra áll (WCAG 2.2 SC 1.4.10 Reflow); a tábla saját
- * görgetőkonténere a statisztika-táblák mintája (tableWrapStyle).
+ * A látogatói számok törzse. Külön async szerver-komponens, hogy a lap többi
+ * része (eladás-számok, linkek, beágyazás) NE várjon a PostHogra: a
+ * `<Suspense>` határ a törzs helyén rövid betöltés-szöveget mutat, a Next.js
+ * pedig a kész törzset utólag streameli be (React Server Components,
+ * https://nextjs.org/docs/app/getting-started/fetching-data#streaming). A
+ * lekérdezés ígéretét a hívó indítja, a kapu UTÁN, a DB-lekérdezésekkel
+ * párhuzamosan; a betöltő soha nem dob.
  */
-const visitorTablesGridStyle: CSSProperties = {
-  display: 'grid',
-  gap: 'var(--kc-as-space-4, calc(var(--base) * 1))',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))',
-  marginBottom: 'var(--kc-as-space-4, calc(var(--base) * 1))',
-}
-
-/** A kis táblának nem kell a statisztika-tábla 576 px-es padlója. */
-const visitorTableStyle: CSSProperties = { ...tableStyle, minWidth: 0 }
-
-function VisitorTable({
-  caption,
-  firstColumn,
-  rows,
+export async function VisitorStatsBody({
+  owner,
+  stats: statsPromise,
 }: {
-  caption: string
-  firstColumn: string
-  rows: WebStatsRow[] | null
+  owner: boolean
+  stats: Promise<PosthogWebStats>
 }) {
+  const stats = await statsPromise
+  if (stats.status === 'not_configured') {
+    return owner ? (
+      <p style={leadInSectionStyle}>
+        A látogatói számokhoz a Railway-en be kell állítani a <code>POSTHOG_PERSONAL_API_KEY</code>{' '}
+        változót. A kulcsot a PostHogban a Settings, Personal API keys oldalon hozhatod létre, csak
+        Query read jogosultsággal és csak a KinetiCare projektre. A következő indulás után a számok
+        itt jelennek meg.
+      </p>
+    ) : (
+      <p style={leadInSectionStyle}>{VISITOR_STATS_MISSING_STAFF_MESSAGE}</p>
+    )
+  }
+  if (stats.status === 'unavailable') {
+    return <p style={leadInSectionStyle}>{VISITOR_STATS_UNAVAILABLE_MESSAGE}</p>
+  }
   return (
-    <div style={tableWrapStyle}>
-      <table style={visitorTableStyle}>
-        <caption style={captionStyle}>{caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col" style={thStyle}>
-              {firstColumn}
-            </th>
-            <th scope="col" style={thNumericStyle}>
-              Látogatók
-            </th>
-            <th scope="col" style={thNumericStyle}>
-              Megtekintések
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows === null || rows.length === 0 ? (
-            <tr>
-              <td colSpan={3} style={rowHeaderStyle}>
-                {rows === null ? VISITOR_STATS_BLOCK_MISSING_MESSAGE : VISITOR_TABLE_EMPTY_MESSAGE}
-              </td>
-            </tr>
-          ) : (
-            rows.map((row, index) => (
-              <tr key={`${row.name}-${index}`}>
-                <th scope="row" style={{ ...rowHeaderStyle, overflowWrap: 'anywhere' }}>
-                  {row.name}
-                </th>
-                <td style={numericStyle}>{formatCountHu(row.visitors)}</td>
-                <td style={numericStyle}>{formatCountHu(row.views)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <p style={leadInSectionStyle}>
+        {VISITOR_STATS_NOTE} Utolsó frissítés: {formatFetchedAtHu(stats.fetchedAt)}.
+      </p>
+      {isWebStatsStale(stats.fetchedAt) ? (
+        <p style={blockNoticeStyle}>{VISITOR_STATS_STALE_MESSAGE}</p>
+      ) : null}
+      {stats.overview === null ? (
+        <p style={blockNoticeStyle}>Az összesítő számok most nem érhetők el.</p>
+      ) : (
+        <div style={cardRowStyle}>
+          {visitorCards(stats.overview).map((stat) => (
+            <StatCard key={stat.label} label={stat.label} value={stat.value} />
+          ))}
+        </div>
+      )}
+      <h3 style={headingStyle}>{DAILY_CHART_HEADING}</h3>
+      {stats.daily === null ? (
+        <p style={blockNoticeStyle}>{VISITOR_STATS_BLOCK_MISSING_MESSAGE}</p>
+      ) : stats.daily.length === 0 ? (
+        <p style={blockNoticeStyle}>{VISITOR_TABLE_EMPTY_MESSAGE}</p>
+      ) : (
+        <DailyVisitorsChart points={stats.daily} />
+      )}
+      <BreakdownTables breakdowns={stats.breakdowns} />
+    </>
   )
 }
 
 /**
- * A látogatói számok szekciója. A kártyák és a táblák a lap meglévő
- * nyelvét viszik (StatCard, statistics/styles), a számoszlop jobbra igazít.
+ * A látogatói számok szekciója. A cím és az időszak-választó azonnal
+ * megjelenik, a számok a Suspense-határ mögött érkeznek. A kártyák és a táblák
+ * a lap meglévő nyelvét viszik (StatCard, statistics/styles).
  */
-function VisitorStatsSection({ stats, owner }: { stats: PosthogWebStats; owner: boolean }) {
+function VisitorStatsSection({
+  owner,
+  periodDays,
+  stats,
+}: {
+  owner: boolean
+  periodDays: WebStatsPeriodDays
+  stats: Promise<PosthogWebStats>
+}) {
+  const heading = visitorStatsHeading(periodDays)
   return (
-    <section aria-label={VISITOR_STATS_HEADING} style={sectionStyle}>
-      <h2 style={headingStyle}>{VISITOR_STATS_HEADING}</h2>
-      {stats.status === 'not_configured' ? (
-        owner ? (
-          <p style={leadInSectionStyle}>
-            A látogatói számokhoz a Railway-en be kell állítani a{' '}
-            <code>POSTHOG_PERSONAL_API_KEY</code> változót. A kulcsot a PostHogban a Settings,
-            Personal API keys oldalon hozhatod létre, csak Query read jogosultsággal és csak a
-            KinetiCare projektre. A következő indulás után a számok itt jelennek meg.
+    <section aria-label={heading} style={sectionStyle}>
+      <h2 style={headingStyle}>{heading}</h2>
+      <PeriodSwitch current={periodDays} />
+      <Suspense
+        fallback={
+          <p role="status" style={leadInSectionStyle}>
+            {VISITOR_STATS_LOADING_MESSAGE}
           </p>
-        ) : (
-          <p style={leadInSectionStyle}>{VISITOR_STATS_MISSING_STAFF_MESSAGE}</p>
-        )
-      ) : stats.status === 'unavailable' ? (
-        <p style={leadInSectionStyle}>{VISITOR_STATS_UNAVAILABLE_MESSAGE}</p>
-      ) : (
-        <>
-          <p style={leadInSectionStyle}>
-            {VISITOR_STATS_NOTE} Utolsó frissítés: {formatFetchedAtHu(stats.fetchedAt)}.
-          </p>
-          {isWebStatsStale(stats.fetchedAt) ? (
-            <p style={{ ...noticeStyle, marginBottom: 'var(--kc-as-space-4, 1rem)' }}>
-              {VISITOR_STATS_STALE_MESSAGE}
-            </p>
-          ) : null}
-          {stats.overview === null ? (
-            <p style={{ ...noticeStyle, marginBottom: 'var(--kc-as-space-4, 1rem)' }}>
-              Az összesítő számok most nem érhetők el.
-            </p>
-          ) : (
-            <div style={cardRowStyle}>
-              {visitorCards(stats.overview).map((stat) => (
-                <StatCard key={stat.label} label={stat.label} value={stat.value} />
-              ))}
-            </div>
-          )}
-          <div style={visitorTablesGridStyle}>
-            <VisitorTable caption="Legnézettebb oldalak" firstColumn="Oldal" rows={stats.pages} />
-            <VisitorTable caption="Honnan érkeznek" firstColumn="Forrás" rows={stats.channels} />
-            <VisitorTable caption="Eszközök" firstColumn="Eszköz" rows={stats.devices} />
-          </div>
-        </>
-      )}
+        }
+      >
+        <VisitorStatsBody owner={owner} stats={stats} />
+      </Suspense>
     </section>
   )
 }
@@ -327,6 +317,14 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
   // a Statisztika oldalon (a `refunds` mező tulajdonosi olvasású), így a két
   // oldal ugyanarra a szerepkörre ugyanazt a számot adja.
   const owner = hasOwnerRole(req.user)
+  // A PostHog-lekérdezés is csak a kapu UTÁN indul, de nem várunk rá: az
+  // ígéret a DB-lekérdezésekkel párhuzamosan fut, és a Suspense-határ mögötti
+  // törzs várja meg. A betöltő soha nem dob; a .catch csak védőháló, hogy egy
+  // váratlan hiba se legyen kezeletlen elutasítás.
+  const periodDays = parseWebStatsPeriod(props.searchParams?.idoszak)
+  const visitorStats = loadPosthogWebStats(periodDays).catch((): PosthogWebStats => ({
+    status: 'unavailable',
+  }))
   // A számok hibája nem döntheti el az oldalt: a viselkedés-rész (linkek +
   // dashboard) ilyenkor is megjelenik, a szekció helyén magyar magyarázat áll
   // (a StatisticsView hibakezelési mintája).
@@ -349,8 +347,6 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
     }
   }
 
-  // A PostHog-lekérdezés is csak a kapu UTÁN fut; a betöltő soha nem dob.
-  const visitorStats = await loadPosthogWebStats()
   const embedUrl = posthogEmbedUrl()
 
   return (
@@ -400,7 +396,7 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
             </p>
           ) : null}
         </section>
-        <VisitorStatsSection owner={owner} stats={visitorStats} />
+        <VisitorStatsSection owner={owner} periodDays={periodDays} stats={visitorStats} />
         <h2 style={headingStyle}>Látogatói viselkedés</h2>
         <nav aria-label="Külső elemző-felületek">
           <ul

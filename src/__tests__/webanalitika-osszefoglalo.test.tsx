@@ -1,8 +1,14 @@
 import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { prerender } from 'react-dom/static'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { PosthogWebStats } from '../lib/admin/posthog-web-stats'
+import type {
+  PosthogWebStats,
+  WebStatsBreakdownKey,
+  WebStatsPeriodDays,
+  WebStatsRow,
+} from '../lib/admin/posthog-web-stats'
 import type { CourseEngagementReport, CourseEngagementRow } from '../lib/statistics/engagement'
 import type { RevenueReport } from '../lib/statistics/revenue'
 
@@ -90,26 +96,43 @@ vi.mock('../lib/statistics/engagement-query', () => ({
   queryCourseEngagement: vi.fn(async () => ENGAGEMENT),
 }))
 
-const loadPosthogWebStats = vi.fn<() => Promise<PosthogWebStats>>(async () => ({
-  status: 'not_configured',
-}))
+const loadPosthogWebStats = vi.fn<(days?: WebStatsPeriodDays) => Promise<PosthogWebStats>>(
+  async () => ({ status: 'not_configured' }),
+)
 
 vi.mock('../lib/admin/posthog-web-stats', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/admin/posthog-web-stats')>()),
-  loadPosthogWebStats: () => loadPosthogWebStats(),
+  loadPosthogWebStats: (days?: WebStatsPeriodDays) => loadPosthogWebStats(days),
 }))
 
 const {
   EMBED_MISSING_STAFF_MESSAGE,
   EMBED_MISSING_TITLE,
   NEW_TAB_SUFFIX,
-  VISITOR_STATS_HEADING,
+  VISITOR_STATS_LOADING_MESSAGE,
   VISITOR_STATS_MISSING_STAFF_MESSAGE,
   VISITOR_STATS_NOTE,
   VISITOR_STATS_STALE_MESSAGE,
   VISITOR_STATS_UNAVAILABLE_MESSAGE,
   WebAnalyticsView,
+  visitorStatsHeading,
 } = await import('../components/admin/WebAnalyticsView')
+const { VISITOR_STATS_BLOCK_MISSING_MESSAGE, VISITOR_TABLE_EMPTY_MESSAGE } =
+  await import('../components/admin/webanalitika/BreakdownTables')
+
+/**
+ * A teljes lap HTML-je, a Suspense-határ mögötti látogatói törzzsel együtt.
+ * A renderToStaticMarkup a függő határ helyén csak a betöltés-szöveget adja,
+ * a prerender viszont megvárja (ahogy a Next.js streamje is kiírja).
+ */
+async function renderFull(searchParams: Record<string, string> = {}, role = 'staff') {
+  // A progressiveChunkSize nélkül a React a nagy határ tartalmát a dokumentum
+  // végére tenné (rejtett div + csere-szkript); így a helyén marad.
+  const { prelude } = await prerender(await WebAnalyticsView(props(role, searchParams)), {
+    progressiveChunkSize: Number.POSITIVE_INFINITY,
+  })
+  return new Response(prelude).text()
+}
 
 /** A tulajdonosi bekötési útmutató, szó szerint (a <code> a változó neve). */
 const OWNER_GUIDE =
@@ -137,11 +160,11 @@ function embedBox(html: string): { title: string; paragraph: string } {
   return { title: match![1], paragraph: match![2] }
 }
 
-function props(role = 'staff') {
+function props(role = 'staff', searchParams: Record<string, string> = {}) {
   return {
     initPageResult: { req: { user: { role }, payload: {} } },
     params: {},
-    searchParams: {},
+    searchParams,
   } as unknown as Parameters<typeof WebAnalyticsView>[0]
 }
 
@@ -214,21 +237,58 @@ describe('Webanalitika K13: azonosítható külső linkek, szerepkör szerinti b
   })
 
   it('a felületi szövegekben nincs gondolatjel és „dashboard” szó', async () => {
-    const html = renderToStaticMarkup(await WebAnalyticsView(props('owner')))
-    // A környezeti változó neve kód, nem felületi szöveg.
-    const text = html.replace(/<code>[^<]*<\/code>/g, ' ').replace(/<[^>]+>/g, ' ')
-    expect(text).not.toMatch(/[–—]/)
-    // Egyetlen kivétel: a PostHog saját menüpontjának neve („Dashboards”), mert
-    // a tulajdonos ott erre a szóra keres (külső felület tényleges neve). A
-    // Kineticare saját szövege továbbra is „kimutatás”.
-    expect(text.match(/dashboard/gi)).toEqual(['Dashboard'])
-    expect(text.replace('a Dashboards listát', ' ')).not.toMatch(/dashboard/i)
+    // Kulcs nélküli és sikeres PostHog-állapotban is: a diagram és a 14 tábla
+    // szövege is felületi szöveg.
+    for (const stats of [{ status: 'not_configured' } as const, VISITOR_STATS]) {
+      loadPosthogWebStats.mockResolvedValueOnce(stats)
+      const html = await renderFull({}, 'owner')
+      // A környezeti változó neve kód, nem felületi szöveg.
+      const text = html.replace(/<code>[^<]*<\/code>/g, ' ').replace(/<[^>]+>/g, ' ')
+      expect(text, stats.status).not.toMatch(/[–—]/)
+      // Egyetlen kivétel: a PostHog saját menüpontjának neve („Dashboards”),
+      // mert a tulajdonos ott erre a szóra keres (külső felület tényleges
+      // neve). A Kineticare saját szövege továbbra is „kimutatás”.
+      expect(text.match(/dashboard/gi), stats.status).toEqual(['Dashboard'])
+      expect(text.replace('a Dashboards listát', ' ')).not.toMatch(/dashboard/i)
+    }
   })
 })
 
-/** Egy sikeres PostHog-válasz, ahogy a betöltő adja (magyarított nevekkel). */
+function row(name: string, visitors: number, views: number): WebStatsRow[] {
+  return [{ name, visitors, views }]
+}
+
+/** Egy sikeres, 7 napos PostHog-válasz, ahogy a betöltő adja (magyarított nevekkel). */
+const BREAKDOWNS: Record<WebStatsBreakdownKey, WebStatsRow[] | null> = {
+  pages: row('/kurzusok', 30, 90),
+  entryPages: row('/', 21, 25),
+  exitPages: row('/kosar', 8, 9),
+  channels: row('Közvetlen', 26, 77),
+  referrers: row('google.com', 14, 30),
+  utmSources: row('facebook', 6, 11),
+  utmMediums: row('cpc', 5, 10),
+  utmCampaigns: row('oszi-akcio', 4, 7),
+  devices: row('Telefon', 40, 120),
+  browsers: row('Chrome', 33, 100),
+  os: row('Android', 22, 60),
+  countries: row('Magyarország', 50, 160),
+  cities: row('Budapest', 31, 95),
+  languages: row('magyar', 49, 158),
+}
+
+const DAILY = [
+  { date: '2026-11-01', visitors: 5, views: 12 },
+  { date: '2026-11-02', visitors: 9, views: 20 },
+  { date: '2026-11-03', visitors: 12, views: 41 },
+  { date: '2026-11-04', visitors: 7, views: 18 },
+  { date: '2026-11-05', visitors: 4, views: 9 },
+  { date: '2026-11-06', visitors: 6, views: 15 },
+  { date: '2026-11-07', visitors: 8, views: 22 },
+]
+
 const VISITOR_STATS: PosthogWebStats = {
   status: 'ok',
+  periodDays: 7,
   fetchedAt: new Date().toISOString(),
   overview: {
     visitors: 12560,
@@ -237,37 +297,111 @@ const VISITOR_STATS: PosthogWebStats = {
     sessionDurationSeconds: 166.73,
     bounceRatePercent: 39.74,
   },
-  pages: [{ name: '/kurzusok', visitors: 30, views: 90 }],
-  channels: [{ name: 'Közvetlen', visitors: 26, views: 77 }],
-  devices: [{ name: 'Telefon', visitors: 40, views: 120 }],
+  daily: DAILY,
+  breakdowns: BREAKDOWNS,
 }
 
-/** A látogatói szekció HTML-je (a következő szekció-címig). */
-function visitorSection(html: string): string {
-  const start = html.indexOf(`aria-label="${VISITOR_STATS_HEADING}"`)
+/** A PostHog Web analytics bontásai a nézet csoportjaiban, a várt sorrendben. */
+const EXPECTED_GROUPS: Array<[string, string[]]> = [
+  ['Oldalak', ['Legnézettebb oldalak', 'Belépő oldalak', 'Kilépő oldalak']],
+  [
+    'Források',
+    ['Érkezési csatorna', 'Hivatkozó oldalak', 'UTM forrás', 'UTM közeg', 'UTM kampány'],
+  ],
+  ['Eszközök', ['Eszköztípus', 'Böngésző', 'Operációs rendszer']],
+  ['Földrajz', ['Ország', 'Város', 'Nyelv']],
+]
+
+/** A látogatói szekció HTML-je (a szekció végéig). */
+function visitorSection(html: string, days: WebStatsPeriodDays = 7): string {
+  const start = html.indexOf(`aria-label="${visitorStatsHeading(days)}"`)
   expect(start, 'a látogatói szekció hiányzik').toBeGreaterThan(-1)
   return html.slice(start, html.indexOf('</section>', start))
+}
+
+/** Egy felirattal megnevezett tábla HTML-je. */
+function tableByCaption(html: string, caption: string): string {
+  const match = new RegExp(`<table[^>]*><caption[^>]*>${caption}</caption>.*?</table>`).exec(html)
+  expect(match, `hiányzik a(z) „${caption}” tábla`).not.toBeNull()
+  return match![0]
 }
 
 function cellText(html: string): string {
   return html.replace(/<[^>]+>/g, '|').replace(/[\u00a0\u202f]/g, ' ')
 }
 
+/** Az időszak-linkek (`href` → a teljes `<a>` tag). */
+function periodLinks(html: string): Map<string, string> {
+  const links = html.match(/<a [^>]*href="\/admin\/webanalitika\?idoszak=[^"]*"[^>]*>[^<]*<\/a>/g)
+  return new Map((links ?? []).map((link) => [/idoszak=(\d+)/.exec(link)![1], link]))
+}
+
+describe('Webanalitika: időszak-választó (7 vagy 30 nap)', () => {
+  beforeEach(() => {
+    loadPosthogWebStats.mockClear()
+  })
+
+  it('paraméter nélkül 7 nap: a betöltő 7-et kap, a cím és a kijelölt link is 7', async () => {
+    const section = visitorSection(await renderFull({}), 7)
+    expect(loadPosthogWebStats).toHaveBeenCalledExactlyOnceWith(7)
+    expect(section).toContain('>Látogatók az elmúlt 7 napban</h2>')
+    expect(section).toContain('Időszak:')
+    const links = periodLinks(section)
+    expect([...links.keys()]).toEqual(['7', '30'])
+    expect(links.get('7')).toContain('aria-current="page"')
+    expect(links.get('7')).toContain('>7 nap</a>')
+    expect(links.get('30')).not.toContain('aria-current')
+    expect(links.get('30')).toContain('>30 nap</a>')
+  })
+
+  it('?idoszak=30: a betöltő 30-at kap, a cím 30 napot mond, a 30-as link a kijelölt', async () => {
+    loadPosthogWebStats.mockResolvedValueOnce({ ...VISITOR_STATS, periodDays: 30 })
+    const html = await renderFull({ idoszak: '30' })
+    expect(loadPosthogWebStats).toHaveBeenCalledExactlyOnceWith(30)
+    const section = visitorSection(html, 30)
+    expect(section).toContain('>Látogatók az elmúlt 30 napban</h2>')
+    expect(html).not.toContain('Látogatók az elmúlt 7 napban')
+    const links = periodLinks(section)
+    expect(links.get('30')).toContain('aria-current="page"')
+    expect(links.get('7')).not.toContain('aria-current')
+  })
+
+  it('az időszak-linkek legalább 44 px magas célfelületek', async () => {
+    for (const link of periodLinks(visitorSection(await renderFull({}))).values()) {
+      expect(link).toContain('min-height:44px')
+      expect(link).toContain('min-width:44px')
+    }
+  })
+})
+
 describe('Webanalitika: látogatói számok a PostHogból', () => {
   it('az eladás-szekció UTÁN és a külső linkek ELŐTT áll', async () => {
     loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
-    const html = renderToStaticMarkup(await WebAnalyticsView(props()))
+    const html = await renderFull()
     const sales = html.indexOf('aria-label="Eladások és kurzushaladás"')
-    const visitors = html.indexOf(`aria-label="${VISITOR_STATS_HEADING}"`)
+    const visitors = html.indexOf(`aria-label="${visitorStatsHeading(7)}"`)
     const links = html.indexOf('aria-label="Külső elemző-felületek"')
     expect(sales).toBeGreaterThan(-1)
     expect(visitors).toBeGreaterThan(sales)
     expect(links).toBeGreaterThan(visitors)
   })
 
-  it('öt kártya magyar formázással, három tábla a betöltő adataiból', async () => {
+  it('lassú PostHog mellett a lap többi része azonnal megjelenik, a számok helyén betöltés-szöveg', async () => {
+    loadPosthogWebStats.mockReturnValueOnce(new Promise<PosthogWebStats>(() => {}))
+    const html = renderToStaticMarkup(await WebAnalyticsView(props()))
+    expect(html).toContain('Bevétel ebben a hónapban')
+    expect(html).toContain('aria-label="Külső elemző-felületek"')
+    const section = visitorSection(html)
+    expect(section).toContain('Időszak:')
+    expect(section).toMatch(
+      new RegExp(`<p role="status"[^>]*>${VISITOR_STATS_LOADING_MESSAGE}</p>`),
+    )
+    expect(section).not.toContain('kc-as-card')
+  })
+
+  it('öt kártya magyar formázással', async () => {
     loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
-    const section = visitorSection(renderToStaticMarkup(await WebAnalyticsView(props())))
+    const section = visitorSection(await renderFull())
     const text = cellText(section)
     for (const [label, value] of [
       ['Látogatók', '12 560'],
@@ -278,16 +412,87 @@ describe('Webanalitika: látogatói számok a PostHogból', () => {
     ]) {
       expect(text, label).toContain(`|${value}||${label}|`)
     }
-    expect(section.match(/<table/g)).toHaveLength(3)
-    for (const caption of ['Legnézettebb oldalak', 'Honnan érkeznek', 'Eszközök']) {
-      expect(section).toMatch(new RegExp(`<caption[^>]*>${caption}</caption>`))
-    }
-    expect(text).toContain('|/kurzusok||30||90|')
-    expect(text).toContain('|Közvetlen||26||77|')
-    expect(text).toContain('|Telefon||40||120|')
     expect(section).toContain(VISITOR_STATS_NOTE)
     expect(section).toContain('Utolsó frissítés:')
     expect(section).not.toContain(VISITOR_STATS_STALE_MESSAGE)
+  })
+
+  it('napi diagram: akadálymentes név, pontonként egy-egy jelölő, és táblázatos változat', async () => {
+    loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
+    const section = visitorSection(await renderFull())
+    const svg = /<svg [^>]*role="img"[^>]*>.*?<\/svg>/.exec(section)?.[0]
+    expect(svg, 'a napi diagram hiányzik').toBeDefined()
+    const name = /aria-label="([^"]*)"/.exec(svg!)![1]
+    expect(name).toBe(
+      'Napi látogatók és oldalmegtekintések vonaldiagramja, nov. 1. és nov. 7. között. A legtöbb látogató egy napon: 12 (nov. 3.). A legtöbb megtekintés egy napon: 41 (nov. 3.).',
+    )
+    expect(svg).toContain(`<title>${name}</title>`)
+    expect(svg!.match(/data-sor="latogato"/g)).toHaveLength(DAILY.length)
+    expect(svg!.match(/data-sor="megtekintes"/g)).toHaveLength(DAILY.length)
+    // A jelölőnél szélesebb egérsáv napi címkéje mindkét számot kimondja.
+    expect(svg).toContain('<title>nov. 3.: 12 látogató, 41 megtekintés</title>')
+    // Jelmagyarázat (két sor, nem csak szín) és lenyitható adattábla.
+    expect(section).toMatch(/<\/svg>Látogatók<\/span>.*<\/svg>Megtekintések<\/span>/)
+    const table = tableByCaption(section, 'Napi látogatók és megtekintések')
+    expect(table.match(/<tr>/g)).toHaveLength(DAILY.length + 1)
+    expect(cellText(table)).toContain('|nov. 3.||12||41|')
+  })
+
+  it('mind a 14 bontás saját feliratú táblában, a PostHog csoportjai szerint', async () => {
+    loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
+    const section = visitorSection(await renderFull())
+    const groups = [...section.matchAll(/<h3[^>]*>([^<]*)<\/h3>/g)].map((match) => match[1])
+    expect(groups).toEqual(['Napi látogatók és megtekintések', ...EXPECTED_GROUPS.map(([g]) => g)])
+    const captions = [...section.matchAll(/<caption[^>]*>([^<]*)<\/caption>/g)].map((m) => m[1])
+    expect(captions).toEqual([
+      'Napi látogatók és megtekintések',
+      ...EXPECTED_GROUPS.flatMap(([, list]) => list),
+    ])
+    expect(cellText(tableByCaption(section, 'Legnézettebb oldalak'))).toContain(
+      '|/kurzusok||30||90|',
+    )
+    expect(cellText(tableByCaption(section, 'Hivatkozó oldalak'))).toContain('|google.com||14||30|')
+    expect(cellText(tableByCaption(section, 'UTM kampány'))).toContain('|oszi-akcio||4||7|')
+    expect(cellText(tableByCaption(section, 'Operációs rendszer'))).toContain('|Android||22||60|')
+    expect(cellText(tableByCaption(section, 'Nyelv'))).toContain('|magyar||49||158|')
+    for (const table of section.match(/<table[^>]*>.*?<\/table>/g) ?? []) {
+      expect(table).toMatch(
+        /<th scope="col"[^>]*>Látogatók<\/th><th scope="col"[^>]*>Megtekintések<\/th>/,
+      )
+    }
+  })
+
+  it('a hiányzó blokk és az üres blokk külön üzenetet kap, a többi tábla megmarad', async () => {
+    loadPosthogWebStats.mockResolvedValueOnce({
+      ...VISITOR_STATS,
+      daily: null,
+      breakdowns: { ...BREAKDOWNS, cities: null, languages: [] },
+    })
+    const section = visitorSection(await renderFull())
+    expect(section).not.toContain('role="img"')
+    expect(section).toMatch(
+      new RegExp(
+        `>Napi látogatók és megtekintések</h3><p [^>]*>${VISITOR_STATS_BLOCK_MISSING_MESSAGE}</p>`,
+      ),
+    )
+    const cities = tableByCaption(section, 'Város')
+    expect(cities).toContain(VISITOR_STATS_BLOCK_MISSING_MESSAGE)
+    expect(cities).not.toContain(VISITOR_TABLE_EMPTY_MESSAGE)
+    const languages = tableByCaption(section, 'Nyelv')
+    expect(languages).toContain(VISITOR_TABLE_EMPTY_MESSAGE)
+    expect(languages).not.toContain(VISITOR_STATS_BLOCK_MISSING_MESSAGE)
+    expect(cellText(tableByCaption(section, 'Ország'))).toContain('|Magyarország||50||160|')
+  })
+
+  it('üres napi sorból nem rajzol diagramot, az üres-üzenet áll a helyén', async () => {
+    loadPosthogWebStats.mockResolvedValueOnce({ ...VISITOR_STATS, daily: [] })
+    const section = visitorSection(await renderFull())
+    expect(section).not.toContain('role="img"')
+    expect(section).toMatch(
+      new RegExp(
+        `>Napi látogatók és megtekintések</h3><p [^>]*>${VISITOR_TABLE_EMPTY_MESSAGE}</p>`,
+      ),
+    )
   })
 
   it('a gyorsítótárban ragadt régi adatot nem mutatja frissnek', async () => {
@@ -295,28 +500,29 @@ describe('Webanalitika: látogatói számok a PostHogból', () => {
       ...VISITOR_STATS,
       fetchedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     } as PosthogWebStats)
-    const section = visitorSection(renderToStaticMarkup(await WebAnalyticsView(props())))
+    const section = visitorSection(await renderFull())
     expect(section).toContain(VISITOR_STATS_STALE_MESSAGE)
-    expect(section.match(/<table/g)).toHaveLength(3)
+    expect(section.match(/<caption/g)).toHaveLength(15)
   })
 
   it('kulcs nélkül a tulajdonos a beállítás módját kapja, a munkatárs a teendőt', async () => {
-    const owner = visitorSection(renderToStaticMarkup(await WebAnalyticsView(props('owner'))))
+    const owner = visitorSection(await renderFull({}, 'owner'))
     expect(owner).toContain('<code>POSTHOG_PERSONAL_API_KEY</code>')
     expect(owner).toContain('Query read')
     expect(owner).not.toContain(VISITOR_STATS_MISSING_STAFF_MESSAGE)
 
-    const staff = visitorSection(renderToStaticMarkup(await WebAnalyticsView(props('staff'))))
+    const staff = visitorSection(await renderFull({}, 'staff'))
     expect(staff).toContain(VISITOR_STATS_MISSING_STAFF_MESSAGE)
     expect(staff).not.toContain('POSTHOG_PERSONAL_API_KEY')
     expect(staff).not.toContain('<table')
   })
 
-  it('elérhetetlen PostHognál magyar magyarázat áll, kártya és tábla nélkül', async () => {
+  it('elérhetetlen PostHognál magyar magyarázat áll, kártya, diagram és tábla nélkül', async () => {
     loadPosthogWebStats.mockResolvedValueOnce({ status: 'unavailable' })
-    const section = visitorSection(renderToStaticMarkup(await WebAnalyticsView(props('owner'))))
+    const section = visitorSection(await renderFull({}, 'owner'))
     expect(section).toContain(VISITOR_STATS_UNAVAILABLE_MESSAGE)
     expect(section).not.toContain('kc-as-card')
+    expect(section).not.toContain('<svg')
     expect(section).not.toContain('<table')
   })
 })
