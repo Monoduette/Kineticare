@@ -230,7 +230,10 @@ describe('Webanalitika: a PostHog saját grafikonjai beágyazva (2026-11-07)', (
     expect(embed).toBeGreaterThan(visitors)
     const section = html.slice(embed, html.indexOf('</section>', embed))
     expect(section).toContain('background:var(--kc-as-surface-tint')
-    expect(section).toContain('src="https://eu.posthog.com/embedded/abcDEF123_tokenXYZ"')
+    // A szerver src nélkül rendereli: a címet a kliens a figyelő után adja
+    // (posthog-dashboard-embed.test.tsx).
+    expect(section).toContain('<iframe')
+    expect(section).not.toContain('src="https://eu.posthog.com')
     expect(section).toContain(`name="${POSTHOG_EMBED_FRAME_NAME}"`)
     expect(section).toContain('title="Folyamatok és grafikonok a PostHogból"')
   })

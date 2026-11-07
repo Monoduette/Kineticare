@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 /**
  * A megosztott PostHog-dashboard beágyazása (admin Webanalitika).
@@ -12,6 +12,10 @@ import { useEffect, useState, type CSSProperties } from 'react'
  * frontend/src/exporter/Exporter.tsx). Ezzel a keret pontosan akkora, mint a
  * tartalma, és nincs benne belső görgetősáv. Az üzenetet csak a FIX EU-cloud
  * originről és a saját keretnevünkkel fogadjuk el.
+ *
+ * A keret `src`-je csak AZUTÁN kerül be, hogy a figyelő már fut (Codex-review,
+ * 2026-11-07): a PostHog a méretet betöltéskor küldi, és egy szerveren
+ * renderelt, korán betöltő keret üzenete a hidratálás előtt elveszne.
  */
 
 /** A keret neve: a PostHog ezt adja vissza a `name` mezőben. */
@@ -47,6 +51,7 @@ const frameStyle: CSSProperties = {
 
 export function PosthogDashboardEmbed({ src, origin }: { src: string; origin: string }) {
   const [height, setHeight] = useState(INITIAL_HEIGHT_PX)
+  const frameRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -59,13 +64,16 @@ export function PosthogDashboardEmbed({ src, origin }: { src: string; origin: st
       }
     }
     window.addEventListener('message', onMessage)
+    if (frameRef.current && frameRef.current.getAttribute('src') !== src) {
+      frameRef.current.src = src
+    }
     return () => window.removeEventListener('message', onMessage)
-  }, [origin])
+  }, [origin, src])
 
   return (
     <iframe
       name={POSTHOG_EMBED_FRAME_NAME}
-      src={src}
+      ref={frameRef}
       style={{ ...frameStyle, height: `${height}px` }}
       title="Folyamatok és grafikonok a PostHogból"
     />
