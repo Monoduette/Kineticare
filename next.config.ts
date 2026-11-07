@@ -100,6 +100,7 @@ const nextConfig: NextConfig = {
               bunnyPullZoneHost(),
               process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
               process.env.NEXT_PUBLIC_BARION_PIXEL_ID,
+              process.env.POSTHOG_SHARED_DASHBOARD_URL,
               false,
               process.env.NEXT_PUBLIC_META_PIXEL_ID,
             ),
@@ -117,6 +118,7 @@ const nextConfig: NextConfig = {
               bunnyPullZoneHost(),
               process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
               process.env.NEXT_PUBLIC_BARION_PIXEL_ID,
+              process.env.POSTHOG_SHARED_DASHBOARD_URL,
               true,
               // A Meta Pixel csak a vevői felületen fut: az admin CSP-je nem nyílik meg.
             ),

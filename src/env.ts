@@ -259,6 +259,13 @@ export const optionalBunnyStreamEnvVars = [
  *   a docs/ga4.md tiltása él. Üresen kell hagyni.
  *   Egyik sem titok: nyilvános, kliensoldali azonosítók.
  *
+ * Ide tartozik még a `POSTHOG_SHARED_DASHBOARD_URL` is (nem NEXT_PUBLIC,
+ * szerveroldali): az admin Webanalitika-fül beágyazott PostHog-dashboardjának
+ * megosztási linkje (src/lib/admin/web-analytics-config.ts). Nem titok — a
+ * megosztott dashboard a link birtokában amúgy is megnyitható, ezért csak
+ * összesített viselkedés-adat lehet rajta. A CSP-fejléc miatt a beállítása
+ * után szintén újrabuild kell.
+ *
  * Szintén szerveroldali a `POSTHOG_PERSONAL_API_KEY`: TITOK, PostHog személyes
  * API-kulcs csak `query:read` jogosultsággal, a KinetiCare projektre szűkítve.
  * Az admin Webanalitika-fül látogatói számait kérdezi le vele a szerver

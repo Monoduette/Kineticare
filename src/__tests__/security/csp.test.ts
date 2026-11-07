@@ -97,10 +97,7 @@ describe('buildContentSecurityPolicy — a bizonyított hiba nem térhet vissza'
   })
 
   it('a Cloudflare Stream forrásai KIKERÜLTEK (elfelejtett domain-csere ellen)', () => {
-    for (const csp of [
-      buildContentSecurityPolicy(),
-      buildContentSecurityPolicy('vz-a.b-cdn.net'),
-    ]) {
+    for (const csp of [buildContentSecurityPolicy(), buildContentSecurityPolicy('vz-a.b-cdn.net')]) {
       expect(csp).not.toContain('cloudflarestream.com')
       expect(csp).not.toContain('videodelivery.net')
     }
@@ -219,26 +216,45 @@ describe('buildContentSecurityPolicy — direktívák', () => {
     expect(withGa).not.toMatch(/[a-z0-9-]\*/)
   })
 
-  it('frame-src minden opcionális forrással is PONTOSAN a rögzített lista: eu.posthog.com nincs', () => {
-    // 2026-11-07: a megosztott PostHog-dashboard iframe-je kikerült az admin
-    // Webanalitika-nézetből, a frame-src eu.posthog.com forrása vele együtt.
-    // Ha egy beágyazás visszatér, a frame-src bővítése külön, látható döntés.
-    const full = buildContentSecurityPolicy(
-      'vz-a.b-cdn.net',
-      'G-TESTONLY00',
-      'BP-0000000000-01',
-      true,
-      '123456789012345',
+  it('PostHog-dashboard env nélkül az eu.posthog.com NINCS a fejlécben', () => {
+    for (const withoutEmbed of [
+      buildContentSecurityPolicy(),
+      // Formailag hibás vagy idegen hostra mutató link sem nyithatja meg.
+      buildContentSecurityPolicy(undefined, undefined, undefined, 'nem-url'),
+      buildContentSecurityPolicy(
+        undefined,
+        undefined,
+        undefined,
+        'https://evil.example/shared/AbCd1234xyz',
+      ),
+      buildContentSecurityPolicy(
+        undefined,
+        undefined,
+        undefined,
+        'https://eu.posthog.com/project/253152',
+      ),
+    ]) {
+      expect(withoutEmbed).not.toContain('eu.posthog.com')
+    }
+  })
+
+  it('érvényes megosztási linkkel az eu.posthog.com KIZÁRÓLAG a frame-src-be kerül', () => {
+    const withEmbed = buildContentSecurityPolicy(
+      undefined,
+      undefined,
+      undefined,
+      'https://eu.posthog.com/shared/AbCd1234xyz',
     )
-    expect(directive(full, 'frame-src')).toEqual([
-      "'self'",
-      BUNNY_STREAM_IFRAME_SOURCE,
-      'https://www.youtube-nocookie.com',
-      'https://player.vimeo.com',
-      'https://challenges.cloudflare.com',
-      'https://pixel.barion.com',
-    ])
-    expect(full).not.toContain('eu.posthog.com')
+    expect(directive(withEmbed, 'frame-src')).toContain('https://eu.posthog.com')
+    // Más direktívát nem lazít: script/connect/img változatlan.
+    for (const name of ['script-src', 'connect-src', 'img-src', 'default-src']) {
+      expect(
+        directive(withEmbed, name).some((source) => source.includes('posthog')),
+        name,
+      ).toBe(false)
+    }
+    // A frame-src eddigi forrásai nem tűnhetnek el mellőle.
+    expect(directive(withEmbed, 'frame-src')).toContain(BUNNY_STREAM_IFRAME_SOURCE)
   })
 
   it('a fejléc szintaktikailag ép: nincs üres vagy duplikált direktíva', () => {
@@ -250,9 +266,8 @@ describe('buildContentSecurityPolicy — direktívák', () => {
       buildContentSecurityPolicy(
         'vz-a.b-cdn.net',
         'G-TESTONLY00',
-        'BP-0000000000-01',
-        true,
-        '123456789012345',
+        undefined,
+        'https://eu.posthog.com/shared/AbCd1234xyz',
       ),
     ]) {
       const names = value.split('; ').map((entry) => entry.split(' ')[0])

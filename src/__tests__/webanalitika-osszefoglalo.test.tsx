@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { prerender } from 'react-dom/static'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   PosthogWebStats,
@@ -106,6 +106,8 @@ vi.mock('../lib/admin/posthog-web-stats', async (importOriginal) => ({
 }))
 
 const {
+  POSTHOG_EMBED_HEADING,
+  POSTHOG_EMBED_MISSING_STAFF_MESSAGE,
   VISITOR_STATS_LOADING_MESSAGE,
   VISITOR_STATS_MISSING_STAFF_MESSAGE,
   VISITOR_STATS_NOTE,
@@ -210,13 +212,63 @@ const VISITOR_STATS: PosthogWebStats = {
   breakdowns: BREAKDOWNS,
 }
 
-describe('Webanalitika: a külső linkek és a beágyazott kimutatás nincs a lapon (2026-11-07)', () => {
-  it('se link-sor, se iframe, se új lapra nyíló link, és a látogatói szekció tint-hátteret kap', async () => {
+const { readEmbedHeight, POSTHOG_EMBED_FRAME_NAME } =
+  await import('../components/admin/webanalitika/PosthogDashboardEmbed')
+
+describe('Webanalitika: a PostHog saját grafikonjai beágyazva (2026-11-07)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('beállított megosztási linkkel a dashboard a látogatói szekció UTÁN, tint-sávon, embedded alakban jelenik meg', async () => {
+    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://eu.posthog.com/shared/abcDEF123_tokenXYZ')
+    loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
+    const html = await renderFull({}, 'staff')
+    const visitors = html.indexOf(`aria-label="${visitorStatsHeading(7)}"`)
+    const embed = html.indexOf(`aria-label="${POSTHOG_EMBED_HEADING}"`)
+    expect(visitors).toBeGreaterThan(-1)
+    expect(embed).toBeGreaterThan(visitors)
+    const section = html.slice(embed, html.indexOf('</section>', embed))
+    expect(section).toContain('background:var(--kc-as-surface-tint')
+    // A szerver src nélkül rendereli: a címet a kliens a figyelő után adja
+    // (posthog-dashboard-embed.test.tsx).
+    expect(section).toContain('<iframe')
+    expect(section).not.toContain('src="https://eu.posthog.com')
+    expect(section).toContain(`name="${POSTHOG_EMBED_FRAME_NAME}"`)
+    expect(section).toContain('title="Folyamatok és grafikonok a PostHogból"')
+  })
+
+  it('link nélkül nincs iframe: a tulajdonos a teendőt, a munkatárs egy rövid üzenetet kap', async () => {
+    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', '')
+    loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
+    const owner = await renderFull({}, 'owner')
+    expect(owner).not.toContain('<iframe')
+    expect(owner).toContain('<code>POSTHOG_SHARED_DASHBOARD_URL</code>')
+    loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
+    const staff = await renderFull({}, 'staff')
+    expect(staff).not.toContain('<iframe')
+    expect(staff).toContain(POSTHOG_EMBED_MISSING_STAFF_MESSAGE)
+    expect(staff).not.toContain('POSTHOG_SHARED_DASHBOARD_URL')
+  })
+
+  it('a keret magassága csak a saját nevű posthog:dimensions üzenetből jön, ésszerű határok között', () => {
+    const name = POSTHOG_EMBED_FRAME_NAME
+    expect(readEmbedHeight({ event: 'posthog:dimensions', name, height: 2345.2 }, name)).toBe(2346)
+    expect(readEmbedHeight({ event: 'posthog:dimensions', name, height: 10 }, name)).toBe(400)
+    expect(readEmbedHeight({ event: 'posthog:dimensions', name, height: 1e9 }, name)).toBe(20000)
+    expect(
+      readEmbedHeight({ event: 'posthog:dimensions', name: 'mas', height: 900 }, name),
+    ).toBeNull()
+    expect(readEmbedHeight({ event: 'mas', name, height: 900 }, name)).toBeNull()
+    expect(readEmbedHeight({ event: 'posthog:dimensions', name, height: '900' }, name)).toBeNull()
+    expect(readEmbedHeight(null, name)).toBeNull()
+  })
+
+  it('se link-sor, se új lapra nyíló link, és a látogatói szekció tint-hátteret kap', async () => {
     for (const role of ['staff', 'owner']) {
       loadPosthogWebStats.mockResolvedValueOnce(VISITOR_STATS)
       const html = await renderFull({}, role)
       expect(html, role).not.toContain('Külső elemző-felületek')
-      expect(html, role).not.toContain('<iframe')
       expect(html, role).not.toContain('új lapon nyílik')
       expect(html, role).not.toContain('target="_blank"')
       expect(html, role).not.toContain('Látogatói viselkedés')
