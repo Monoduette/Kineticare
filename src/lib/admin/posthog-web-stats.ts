@@ -47,9 +47,13 @@ import { POSTHOG_EMBED_ORIGIN, POSTHOG_PROJECT_ID } from './web-analytics-config
  * Az időszak (7 vagy 30) a gyorsítótárazott függvény ARGUMENTUMA, így a
  * kulcs része: a két időszak külön bejegyzés. Ez nem titok; a kulcsot a
  * függvény maga olvassa, sosem argumentum. Így az admin-betöltések
- * időszakonként legfeljebb ötpercenként érik el a PostHogot. A teljes
- * kudarc DOB a gyorsítótárazott függvényben: a dobott hibát a Next nem
- * tárolja, így egy kimaradás nem ragad be öt percre.
+ * időszakonként legfeljebb ötpercenként érik el a PostHogot. CSAK A TELJES
+ * eredmény kerül a gyorsítótárba: ha bármelyik blokk hiányzik (például a
+ * közös határidő lejárt, mielőtt a sorban álló lekérdezések elindultak), a
+ * gyorsítótárazott függvény DOB, a hibával együtt adja tovább a részleges
+ * eredményt, és a nézet azt mutatja meg. A dobott hibát a Next nem tárolja,
+ * így egy lassú kör hiányos adata nem ragad be öt percre (Codex-review,
+ * 2026-11-07). Ha egyik blokk sem sikerült, az eredmény `unavailable`.
  *
  * ═══ HIBATŰRÉS ═══
  * Minden blokk (összesítő, napi bontás, minden tábla) külön érvényesül: a
@@ -651,6 +655,22 @@ async function fetchWebStats(apiKey: string, days: WebStatsPeriodDays): Promise<
   }
 }
 
+function hasAllBlocks(data: WebStatsData): boolean {
+  return (
+    data.overview !== null &&
+    data.daily !== null &&
+    Object.values(data.breakdowns).every((rows) => rows !== null)
+  )
+}
+
+/** Részleges eredmény: dobjuk, hogy ne kerüljön gyorsítótárba, de megmutatjuk. */
+class PartialWebStatsError extends Error {
+  constructor(readonly data: WebStatsData) {
+    super('a PostHog nem minden blokkot adott vissza')
+    this.name = 'PartialWebStatsError'
+  }
+}
+
 function hasAnyBlock(data: WebStatsData): boolean {
   return (
     data.overview !== null ||
@@ -675,6 +695,9 @@ const cachedWebStats = unstable_cache(
     if (!hasAnyBlock(data)) {
       throw new Error('a PostHog egyik blokkot sem adta vissza')
     }
+    if (!hasAllBlocks(data)) {
+      throw new PartialWebStatsError(data)
+    }
     return data
   },
   ['admin-posthog-web-stats-v3'],
@@ -691,6 +714,9 @@ export async function loadPosthogWebStats(
   try {
     return { status: 'ok', ...(await cachedWebStats(periodDays === 30 ? 30 : 7)) }
   } catch (error) {
+    if (error instanceof PartialWebStatsError) {
+      return { status: 'ok', ...error.data }
+    }
     logger.warn('posthog-webstat: a látogatói számok nem érhetők el', {
       reason: error instanceof Error ? error.message : 'unknown',
     })

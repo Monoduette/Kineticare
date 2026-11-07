@@ -6,16 +6,29 @@ import { logger } from '../lib/logger'
  * A Webanalitika látogatói számai: PostHog Query API kliens.
  *
  * A gazdahatár a `loadPosthogWebStats`, ezt hívja a nézet. A hálózatot a
- * globális `fetch` stubja helyettesíti (CLAUDE.md 15.), a Next
- * `unstable_cache`-e itt átengedő: a gyorsítótár a Next futtatókörnyezet
- * része, a teszt a lekérdezést és az érvényesítést méri.
+ * globális `fetch` stubja helyettesíti (CLAUDE.md 15.). A Next
+ * `unstable_cache`-ét egy egyszerű emlékező mock helyettesíti, amely a Next
+ * szerződését követi: a feloldott értéket argumentumonként megjegyzi, a dobott
+ * hibát nem. Így mérhető, hogy a részleges eredmény nem kerül gyorsítótárba.
  *
  * A kulcs jelölt DUMMY érték (1. tilos zóna, kézikönyv 2.1). A mintaválaszok
  * alakja a PostHog MCP `query-web-stats` 2026-11-07-i élő válaszaié.
  */
 
+const cacheStore = vi.hoisted(() => new Map<string, unknown>())
+
 vi.mock('next/cache', () => ({
-  unstable_cache: <T extends (...args: never[]) => unknown>(fn: T) => fn,
+  unstable_cache:
+    <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      const key = JSON.stringify(args)
+      if (cacheStore.has(key)) {
+        return cacheStore.get(key) as R
+      }
+      const value = await fn(...args)
+      cacheStore.set(key, value)
+      return value
+    },
 }))
 
 const {
@@ -177,6 +190,7 @@ function stubPosthog({
 let warnKem: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
+  cacheStore.clear()
   warnKem = vi.spyOn(logger, 'warn').mockImplementation(() => {})
 })
 
@@ -489,6 +503,24 @@ describe('loadPosthogWebStats: a válasz érvényesítése', () => {
       })
     },
   )
+
+  it('a teljes eredmény gyorsítótárba kerül: a második betöltés nem kérdez', async () => {
+    vi.stubEnv('POSTHOG_PERSONAL_API_KEY', DUMMY_KEY)
+    const { fetchMock } = stubPosthog()
+    await loadPosthogWebStats(7)
+    await loadPosthogWebStats(7)
+    expect(fetchMock).toHaveBeenCalledTimes(16)
+  })
+
+  it('a részleges eredmény megjelenik, de nem kerül gyorsítótárba: a következő betöltés újrakérdez', async () => {
+    vi.stubEnv('POSTHOG_PERSONAL_API_KEY', DUMMY_KEY)
+    const { fetchMock } = stubPosthog({ tables: { ...TABLES, City: { nem: 'tábla' } } })
+    const first = await loadPosthogWebStats(7)
+    expect(first.status === 'ok' && first.breakdowns.cities).toBeNull()
+    expect(first.status === 'ok' && first.breakdowns.pages).not.toBeNull()
+    await loadPosthogWebStats(7)
+    expect(fetchMock).toHaveBeenCalledTimes(32)
+  })
 
   it('hibás napi bontás (nem dátum a nap oszlopban) → csak a napi bontás null', async () => {
     vi.stubEnv('POSTHOG_PERSONAL_API_KEY', DUMMY_KEY)
