@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 
 const EXPECTED_NODE = '24.20.0'
 const EXPECTED_NPM = '11.19.0'
-const EXPECTED_LOCK_SHA256 = '0644eebf093e894f11eb47ab63b09b9c39cfd2f1f14322feaba6b7a83008d4c5'
+const EXPECTED_LOCK_SHA256 = '79150b5462637ee66660da3573ea7f74c65250df5f164cdb314757e8c684a594'
 
 const EXPECTED_APPROVALS = {
   '@parcel/watcher@2.6.0': true,
