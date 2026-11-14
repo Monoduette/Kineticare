@@ -785,42 +785,6 @@
   color: var(--kc-color-text);
 }
 
-.kc-player-body__attachment-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--kc-space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.kc-player-body__attachment-link,
-.kc-player-body__attachment-missing {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--kc-space-2);
-  min-block-size: 44px;
-  padding-inline: var(--kc-space-3);
-  border: 1px solid var(--kc-color-border);
-  border-radius: var(--kc-radius-md);
-  background-color: var(--kc-color-surface-raised);
-  font-size: var(--kc-font-s);
-}
-
-.kc-player-body__attachment-link {
-  color: var(--kc-color-primary);
-  text-decoration: none;
-}
-
-.kc-player-body__attachment-link:hover {
-  border-color: var(--kc-color-primary);
-  text-decoration: underline;
-}
-
-.kc-player-body__attachment-missing {
-  color: var(--kc-color-text-muted);
-}
-
 /* ══════════════════════════════════════════════════════════════════════════
    9. KAPUZOTT ÁLLAPOTOK (nincs hozzáférés / még nincs tananyag)
    ══════════════════════════════════════════════════════════════════════════ */

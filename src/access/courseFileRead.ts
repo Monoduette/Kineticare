@@ -72,6 +72,13 @@ export function privateReferences(doc: unknown): CourseReferences | null {
       }
     }
   }
+  // A kurzus egészéhez tartozó segédanyagok (products.materials) ugyanúgy a
+  // közzétett snapshot explicit hivatkozásai, mint a lecke-mellékletek.
+  for (const material of Array.isArray(value.materials) ? value.materials : []) {
+    if (typeof material !== 'object' || material === null) continue
+    const fileId = relationId(material.protectedFile)
+    if (fileId !== null) files.add(fileId)
+  }
   return { id, files: [...files] }
 }
 
@@ -96,6 +103,7 @@ async function snapshots(
             status: true,
             _status: true,
             modules: { lessons: { attachments: { protectedFile: true } } },
+            materials: { protectedFile: true },
           },
           depth: 0,
           limit: batch.length,

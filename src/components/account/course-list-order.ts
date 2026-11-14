@@ -1,5 +1,9 @@
 import { toWatchedRefSet } from '../../lib/course-progress/progress'
-import type { Curriculum, CurriculumLesson } from '../../lib/curriculum/curriculum'
+import type {
+  Curriculum,
+  CurriculumAttachment,
+  CurriculumLesson,
+} from '../../lib/curriculum/curriculum'
 import { NO_LESSONS_LABEL, summarizeCurriculum } from '../../lib/curriculum/progress'
 import type { CourseCover } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
@@ -86,6 +90,12 @@ export interface CourseCardView {
   expiryLabel: string | null
   /** Empatikus üzenet lejárt hozzáférésnél — null, ha él a hozzáférés. */
   expiredMessage: string | null
+  /**
+   * A kurzus segédanyagai (gyakorlatfüzet), hogy a vevő gyakorlás közben a
+   * lejátszó megnyitása nélkül is elővehesse. Lejárt hozzáférésnél üres
+   * (`buildCourseMaterials`).
+   */
+  materials: readonly CurriculumAttachment[]
 }
 
 /**
@@ -236,6 +246,8 @@ export interface CourseCardInput {
   hasAccess: boolean
   expiryLabel: string | null
   expiredMessage: string | null
+  /** A kurzus segédanyagai (`buildCourseMaterials`); elhagyható. */
+  materials?: readonly CurriculumAttachment[]
 }
 
 /** Egy kurzus kész, kirajzolható kártya-nézete. */
@@ -282,6 +294,7 @@ export function buildCourseCardView(input: CourseCardInput): CourseCardView {
     }),
     expiryLabel: input.expiryLabel,
     expiredMessage: input.expiredMessage,
+    materials: input.materials ?? [],
   }
 }
 

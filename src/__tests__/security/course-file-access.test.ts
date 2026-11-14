@@ -347,13 +347,18 @@ describe('védett fájl: committed hivatkozás ÉS élő entitlement', () => {
     { paidAt: null, grantAt: '2026-09-01T12:00:00Z' },
     { paidAt: null, courses: [{ ...course(), accessDurationDays: null }] },
     { courses: [{ ...course(), status: 'archived' }] },
+    // A kurzus egészéhez csatolt segédanyag (products.materials), lecke-melléklet nélkül.
+    { courses: [{ ...course(42, []), materials: [{ protectedFile: 71 }] }] },
     { role: 'staff' as const, courses: [course(42, [])], purchases: [] },
     { role: 'owner' as const, courses: [course(42, [])], purchases: [] },
-  ])('ajándék, korlátlan, archív és staff megmarad: %j', async (options) => {
-    const response = await harness(options).file()
-    expect(response.status).toBe(200)
-    await response.body?.cancel()
-  })
+  ])(
+    'ajándék, korlátlan, archív, kurzusszintű segédanyag és staff megmarad: %j',
+    async (options) => {
+      const response = await harness(options).file()
+      expect(response.status).toBe(200)
+      await response.body?.cancel()
+    },
+  )
 
   it.each(['candidate', 'snapshot', 'metadata', 'orders', 'users'] as const)(
     '%s lookup hiba nem nyitja a fájlt',

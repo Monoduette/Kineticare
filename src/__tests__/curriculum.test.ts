@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   LEGACY_MODULE_TITLE,
+  buildCourseMaterials,
   buildCurriculum,
   findLessonByRef,
   playableLessons,
@@ -373,8 +374,8 @@ describe('buildCurriculum — mellékletek és szöveg', () => {
     )
 
     expect(curriculum.lessons[0]?.attachments).toEqual([
-      { label: 'Gyakorlatlap', url: '/media/gyak.pdf' },
-      { label: 'terv.pdf', url: '/media/terv.pdf' },
+      { label: 'Gyakorlatlap', url: '/media/gyak.pdf', detail: null },
+      { label: 'terv.pdf', url: '/media/terv.pdf', detail: null },
     ])
   })
 
@@ -413,8 +414,8 @@ describe('buildCurriculum — mellékletek és szöveg', () => {
       true,
     )
     expect(curriculum.lessons[0]?.attachments).toEqual([
-      { label: 'Segédlet', url: null },
-      { label: 'Gyakorlatlap', url: null },
+      { label: 'Segédlet', url: null, detail: null },
+      { label: 'Gyakorlatlap', url: null, detail: null },
     ])
   })
 
@@ -641,7 +642,7 @@ describe('buildCurriculum — hozzáférés nélkül a tartalom nem szivárog', 
     const curriculum = buildCurriculum(fizetosTermek(), true)
     expect(curriculum.lessons[0]?.content).not.toBeNull()
     expect(curriculum.lessons[0]?.attachments).toEqual([
-      { label: 'Segédlet', url: '/media/titkos.pdf' },
+      { label: 'Segédlet', url: '/media/titkos.pdf', detail: null },
     ])
     expect(curriculum.lessons[1]?.url).toBe('https://facebook.com/titkos-csoport')
   })
@@ -719,5 +720,52 @@ describe('mellékletsor: a korábbi nyilvános fájl feltételes megjelenítése
       expect(text).not.toMatch(/\bvevő/)
       expect(text).not.toMatch(/publikál/)
     }
+  })
+})
+
+/**
+ * A kurzus egészéhez tartozó segédanyagok (products.materials).
+ *
+ * Mit véd: (1) a letöltési webcím fizetős tartalom, hozzáférés nélkül nem
+ * kerülhet a modellbe; (2) a link mellett álló „PDF, 2,4 MB” a vevőnek szól,
+ * magyar tizedesvesszővel (GOV.UK, Content design: Links).
+ */
+describe('buildCourseMaterials — a kurzus segédanyagai', () => {
+  const termek = {
+    materials: [
+      {
+        id: 's1',
+        label: 'Gyakorlatfüzet',
+        protectedFile: {
+          id: 71,
+          url: '/api/course-files/file/fuzet.pdf',
+          filename: 'fuzet.pdf',
+          mimeType: 'application/pdf',
+          filesize: 2_414_000,
+        },
+      },
+      {
+        id: 's2',
+        label: null,
+        protectedFile: {
+          id: 72,
+          url: '/api/course-files/file/tabla.png',
+          filename: 'tabla.png',
+          mimeType: 'image/png',
+          filesize: 84_300,
+        },
+      },
+    ],
+  } as unknown as Pick<Product, 'materials'>
+
+  it('élő hozzáféréssel név, webcím, formátum és méret', () => {
+    expect(buildCourseMaterials(termek, true)).toEqual([
+      { label: 'Gyakorlatfüzet', url: '/api/course-files/file/fuzet.pdf', detail: 'PDF, 2,4 MB' },
+      { label: 'tabla.png', url: '/api/course-files/file/tabla.png', detail: 'PNG, 84 kB' },
+    ])
+  })
+
+  it('hozzáférés nélkül üres: a webcím nem szivárog', () => {
+    expect(buildCourseMaterials(termek, false)).toEqual([])
   })
 })

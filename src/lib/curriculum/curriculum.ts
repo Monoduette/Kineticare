@@ -15,6 +15,15 @@ export interface CurriculumAttachment {
   label: string
   /** A fájl letöltési webcíme; null, ha a média-rekord nincs feltöltve. */
   url: string | null
+  /**
+   * A fájl formátuma és mérete a link mellé, például „PDF, 2,4 MB”; null, ha
+   * egyik sem ismert. A vevő a koppintás ELŐTT tudja meg, mit nyit meg, és
+   * mobilneten mekkora az (GOV.UK, Content design: Links, „Application form
+   * (PDF, 19.5KB)”, https://www.gov.uk/guidance/content-design/links; NN/g,
+   * Avoid PDF for On-Screen Reading,
+   * https://www.nngroup.com/articles/avoid-pdf-for-on-screen-reading/).
+   */
+  detail: string | null
 }
 
 export interface CurriculumLesson {
@@ -129,6 +138,32 @@ function normalizeContent(value: unknown): unknown {
   return value
 }
 
+const FILE_FORMAT_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'image/jpeg': 'JPG',
+  'image/png': 'PNG',
+  'image/webp': 'WebP',
+  'image/gif': 'GIF',
+}
+
+/** Emberi fájlméret magyar tizedesvesszővel: „840 kB”, „2,4 MB”. */
+export function formatFileSizeHu(bytes: unknown): string | null {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) {
+    return null
+  }
+  if (bytes < 1_000_000) {
+    return `${Math.max(1, Math.round(bytes / 1000))} kB`
+  }
+  return `${(bytes / 1_000_000).toFixed(1).replace('.', ',')} MB`
+}
+
+/** „PDF, 2,4 MB”: a formátum és a méret, amennyi ismert belőle. */
+function fileDetail(mimeType: unknown, filesize: unknown): string | null {
+  const format = typeof mimeType === 'string' ? (FILE_FORMAT_LABELS[mimeType] ?? null) : null
+  const parts = [format, formatFileSizeHu(filesize)].filter((part) => part !== null)
+  return parts.length > 0 ? parts.join(', ') : null
+}
+
 /** A media-relációból a letöltési URL és a megjelenítendő név. */
 function normalizeAttachment(raw: unknown): CurriculumAttachment | null {
   if (typeof raw !== 'object' || raw === null) {
@@ -147,15 +182,24 @@ function normalizeAttachment(raw: unknown): CurriculumAttachment | null {
   // is elrejtené a hibát (a lejátszó „a fájl feltöltése folyamatban" jelzést ír
   // ki rá — LessonBody.tsx). Név nélkül viszont nincs mit mutatni.
   if (typeof file !== 'object' || file === null) {
-    return sajatCimke === null ? null : { label: sajatCimke, url: null }
+    return sajatCimke === null ? null : { label: sajatCimke, url: null, detail: null }
   }
-  const media = file as { url?: unknown; filename?: unknown }
+  const media = file as {
+    url?: unknown
+    filename?: unknown
+    mimeType?: unknown
+    filesize?: unknown
+  }
   const url = trimmedOrNull(media.url)
   const label = sajatCimke ?? trimmedOrNull(media.filename)
   if (label === null && url === null) {
     return null
   }
-  return { label: label ?? 'Letöltés', url }
+  return {
+    label: label ?? 'Letöltés',
+    url,
+    detail: url === null ? null : fileDetail(media.mimeType, media.filesize),
+  }
 }
 
 function normalizeAttachments(raw: unknown): CurriculumAttachment[] {
@@ -256,6 +300,18 @@ function toLesson(
   }
   options.counters.flatIndex += 1
   return lesson
+}
+
+/**
+ * A kurzus egészéhez tartozó segédanyagok (`products.materials`), kész,
+ * megjeleníthető alakban. Hozzáférés nélkül ÜRES: a letöltési webcím fizetős
+ * tartalom hordozója, ugyanúgy, mint a lecke-melléklet.
+ */
+export function buildCourseMaterials(
+  product: Pick<Product, 'materials'>,
+  hasAccess: boolean,
+): CurriculumAttachment[] {
+  return hasAccess ? normalizeAttachments(product.materials) : []
 }
 
 /**

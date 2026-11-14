@@ -259,7 +259,7 @@ describe('course editor labels and texts (K34)', () => {
       expect(value, value).not.toMatch(/„[^”]*"/)
       // Rövidítés (GYIK, SEO, SOS) megengedett, verzállal kiemelt szó nem.
       const shouted = (value.match(/(?<![\p{L}])[A-ZÁÉÍÓÖŐÚÜŰ]{3,}(?![\p{L}])/gu) ?? []).filter(
-        (word) => !['GYIK', 'SEO', 'SOS'].includes(word),
+        (word) => !['GYIK', 'PDF', 'SEO', 'SOS'].includes(word),
       )
       expect(shouted, value).toEqual([])
       expect(value, value).not.toMatch(/\bvevő|publikál|bemutató videó/)

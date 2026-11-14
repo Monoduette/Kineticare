@@ -83,6 +83,11 @@ const VART_CIMKEK: Record<
   notFitFor: { singular: 'Sor', titleFields: ['text'], subFields: ['text'] },
   faq: { singular: 'Kérdés', titleFields: ['question'], subFields: ['question', 'answer'] },
   gallery: { singular: 'Kép', titleFields: [], imageField: 'image', subFields: ['image'] },
+  materials: {
+    singular: 'Segédanyag',
+    titleFields: ['label'],
+    subFields: ['label', 'protectedFile'],
+  },
   videos: {
     singular: 'Videó',
     titleFields: ['title'],

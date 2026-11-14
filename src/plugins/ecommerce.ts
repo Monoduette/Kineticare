@@ -47,6 +47,7 @@ import {
   type ProductChangeConfirmations,
 } from '../components/admin/huf-price'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
+import { courseMaterialsField } from '../fields/course-materials'
 import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
@@ -2631,6 +2632,14 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     // kell összeállítani, a `videos` már csak a korábbi tartalom hordozója.
     // A két szerkezet egyesítése a src/lib/curriculum/curriculum.ts-ben él.
     courseModulesField,
+    // Az egész kurzushoz tartozó segédanyagok (gyakorlatfüzet, PDF).
+    {
+      ...courseMaterialsField,
+      admin: {
+        ...courseMaterialsField.admin,
+        components: kurzusTombSorcimke('Segédanyag', ['label']),
+      },
+    },
     {
       name: 'videos',
       type: 'array',

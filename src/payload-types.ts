@@ -1952,6 +1952,19 @@ export interface Product {
    */
   previewVideoStreamId?: string | null;
   /**
+   * Az egész kurzushoz tartozó anyagok, például a gyakorlatfüzet. A vásárló minden lecke alatt és a Kurzusaim oldalon is megtalálja. Előbb mentsd el a kurzust, majd tölts fel hozzá védett kurzusfájlt (PDF vagy kép, legfeljebb 10 MB).
+   */
+  materials?:
+    | {
+        /**
+         * Ezt látja a vásárló, például „Gyakorlatfüzet”. Ha üres, a fájl neve áll ott.
+         */
+        label?: string | null;
+        protectedFile: number | CourseFile;
+        id?: string | null;
+      }[]
+    | null;
+  /**
    * A kurzusoldal alján ajánlott további kurzusok. Csak a közzétett, nem rejtett kurzusok látszanak. A sáv címe („Kapcsolódó kurzusok”, ingyenes kurzusnál „Mi jön az ingyenes kurzus után?”) és az ingyenes kurzusnál megjelenő bevezető szöveg a weboldal kódjában van, itt nem írható át.
    */
   relatedProducts?: (number | Product)[] | null;
@@ -2096,13 +2109,16 @@ export interface Category {
   createdAt: string;
 }
 /**
- * Csak a kijelölt kurzus jogosult vevői tölthetik le, miután a leckéhez csatolt fájlt publikáltad. Cseréhez tölts fel új fájlt.
+ * PDF vagy kép. Csak a kijelölt kurzus jogosult vevői érik el, miután a kurzushoz vagy egy leckéhez csatoltad, és közzétetted a kurzust. Cseréhez tölts fel új fájlt.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "course-files".
  */
 export interface CourseFile {
   id: number;
+  /**
+   * Képnél a kép leírása, PDF-nél a dokumentum neve.
+   */
   alt: string;
   /**
    * A fájl ehhez a kurzushoz tartozik; feltöltés után nem módosítható.
@@ -4149,6 +4165,13 @@ export interface ProductsSelect<T extends boolean = true> {
       };
   ogImage?: T;
   previewVideoStreamId?: T;
+  materials?:
+    | T
+    | {
+        label?: T;
+        protectedFile?: T;
+        id?: T;
+      };
   relatedProducts?: T;
   modules?:
     | T

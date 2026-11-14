@@ -701,11 +701,12 @@ describe('markWatched — a duplikáció-védelem szerkezeti', () => {
 
 describe('LessonBody — magyar mikroszöveg', () => {
   it('a hiányzó melléklet kettőspontot használ, nem gondolatjelet (U-03)', () => {
+    // A lecke-melléklet és a kurzus segédanyaga közös listát használ.
     const body = readFileSync(
-      new URL('../components/account/player/LessonBody.tsx', import.meta.url),
+      new URL('../components/account/CourseMaterials.tsx', import.meta.url),
       'utf8',
     )
-    expect(body).toContain('{attachment.label}: a fájl feltöltése folyamatban')
-    expect(body).not.toMatch(/attachment\.label\} —/)
+    expect(body).toContain('{material.label}: a fájl feltöltése folyamatban')
+    expect(body).not.toMatch(/material\.label\} —/)
   })
 })

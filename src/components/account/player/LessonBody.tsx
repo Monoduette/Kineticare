@@ -2,11 +2,11 @@ import { Button } from '@/components/ui/Button'
 import { RichText } from '@/components/lexical/RichText'
 import type { CurriculumLesson } from '@/lib/curriculum/curriculum'
 
-import { DownloadIcon } from './icons'
+import { MaterialLinks } from '../CourseMaterials'
 
 /**
  * A LECKE TÖRZSE a színpadon: a szöveges tartalom, a külső link kártyája és a
- * letölthető mellékletek.
+ * leckéhez csatolt segédanyagok.
  * Ez a rész SEMMIT nem tud a lejátszó-állapotról (jegy, iframe, időzítő) — tehát
  * nincs is szüksége rá. Külön tartva a `CoursePlayer` a lejátszási lánccal
  * foglalkozik, ez pedig a tartalommal; a szöveges és link-leckék így akkor is
@@ -45,35 +45,9 @@ export function LessonBody({ lesson }: LessonBodyProps) {
       {hasAttachments ? (
         <section aria-labelledby="kc-player-mellekletek" className="kc-player-body__attachments">
           <h2 className="kc-player-body__attachments-title" id="kc-player-mellekletek">
-            Letölthető anyagok
+            Segédanyagok ehhez a leckéhez
           </h2>
-          <ul className="kc-player-body__attachment-list">
-            {lesson.attachments.map((attachment, index) => (
-              <li className="kc-player-body__attachment" key={`${attachment.label}-${index}`}>
-                {attachment.url === null ? (
-                  // A média-rekord nincs (még) feltöltve: a sor MEGMARAD, de nem
-                  // ígér működő letöltést — a néma eltüntetés a szerkesztőnek is
-                  // elrejtené a hibát.
-                  <span className="kc-player-body__attachment-missing">
-                    <DownloadIcon />
-                    {/* Kettőspont, nem gondolatjel: docs/ui-sztenderdek.md §3.1 */}
-                    {attachment.label}: a fájl feltöltése folyamatban
-                  </span>
-                ) : (
-                  <a
-                    className="kc-player-body__attachment-link"
-                    download
-                    href={attachment.url}
-                    rel="noopener noreferrer"
-                  >
-                    <DownloadIcon />
-                    <span>{attachment.label}</span>
-                    <span className="kc-sr-only">(letöltés)</span>
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
+          <MaterialLinks materials={lesson.attachments} />
         </section>
       ) : null}
     </div>

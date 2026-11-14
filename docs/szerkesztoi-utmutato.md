@@ -698,6 +698,29 @@ jelenik**, tehát nem tudod véletlenül rossz helyre felvinni a leckéket.
 > parancs (`npm run kurzus:videok-modulba`), ami az azonosítók megtartásával
 > emeli át a videókat egy modulba, tehát senki haladása nem vész el.
 
+### Segédanyagok a kurzushoz (PDF)
+
+Ami az egész kurzushoz tartozik (például a gyakorlatfüzet az
+ismétlésszámokkal), azt a **Segédanyagok a kurzushoz** mezőbe tedd, ne egy
+leckéhez. A vásárló így minden lecke alatt, a gombok után megtalálja, és a
+Kurzusaim oldalon a kurzus kártyáján is.
+
+1. Mentsd el a kurzust.
+2. **Tartalom → Védett kurzusfájlok → Új**: töltsd fel a fájlt (PDF vagy kép,
+   legfeljebb 10 MB), add meg a nevét, és válaszd ki a kurzust.
+3. A kurzusnál a **Segédanyagok a kurzushoz** mezőben vegyél fel egy sort,
+   válaszd ki a fájlt, és írd be a megnevezést (például „Gyakorlatfüzet”).
+4. Tedd közzé a kurzust. A vásárló csak a közzétett változat fájljait éri el.
+
+A fájl új lapon nyílik meg, telefonon a készülék saját nézőjében; onnan
+menthető és nyomtatható. A link mellett a formátum és a méret is látszik
+(„PDF, 2,4 MB”). A fájl nem cserélhető: ha új változat készül, töltsd fel új
+fájlként, és a sorban válaszd azt.
+
+Ami csak egy leckéhez tartozik, az maradjon a lecke **Letölthető anyagok**
+mezőjében. A legfontosabbat (például az ismétlésszámot) érdemes a lecke
+szövegébe is beírni, mert telefonon azt könnyebb olvasni, mint a PDF-et.
+
 ### Amit a vásárló lát
 
 - A leckék mellett kis **kör** jelzi, hogy megnézte-e már. A fejezet fejlécében
