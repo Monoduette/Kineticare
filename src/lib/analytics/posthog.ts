@@ -785,8 +785,18 @@ export function captureAnalyticsException(error: unknown, context: string): void
  * jövőbeli érzékeny query-paraméter) sosem mehet harmadik félhez (M9 —
  * ./page-url.ts); a kampány-paraméterek (utm_*) megmaradnak.
  */
-export function buildPageViewProperties(url: string): { $current_url: string } {
-  return { $current_url: sanitizeAnalyticsUrl(url) }
+export function buildPageViewProperties(
+  url: string,
+  origin: string | undefined = typeof window === 'undefined' ? undefined : window.location.origin,
+): { $current_url: string } {
+  const clean = sanitizeAnalyticsUrl(url)
+  // A `$current_url` ABSZOLÚT cím kell legyen. A route-figyelő útvonalat ad
+  // (`/kurzusok`), és a PostHog a görgetési hőtérképet a `$current_url`-ből
+  // számolja (`new URL(...)`): relatív címnél a számítás elbukik, a hőtérkép-
+  // adat elvész, és „Invalid heatmap data” figyelmeztetés keletkezik (mérve
+  // 2026-11-15: 163 figyelmeztetés 30 nap alatt, mind relatív című
+  // `$pageview`). A posthog-js saját eseményei is abszolút címet küldenek.
+  return { $current_url: origin && clean.startsWith('/') ? `${origin}${clean}` : clean }
 }
 
 /** $pageview rögzítése a route-váltás figyelőből. */

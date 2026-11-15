@@ -140,7 +140,10 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
 
     expect(posthog.init).toHaveBeenCalledTimes(1)
     expect(captured()).toEqual([
-      ['$pageview', { ...keletkezes('/kurzusok/kez'), $current_url: '/kurzusok/kez' }],
+      [
+        '$pageview',
+        { ...keletkezes('/kurzusok/kez'), $current_url: `${window.location.origin}/kurzusok/kez` },
+      ],
       ['course_viewed', { ...keletkezes('/kurzusok/kez'), courseId: 7 }],
     ])
   })
@@ -155,7 +158,10 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
     await settle()
 
     expect(captured()).toEqual([
-      ['$pageview', { ...keletkezes('/kurzusok/kez'), $current_url: '/kurzusok/kez' }],
+      [
+        '$pageview',
+        { ...keletkezes('/kurzusok/kez'), $current_url: `${window.location.origin}/kurzusok/kez` },
+      ],
       ['course_viewed', { ...keletkezes('/kurzusok/kez'), courseId: 7 }],
     ])
   })
@@ -169,7 +175,13 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
     await settle()
 
     expect(captured()).toEqual([
-      ['$pageview', { ...keletkezes('/kurzusok/masik'), $current_url: '/kurzusok/masik' }],
+      [
+        '$pageview',
+        {
+          ...keletkezes('/kurzusok/masik'),
+          $current_url: `${window.location.origin}/kurzusok/masik`,
+        },
+      ],
       ['course_viewed', { ...keletkezes('/kurzusok/masik'), courseId: 8 }],
     ])
   })
@@ -184,7 +196,7 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
     renderPage(8)
 
     expect(captured()).toEqual([
-      ['$pageview', { $current_url: '/kurzusok/masik' }],
+      ['$pageview', { $current_url: `${window.location.origin}/kurzusok/masik` }],
       ['course_viewed', { courseId: 8 }],
     ])
 
@@ -205,7 +217,10 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
     await settle()
 
     expect(captured()).toEqual([
-      ['$pageview', { ...keletkezes('/kurzusok/kez'), $current_url: '/kurzusok/kez' }],
+      [
+        '$pageview',
+        { ...keletkezes('/kurzusok/kez'), $current_url: `${window.location.origin}/kurzusok/kez` },
+      ],
       ['course_viewed', { ...keletkezes('/kurzusok/kez'), courseId: 7 }],
     ])
   })
@@ -223,7 +238,7 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
     act(() => optInToAnalytics())
 
     expect(captured()).toEqual([
-      ['$pageview', { $current_url: '/kurzusok/masik' }],
+      ['$pageview', { $current_url: `${window.location.origin}/kurzusok/masik` }],
       ['course_viewed', { courseId: 8 }],
     ])
   })
