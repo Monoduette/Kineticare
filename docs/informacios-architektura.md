@@ -87,8 +87,8 @@ A három legsúlyosabb, mérhető hiba:
 | `/elfelejtett-jelszo` | *Elfelejtett jelszó* / „Elfelejtetted a jelszavad?" | Jelszó-visszaállítás | nyilvános | `/belepes` | 200 |
 | `/jelszo-visszaallitas` | *Új jelszó beállítása* | Új jelszó | token | e-mail-link | 200 |
 | `/fiok` | *Fiókom* | Adatok, rendelések, kurzusok | **belépett** | **SEMMI — árva** | 307 → `/belepes?returnUrl=/fiok` |
-| `/kurzusaim` | *Kurzusaim* | Megvett kurzusok | **belépett** | köszönőoldal, lejátszó | 307 → `/belepes?returnUrl=/kurzusaim` |
-| `/kurzusaim/[id]` | *Kurzus lejátszása* | Videólejátszó | **vásárló** | `/kurzusaim`, `/fiok` | — |
+| `/kurzusaim` | *Kurzusaim* | Megvett kurzusok, a kártyán a kurzus segédanyagai (PDF, új lapon) | **belépett** | köszönőoldal, lejátszó | 307 → `/belepes?returnUrl=/kurzusaim` |
+| `/kurzusaim/[id]` | *Kurzus lejátszása* | Videólejátszó, minden lecke alatt a kurzus segédanyagai (PDF, új lapon) | **vásárló** | `/kurzusaim`, `/fiok` | — |
 
 ### 2.4 Admin és technikai
 

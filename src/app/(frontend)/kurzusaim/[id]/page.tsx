@@ -9,7 +9,7 @@ import { logger } from '@/lib/logger'
 import { resolvePlayerGate, type CourseAccessState } from '@/lib/course-access'
 import { lookupPurchaseDates, resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { fetchWatchedRefs } from '@/lib/course-progress/lookup'
-import { buildCurriculum } from '@/lib/curriculum/curriculum'
+import { buildCourseMaterials, buildCurriculum } from '@/lib/curriculum/curriculum'
 import { courseTitle, hasUserPurchased, parseCourseIdParam } from '@/lib/courses'
 import { signInHref } from '@/lib/return-url'
 import type { Product, User } from '@/payload-types'
@@ -168,6 +168,7 @@ export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPag
       expiredMessage={resolved.gate?.message ?? null}
       gateKind={resolved.gate?.kind}
       hasAccess={hasAccess}
+      materials={buildCourseMaterials(product, hasAccess)}
       product={{
         id: product.id,
         slug: product.slug ?? null,

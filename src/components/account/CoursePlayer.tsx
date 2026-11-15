@@ -24,7 +24,11 @@ import { courseHref } from '@/lib/course-url'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { myCoursePlayerHref } from '@/lib/courses'
 import { ACCESS_NOT_PURCHASED_MESSAGE, type PlayerGateKind } from '@/lib/course-access'
-import { findLessonByRef, type Curriculum } from '@/lib/curriculum/curriculum'
+import {
+  findLessonByRef,
+  type Curriculum,
+  type CurriculumAttachment,
+} from '@/lib/curriculum/curriculum'
 import { summarizeCurriculum } from '@/lib/curriculum/progress'
 import { bunnyProtectedLibraryId } from '@/lib/stream/bunny-site-config'
 import { streamIframeSrc } from '@/lib/stream/contract'
@@ -34,6 +38,7 @@ import { signInHref } from '@/lib/return-url'
 import { eventsForLessonCompletion } from './player/analytics'
 import { useWatchTracking } from './player/useWatchTracking'
 import { CurriculumRail } from './player/CurriculumRail'
+import { CourseMaterials } from './CourseMaterials'
 import { LessonBody } from './player/LessonBody'
 import { PlayerActions } from './player/PlayerActions'
 import { ArrowIcon, CloseIcon } from './player/icons'
@@ -74,6 +79,8 @@ export interface CoursePlayerProps {
   product: CoursePlayerProduct
   /** A kurzus tananyaga — a SZERVER építi (`buildCurriculum`). */
   curriculum: Curriculum
+  /** A kurzus egészéhez tartozó segédanyagok (`buildCourseMaterials`). */
+  materials?: readonly CurriculumAttachment[]
   hasAccess: boolean
   /**
    * Lejárt hozzáférés esetén a kész, magyar üzenet (A1 — a szöveget a szerver
@@ -153,12 +160,15 @@ function initialLessonRef(curriculum: Curriculum, watchedRefs: readonly string[]
   return summarizeCurriculum(curriculum, watchedRefs).resumeLesson?.ref ?? null
 }
 
+const NO_MATERIALS: readonly CurriculumAttachment[] = []
+
 export function CoursePlayer({
   bindLessonProgress,
   curriculum,
   expiredMessage = null,
   gateKind,
   hasAccess,
+  materials = NO_MATERIALS,
   product,
   watchedRefs,
 }: CoursePlayerProps) {
@@ -986,6 +996,17 @@ export function CoursePlayer({
           )}
 
           {activeLesson === null ? null : <LessonBody lesson={activeLesson} />}
+
+          {/* A kurzus segédanyagai MINDEN leckénél ugyanott, a lecke saját
+              anyaga UTÁN állnak: a vevő telefonon a videó alá görgetve keresi
+              a füzetet (vevői jelzés, 2026-11-14), és ott előbb az adott
+              videóhoz tartozót kell megtalálnia (tulajdonosi kérés,
+              2026-11-15), csak utána az egész kurzusét. Állandó hely: WCAG 2.2 ·
+              3.2.3 Consistent Navigation
+              (https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html);
+              NN/g, 10 Usability Heuristics, #6 Recognition rather than recall
+              (https://www.nngroup.com/articles/ten-usability-heuristics/). */}
+          <CourseMaterials materials={materials} />
         </div>
 
         {/* ── TANANYAG-RAIL ────────────────────────────────────────────────

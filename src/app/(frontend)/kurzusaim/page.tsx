@@ -14,7 +14,7 @@ import {
 import { toCourseAccessView, type CourseAccessView } from '@/lib/course-access'
 import { resolveCourseAccessForUser } from '@/lib/course-access-lookup'
 import { fetchWatchedRefs } from '@/lib/course-progress/lookup'
-import { buildCurriculum } from '@/lib/curriculum/curriculum'
+import { buildCourseMaterials, buildCurriculum } from '@/lib/curriculum/curriculum'
 import { courseHref } from '@/lib/course-url'
 import { courseCover, courseTitle } from '@/lib/courses'
 import { signInHref } from '@/lib/return-url'
@@ -129,6 +129,7 @@ function buildCards(
       href: hasAccess ? `/kurzusaim/${product.id}` : courseHref(product),
       cover: courseCover(product),
       curriculum: buildCurriculum(product, hasAccess),
+      materials: buildCourseMaterials(product, hasAccess),
       watchedRefs: watchedByProduct.get(product.id) ?? [],
       hasAccess,
       expiryLabel: access?.expiryLabel ?? null,

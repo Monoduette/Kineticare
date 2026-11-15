@@ -214,3 +214,10 @@
   inset: 0;
   border-radius: var(--kc-radius-lg); /* a kártya lekerekítése */
 }
+
+/* A kártya segédanyag-linkjei a kártyát fedő gomb-réteg (`.kc-mycourse__cta::after`)
+   FÖLÖTT állnak, hogy a koppintás a fájlt nyissa, ne a lejátszót. */
+.kc-mycourse__materials {
+  position: relative;
+  z-index: 1;
+}

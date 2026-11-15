@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ProgressBar, ProgressRing } from '@/components/ui/Progress'
 
+import { MaterialLinks } from './CourseMaterials'
 import {
   COMPLETED_GROUP_TITLE,
   CURRENT_GROUP_TITLE,
@@ -76,6 +77,15 @@ function CourseCard({ card }: { card: CourseCardView }) {
             <p className="kc-course-access kc-course-access--expired">{card.expiredMessage}</p>
           ) : card.expiryLabel ? (
             <p className="kc-course-access">{card.expiryLabel}</p>
+          ) : null}
+
+          {/* A segédanyag a kártyán is elérhető: aki gyakorol, annak a füzet
+              kell, nem a videó. A linkek a kártyát fedő gomb-réteg FÖLÖTT
+              állnak (kurzusaim.css), különben a koppintás a lejátszót nyitná. */}
+          {card.materials.length > 0 ? (
+            <div className="kc-mycourse__materials">
+              <MaterialLinks ariaLabel={`Segédanyagok: ${card.title}`} materials={card.materials} />
+            </div>
           ) : null}
 
           <Button

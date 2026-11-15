@@ -77,6 +77,9 @@ export const protectCourseFileUpdate: CollectionBeforeOperationHook = async ({
   return args
 }
 
+const mediaUpload = Media.upload as Exclude<CollectionConfig['upload'], boolean | undefined>
+const COURSE_FILE_IMAGE_MIME_TYPES = mediaUpload.mimeTypes ?? []
+
 export const CourseFiles: CollectionConfig = {
   slug: 'course-files',
   labels: { singular: 'Védett kurzusfájl', plural: 'Védett kurzusfájlok' },
@@ -85,7 +88,7 @@ export const CourseFiles: CollectionConfig = {
     group: 'Tartalom',
     defaultColumns: ['alt', 'course', 'filename'],
     description:
-      'Csak a kijelölt kurzus jogosult vevői tölthetik le, miután a leckéhez csatolt fájlt publikáltad. Cseréhez tölts fel új fájlt.',
+      'PDF vagy kép. Csak a kijelölt kurzus jogosult vevői érik el, miután a kurzushoz vagy egy leckéhez csatoltad, és közzétetted a kurzust. Cseréhez tölts fel új fájlt.',
   },
   access: {
     read: courseFileReadAccess,
@@ -95,7 +98,13 @@ export const CourseFiles: CollectionConfig = {
   },
   hooks: { beforeOperation: [protectCourseFileUpdate] },
   fields: [
-    { name: 'alt', type: 'text', required: true, label: 'Képleírás' },
+    {
+      name: 'alt',
+      type: 'text',
+      required: true,
+      label: 'Megnevezés',
+      admin: { description: 'Képnél a kép leírása, PDF-nél a dokumentum neve.' },
+    },
     {
       name: 'course',
       type: 'relationship',
@@ -108,8 +117,13 @@ export const CourseFiles: CollectionConfig = {
     { name: 'transferKey', type: 'text', unique: true, admin: { hidden: true } },
   ],
   upload: {
-    ...(Media.upload as Exclude<CollectionConfig['upload'], boolean | undefined>),
+    ...mediaUpload,
     staticDir: path.join(resolveMediaStaticDir() ?? path.resolve('media'), '_course_files'),
+    // A segédanyag jellemzően PDF (gyakorlatfüzet). A nyilvános Médiatár
+    // továbbra is csak képet fogad; PDF kizárólag ide, a jogosultsághoz kötött
+    // tárba kerülhet. A Payload a tényleges fájltartalomból is ellenőrzi a
+    // típust, a kiterjesztés átírása nem elég.
+    mimeTypes: [...COURSE_FILE_IMAGE_MIME_TYPES, 'application/pdf'],
     crop: false,
     focalPoint: false,
     modifyResponseHeaders: ({ headers }) => privateResponseHeaders(headers),

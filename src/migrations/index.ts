@@ -40,6 +40,7 @@ import * as migration_20260923_073659_kep_helyek from './20260923_073659_kep_hel
 import * as migration_20260923_083202_a_csapat_blokkmezok from './20260923_083202_a_csapat_blokkmezok';
 import * as migration_20261006_085333_ajanlat_kartya_kep from './20261006_085333_ajanlat_kartya_kep';
 import * as migration_20261017_070411_payload_3_90_auth_es_tranzakcio from './20261017_070411_payload_3_90_auth_es_tranzakcio';
+import * as migration_20261114_201728_kurzus_segedanyagok from './20261114_201728_kurzus_segedanyagok';
 
 export const migrations = [
   {
@@ -250,6 +251,11 @@ export const migrations = [
   {
     up: migration_20261017_070411_payload_3_90_auth_es_tranzakcio.up,
     down: migration_20261017_070411_payload_3_90_auth_es_tranzakcio.down,
-    name: '20261017_070411_payload_3_90_auth_es_tranzakcio'
+    name: '20261017_070411_payload_3_90_auth_es_tranzakcio',
+  },
+  {
+    up: migration_20261114_201728_kurzus_segedanyagok.up,
+    down: migration_20261114_201728_kurzus_segedanyagok.down,
+    name: '20261114_201728_kurzus_segedanyagok'
   },
 ];

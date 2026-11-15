@@ -618,3 +618,75 @@
   color: var(--kc-color-text);
   white-space: nowrap;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SEGÉDANYAG-LINKEK (lejátszó, Kurzusaim kártya): src/components/account/
+   CourseMaterials.tsx. A sor 44 px magas érintőcél (WCAG 2.2 · 2.5.8; Apple
+   HIG 44 pt), a keret azonosító UI-határ (≥ 3:1, WCAG 2.2 · 1.4.11).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.kc-materials {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kc-space-3);
+}
+
+.kc-materials__title {
+  margin: 0;
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-heading);
+  color: var(--kc-color-text);
+}
+
+.kc-materials__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-materials__link,
+.kc-materials__missing {
+  display: flex;
+  align-items: center;
+  column-gap: var(--kc-space-2);
+  min-block-size: 44px;
+  padding: var(--kc-space-2) var(--kc-space-3);
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-surface-raised);
+  font-size: var(--kc-font-s);
+  overflow-wrap: anywhere;
+}
+
+.kc-materials__link {
+  color: var(--kc-color-text);
+  text-decoration: none;
+}
+
+.kc-materials__text {
+  min-inline-size: 0;
+}
+
+.kc-materials__label {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.kc-materials__link:hover {
+  border-color: var(--kc-color-primary);
+  color: var(--kc-color-primary-hover);
+}
+
+.kc-materials__detail,
+.kc-materials__missing {
+  color: var(--kc-color-text-muted);
+}
+
+.kc-materials__icon {
+  flex: none;
+  color: var(--kc-color-primary);
+}
