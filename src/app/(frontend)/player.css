@@ -826,3 +826,9 @@
     transition: none;
   }
 }
+
+/* A kurzus segédanyagai a lecke törzse után állnak; alattuk ugyanannyi hely
+   marad a lábléc előtt, mint a lecke törzse alatt. */
+.kc-player .kc-materials {
+  padding-block-end: var(--kc-space-6);
+}

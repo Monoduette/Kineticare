@@ -46,11 +46,13 @@ export function MaterialLinks({ ariaLabel, materials }: MaterialLinksProps) {
               target="_blank"
             >
               <FileIcon />
-              <span className="kc-materials__label">{material.label}</span>
-              {material.detail === null ? null : (
-                <span className="kc-materials__detail">({material.detail})</span>
-              )}
-              <span className="kc-visually-hidden">, új lapon nyílik</span>
+              <span className="kc-materials__text">
+                <span className="kc-materials__label">{material.label}</span>
+                {material.detail === null ? null : (
+                  <span className="kc-materials__detail"> ({material.detail})</span>
+                )}
+                <span className="kc-visually-hidden">, új lapon nyílik</span>
+              </span>
             </a>
           )}
         </li>

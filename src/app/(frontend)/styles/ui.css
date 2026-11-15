@@ -651,7 +651,6 @@
 .kc-materials__link,
 .kc-materials__missing {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   column-gap: var(--kc-space-2);
   min-block-size: 44px;
@@ -666,6 +665,10 @@
 .kc-materials__link {
   color: var(--kc-color-text);
   text-decoration: none;
+}
+
+.kc-materials__text {
+  min-inline-size: 0;
 }
 
 .kc-materials__label {

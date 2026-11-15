@@ -995,17 +995,18 @@ export function CoursePlayer({
             </p>
           )}
 
-          {/* A kurzus segédanyagai (gyakorlatfüzet) MINDEN leckénél ugyanott,
-              közvetlenül a gombok alatt állnak: telefonon a vevő a videó alá
-              görgetve keresi őket, a tananyag-fiókot ehhez nem nyitja ki
-              (vevői jelzés, 2026-11-14). Állandó hely: WCAG 2.2 · 3.2.3
-              Consistent Navigation
+          {activeLesson === null ? null : <LessonBody lesson={activeLesson} />}
+
+          {/* A kurzus segédanyagai MINDEN leckénél ugyanott, a lecke saját
+              anyaga UTÁN állnak: a vevő telefonon a videó alá görgetve keresi
+              a füzetet (vevői jelzés, 2026-11-14), és ott előbb az adott
+              videóhoz tartozót kell megtalálnia (tulajdonosi kérés,
+              2026-11-15), csak utána az egész kurzusét. Állandó hely: WCAG 2.2 ·
+              3.2.3 Consistent Navigation
               (https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html);
               NN/g, 10 Usability Heuristics, #6 Recognition rather than recall
               (https://www.nngroup.com/articles/ten-usability-heuristics/). */}
           <CourseMaterials materials={materials} />
-
-          {activeLesson === null ? null : <LessonBody lesson={activeLesson} />}
         </div>
 
         {/* ── TANANYAG-RAIL ────────────────────────────────────────────────

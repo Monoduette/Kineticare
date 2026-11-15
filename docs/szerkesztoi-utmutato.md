@@ -702,7 +702,7 @@ jelenik**, tehát nem tudod véletlenül rossz helyre felvinni a leckéket.
 
 Ami az egész kurzushoz tartozik (például a gyakorlatfüzet az
 ismétlésszámokkal), azt a **Segédanyagok a kurzushoz** mezőbe tedd, ne egy
-leckéhez. A vásárló így minden lecke alatt, a gombok után megtalálja, és a
+leckéhez. A vásárló így minden lecke alatt megtalálja (a lecke saját anyagai után), és a
 Kurzusaim oldalon a kurzus kártyáján is.
 
 1. Mentsd el a kurzust.
