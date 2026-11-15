@@ -196,12 +196,12 @@ describe('PostHog SDK: lusta betöltés', () => {
       [
         '$pageview',
         {
-          $current_url: '/?utm_source=hirlevel',
+          $current_url: `${window.location.origin}/?utm_source=hirlevel`,
           $pathname: '/',
           utm_source: 'hirlevel',
         },
       ],
-      ['$pageview', { $current_url: '/kurzusok', $pathname: '/kurzusok' }],
+      ['$pageview', { $current_url: `${window.location.origin}/kurzusok`, $pathname: '/kurzusok' }],
     ])
   })
 

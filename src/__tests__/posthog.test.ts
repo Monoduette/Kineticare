@@ -134,6 +134,17 @@ describe('M9 — a $pageview URL-je a capture-határon megtisztítva', () => {
       buildPageViewProperties('/jelszo-visszaallitas?token=DUMMY-JEGY&utm_source=hirlevel'),
     ).toEqual({ $current_url: '/jelszo-visszaallitas?utm_source=hirlevel' })
   })
+
+  it('a $current_url abszolút cím: a PostHog ebből számolja a görgetési hőtérképet', () => {
+    // Relatív címnél a PostHog `new URL($current_url)` hívása elbukik, és
+    // „Invalid heatmap data” figyelmeztetés keletkezik (2026-11-15).
+    const { $current_url } = buildPageViewProperties(
+      '/kurzusok?utm_source=hirlevel',
+      'https://www.kineticare.hu',
+    )
+    expect($current_url).toBe('https://www.kineticare.hu/kurzusok?utm_source=hirlevel')
+    expect(() => new URL($current_url)).not.toThrow()
+  })
 })
 
 describe('M9 — a before_send minden eseményt a beágyazott értékeivel együtt tisztít', () => {
