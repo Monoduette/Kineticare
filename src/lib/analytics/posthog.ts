@@ -211,6 +211,76 @@ function scrubSensitiveQueryFromAddressBar(): void {
   }
 }
 
+/** A posthog-js itt jegyzi meg az eszköztár indítását (1.430.3, toolbar.js). */
+export const POSTHOG_TOOLBAR_STORAGE_KEY = '_postHogToolbarParams'
+
+/**
+ * A PostHog szerkesztő eszköztára (Toolbar, a „sün”) az oldalon SOSEM indul el.
+ *
+ * Az eszköztárat a PostHog felületéről lehet elindítani („Launch toolbar”,
+ * Heatmaps, Actions). Az indítás jele a címsor `#__posthog=…` (vagy
+ * `#state=…`) részében érkezik, a posthog-js a localStorage-ba menti, és
+ * onnantól a böngészőben MINDEN oldalon betölti. A CSP a stíluslapját nem
+ * engedi be, ezért formázás nélkül, óriási ikonokkal takarja a lapot
+ * (tulajdonosi jelzés, 2026-11-15: a fiók oldalán jelent meg). A posthog-js
+ * 1.430.3-nak nincs kapcsolója az eszköztár tiltására, és a jelet a csomag
+ * BETÖLTÉSEKOR olvassa ki a címsorból, ezért a jel az SDK betöltése ELŐTT
+ * tűnik el: a tárolt kulcs törlődik, az indító horgony lekerül a címsorról.
+ * Az elemzés és a hőtérkép-adatok gyűjtése ettől független.
+ */
+/**
+ * Indító horgony-e: a posthog-js olvasását tükrözi (1.430.3, toolbar.js
+ * `maybeLoadToolbar`). A `__posthog` vagy a `state` paraméter értéke JSON,
+ * akár base64-kódolva is, és az `action` mezője `ph_authorize`.
+ */
+function isToolbarLaunchHash(hash: string): boolean {
+  const params = new URLSearchParams(hash.replace(/^#/, ''))
+  for (const key of ['__posthog', 'state']) {
+    const raw = params.get(key)
+    if (raw === null) continue
+    for (const decode of [
+      // Az URLSearchParams a base64 `+` jelét szóközzé oldja, ezt visszaállítjuk.
+      (value: string) => atob(value.replace(/ /g, '+')),
+      (value: string) => value,
+    ]) {
+      try {
+        const parsed: unknown = JSON.parse(decode(raw))
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          (parsed as { action?: unknown }).action === 'ph_authorize'
+        ) {
+          return true
+        }
+      } catch {
+        // Nem ez a kódolás: a következőt próbáljuk.
+      }
+    }
+  }
+  return false
+}
+
+export function dropPostHogToolbarLaunchState(): void {
+  try {
+    window.localStorage.removeItem(POSTHOG_TOOLBAR_STORAGE_KEY)
+  } catch {
+    // A tároló nem érhető el (privát mód, letiltott webhelyadat): nincs mit törölni.
+  }
+  try {
+    if (isToolbarLaunchHash(window.location.hash)) {
+      const url = new URL(window.location.href)
+      History.prototype.replaceState.call(
+        window.history,
+        window.history.state,
+        '',
+        `${url.pathname}${url.search}`,
+      )
+    }
+  } catch {
+    // A címsor nem írható: a tárolt kulcs törlése így is megtörtént.
+  }
+}
+
 /**
  * A `before_send` horog: minden kimenő esemény URL-jellegű tulajdonságából
  * kivágja az érzékeny query-paramétereket (./page-url.ts), a többit
@@ -544,6 +614,7 @@ export function initPostHog(): boolean {
     return false
   }
   scrubSensitiveQueryFromAddressBar()
+  dropPostHogToolbarLaunchState()
   initStarted = true
   // A hozzájárulásra várók most az SDK-sorba kerülnek, a keletkezési
   // oldalukkal (lásd readyCallbacks): a betöltés alatti route-váltás már nem
