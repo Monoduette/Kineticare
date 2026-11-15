@@ -22,7 +22,6 @@ import {
   ensureHomeLayoutFrissTelepitesen,
   ensureHomeTestimonialsFrissTelepitesen,
 } from './lib/home-seed'
-import { importCourseMaterials } from './lib/course-materials-import'
 import { ensureMediaFiles } from './lib/media-restore'
 import { guardDestructiveMigrationCommands } from './lib/migrations/destructive-migration-guard'
 import { Categories } from './collections/Categories'
@@ -677,9 +676,6 @@ async function onInit(payload: Payload): Promise<void> {
   await checkConnectionBudget(payload.db.pool, logger)
   await ensureHomeBaseline(payload)
   await ensureContactForm(payload)
-  // Egyszeri, kapuzott betöltés (OWNER_COURSE_MATERIALS_CONFIRM); kapu nélkül
-  // nem csinál semmit, a hibáját maga kezeli (src/lib/course-materials-import.ts).
-  await importCourseMaterials(payload)
   // C9: a lábléc hírlevél-űrlapja UGYANOLYAN telepítési előfeltétel, mint a
   // Kapcsolat űrlap — a lábléc minden oldalon ott van, és seedeletlen
   // környezetben a blokk némán kimaradna. Idempotens, meglévőt sosem ír felül.
