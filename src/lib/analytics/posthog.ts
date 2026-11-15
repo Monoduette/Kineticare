@@ -228,6 +228,38 @@ export const POSTHOG_TOOLBAR_STORAGE_KEY = '_postHogToolbarParams'
  * tűnik el: a tárolt kulcs törlődik, az indító horgony lekerül a címsorról.
  * Az elemzés és a hőtérkép-adatok gyűjtése ettől független.
  */
+/**
+ * Indító horgony-e: a posthog-js olvasását tükrözi (1.430.3, toolbar.js
+ * `maybeLoadToolbar`). A `__posthog` vagy a `state` paraméter értéke JSON,
+ * akár base64-kódolva is, és az `action` mezője `ph_authorize`.
+ */
+function isToolbarLaunchHash(hash: string): boolean {
+  const params = new URLSearchParams(hash.replace(/^#/, ''))
+  for (const key of ['__posthog', 'state']) {
+    const raw = params.get(key)
+    if (raw === null) continue
+    for (const decode of [
+      // Az URLSearchParams a base64 `+` jelét szóközzé oldja, ezt visszaállítjuk.
+      (value: string) => atob(value.replace(/ /g, '+')),
+      (value: string) => value,
+    ]) {
+      try {
+        const parsed: unknown = JSON.parse(decode(raw))
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          (parsed as { action?: unknown }).action === 'ph_authorize'
+        ) {
+          return true
+        }
+      } catch {
+        // Nem ez a kódolás: a következőt próbáljuk.
+      }
+    }
+  }
+  return false
+}
+
 export function dropPostHogToolbarLaunchState(): void {
   try {
     window.localStorage.removeItem(POSTHOG_TOOLBAR_STORAGE_KEY)
@@ -235,14 +267,7 @@ export function dropPostHogToolbarLaunchState(): void {
     // A tároló nem érhető el (privát mód, letiltott webhelyadat): nincs mit törölni.
   }
   try {
-    const { hash } = window.location
-    let decoded = hash
-    try {
-      decoded = decodeURIComponent(hash)
-    } catch {
-      // Sérült kódolás: a nyers horgonyon keresünk.
-    }
-    if (/[#&](__posthog|state)=/.test(hash) && decoded.includes('ph_authorize')) {
+    if (isToolbarLaunchHash(window.location.hash)) {
       const url = new URL(window.location.href)
       History.prototype.replaceState.call(
         window.history,

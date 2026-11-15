@@ -15,9 +15,14 @@ import {
  * (tulajdonosi jelzés, 2026-11-15). Az indítás jelének az SDK betöltése előtt
  * el kell tűnnie, a látogató saját horgonya viszont nem sérülhet.
  */
-const INDITAS = encodeURIComponent(
-  JSON.stringify({ action: 'ph_authorize', token: 'DUMMY', temporaryToken: 'DUMMY' }),
-)
+const JEL = JSON.stringify({ action: 'ph_authorize', token: 'DUMMY', temporaryToken: 'DUMMY' })
+/** A posthog-js mindkét alakot elfogadja: sima JSON és base64-be csomagolt JSON. */
+const ALAKOK = [
+  ['__posthog', 'JSON', encodeURIComponent(JEL)],
+  ['state', 'JSON', encodeURIComponent(JEL)],
+  ['__posthog', 'base64', encodeURIComponent(btoa(JEL))],
+  ['state', 'base64', encodeURIComponent(btoa(JEL))],
+] as const
 
 describe('dropPostHogToolbarLaunchState', () => {
   beforeEach(() => {
@@ -31,11 +36,22 @@ describe('dropPostHogToolbarLaunchState', () => {
     expect(window.localStorage.getItem(POSTHOG_TOOLBAR_STORAGE_KEY)).toBeNull()
   })
 
-  it.each(['__posthog', 'state'])('a címsor %s indító horgonya lekerül, a query marad', (kulcs) => {
-    window.history.replaceState(null, '', `/fiok?utm_source=hirlevel#${kulcs}=${INDITAS}`)
+  it.each(ALAKOK)(
+    'a címsor %s indító horgonya (%s) lekerül, a query marad',
+    (kulcs, _alak, ertek) => {
+      window.history.replaceState(null, '', `/fiok?utm_source=hirlevel#${kulcs}=${ertek}`)
+      dropPostHogToolbarLaunchState()
+      expect(window.location.hash).toBe('')
+      expect(`${window.location.pathname}${window.location.search}`).toBe(
+        '/fiok?utm_source=hirlevel',
+      )
+    },
+  )
+
+  it('az idegen state horgony (nem PostHog-indítás) érintetlen marad', () => {
+    window.history.replaceState(null, '', '/fiok#state=abc123')
     dropPostHogToolbarLaunchState()
-    expect(window.location.hash).toBe('')
-    expect(`${window.location.pathname}${window.location.search}`).toBe('/fiok?utm_source=hirlevel')
+    expect(window.location.hash).toBe('#state=abc123')
   })
 
   it('a látogató saját horgonya érintetlen marad', () => {
