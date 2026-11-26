@@ -12,6 +12,7 @@ import {
   draftStatusBeforeDuplicate,
   forceDraftVersionOnDuplicate,
 } from '../lib/duplicate'
+import { indexNowAfterChange } from '../lib/indexnow'
 import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
 import { setPublishedAtOnFirstPublish, syncStatusFromDraftStatus } from '../lib/publish-status'
 
@@ -180,6 +181,8 @@ export const Pages: CollectionConfig = {
     // A sorrend számít: előbb a `status` szinkronizálódik a `_status`-ból,
     // utána dől el, hogy ez a mentés az első közzététel-e (publishedAt).
     beforeChange: [syncStatusFromDraftStatus, setPublishedAtOnFirstPublish],
+    // Közzétételkor jelzés a Bingnek (IndexNow), src/lib/indexnow.ts.
+    afterChange: [indexNowAfterChange],
   },
   fields: [
     ...felsoTajekoztatok,

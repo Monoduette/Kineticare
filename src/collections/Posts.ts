@@ -10,6 +10,7 @@ import {
   draftStatusBeforeDuplicate,
   forceDraftVersionOnDuplicate,
 } from '../lib/duplicate'
+import { indexNowAfterChange } from '../lib/indexnow'
 import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
 import { setPublishedAtOnFirstPublish, syncStatusFromDraftStatus } from '../lib/publish-status'
 
@@ -243,6 +244,8 @@ export const Posts: CollectionConfig = {
   hooks: {
     beforeValidate: [forceDraftVersionOnDuplicate],
     beforeChange: [syncStatusFromDraftStatus, setPublishedAtOnFirstPublish],
+    // Közzétételkor jelzés a Bingnek (IndexNow), src/lib/indexnow.ts.
+    afterChange: [indexNowAfterChange],
   },
   fields: [
     {

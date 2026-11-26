@@ -29,6 +29,7 @@ import {
   streamAssetReadAccess,
 } from '../access'
 import { revalidateMenusCache } from '../collections/Menus'
+import { indexNowAfterChange } from '../lib/indexnow'
 import { coursePackage } from '../blocks/CoursePackage'
 import { KEP_CSERE_SUGO } from '../blocks/kep-csere'
 import {
@@ -2215,6 +2216,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         revalidateMenusCache()
         return doc
       },
+      // Közzétételkor jelzés a Bingnek (IndexNow), src/lib/indexnow.ts.
+      indexNowAfterChange,
     ],
     afterDelete: [
       ...(defaultCollection.hooks?.afterDelete ?? []),
