@@ -758,6 +758,45 @@ Praktikák:
   ékezethelyesen nyílik). Így egy kattintással megvan azoknak az e-mail-címe,
   akiknek emlékeztetőt küldenél.
 
+### Témakurzus készítése
+
+A **témakurzus** a teljes program (Otthoni KézRehab Program) egy témára
+szűkített része, saját oldallal és saját árral. A program oldalán a „Csak egy
+területen fáj?” szakasz kártyái vezetnek a közzétett témakurzusokhoz.
+
+**A kész minta:** a Kurzusok listájában a **„Csuklófájdalom témakurzus
+(minta)”**. Piszkozat és rejtett, a látogató nem látja. Nyisd meg, és nézd meg
+az **Előnézet** gombbal: így néz ki egy teljesen kitöltött témakurzus-oldal. A
+benne lévő szöveg a teljes program már jóváhagyott mondataiból áll, a csuklóra
+szűkítve. Az ára (19 900 Ft) csak mintaár. Ha a minta még nincs a listában, a
+tulajdonos hozza létre (`npm run temakurzus:minta`).
+
+Új témakurzus lépésről lépésre:
+
+1. Nyisd meg a mintát vagy a teljes programot, és a jobb felső menüben válaszd a
+   **Duplikálás** lehetőséget. A másolat piszkozat, nem vásárolható, nem
+   örökli a programhoz kötést és az akciót. A leckék védett fájljai sem jönnek
+   át, ezeket a másolathoz újra kell feltölteni. A címe és a
+   Belső azonosítója „- Copy” végű; amíg így marad, a kurzus nem tehető
+   közzé.
+2. Írd át a **címet**, a **Belső azonosítót** és a **webcímet** a témára.
+3. A **Tananyag** fülön töröld azokat a leckéket, amelyek nem tartoznak a
+   témához. A megmaradó lecke ugyanazt a videót játssza, mint a programban,
+   videót újra feltölteni nem kell.
+4. Írd meg a szövegeket: rövid leírás, részletes leírás, „Kinek való?”,
+   „Nem javasoljuk, ha…”, garancia. **Árat ne írj a szövegbe**, az oldal az ár
+   mezőből mutatja. Ha mégis maradt benne (például a program 79 500 Ft-ja),
+   az oldalsáv ellenőrzőlistájának **Témakurzus** sora szól.
+5. A **Kurzusoldal kinézete** legyen **Fotós fejléc**. A fejléc háttere a
+   **Borítókép**; kép nélkül sötét háttér jelenik meg.
+6. Ha kész, szólj a tulajdonosnak. Ő állítja be az **árat**, a **„Teljes
+   program, amelynek része”** mezőt, a **„Rejtett kurzus”** pipát és a
+   **„Megjelenés a weboldalon”** mezőt, és ő teszi közzé.
+
+> A teljes program ára a témakurzusoktól függetlenül mindig ugyanannyi: aki
+> korábban témakurzust vett, nem kap belőle levonást. Kedvezmény csak a szokásos
+> akciós mezőkkel adható.
+
 ---
 
 ## 13. Mi hol szerkeszthető?

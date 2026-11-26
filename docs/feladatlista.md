@@ -172,6 +172,7 @@ kérésre, külön PR-ben (`CLAUDE.md`, TILOS ZÓNÁK 5.). A 3.90.2-re és a Nex
 | TK2 | Témakurzusok: leckeválasztó gomb a duplikált kurzushoz | A témakurzus ma a program duplikálásával és a felesleges leckék törlésével készül. Egy „leckék átvétele a programból” gomb gyorsítaná, de nem kell az induláshoz. |
 | TK3 | Témakurzusok: mélylink a program adott leckéjére | A program birtokosa a témakurzus oldalán ma a program lejátszójának elejére jut. Jobb volna a témának megfelelő leckére vinni. |
 | TK4 | A program leírásának „119 000 Ft … 79 500 Ft” mondata | A fő kurzus szövegében kézzel írt áthúzott ár áll. Akció nélkül ez UCPD-kockázat, és duplikáláskor a témakurzusba is átkerül (a szerkesztői ellenőrzőlista jelzi). Tulajdonosi döntés kell a szövegről. |
+| TK5 | Témakurzusok: a csuklós minta jóváhagyása és élesben létrehozása | A `npm run temakurzus:minta` próbafutásban megmondja, mit hozna létre; íráshoz `OWNER_TEMAKURZUS_CONFIRM=igen` (tulajdonosi jóváhagyással). A minta rejtett piszkozat, a látogató nem látja. Jóváhagyandó: a szöveg (a program mondatai a csuklóra szűkítve), a 30 napos garancia a témakurzuson, és a 19 900 Ft-os mintaár helyett a valódi ár. |
 
 ## Kész 2026 szeptemberében (#283–#307)
 
