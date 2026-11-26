@@ -51,6 +51,7 @@ vi.mock('next/navigation', () => ({
 const sdk = vi.hoisted(() => ({
   optedOut: false,
   delivered: [] as Array<[string, Record<string, unknown> | undefined]>,
+  identified: [] as string[],
 }))
 
 vi.mock('posthog-js', () => ({
@@ -68,6 +69,11 @@ vi.mock('posthog-js', () => ({
     opt_out_capturing: vi.fn(() => {
       sdk.optedOut = true
     }),
+    identify: vi.fn((id: string) => {
+      if (!sdk.optedOut) {
+        sdk.identified.push(id)
+      }
+    }),
   },
 }))
 
@@ -82,6 +88,8 @@ const { CONSENT_STORAGE_KEY, optInToAnalytics, optOutOfAnalytics, resetPostHogFo
 const { PostHogProvider } = await import('@/components/analytics/PostHogProvider')
 const { PostHogPageView } = await import('@/components/analytics/PostHogPageView')
 const { TrackEvent } = await import('@/components/analytics/TrackEvent')
+const { ArticleEngagement } = await import('@/components/analytics/ArticleEngagement')
+const { IdentifyUser } = await import('@/components/analytics/IdentifyUser')
 
 let root: Root
 let container: HTMLElement
@@ -119,6 +127,7 @@ beforeEach(() => {
   posthog.init.mockReset()
   sdk.optedOut = false
   sdk.delivered = []
+  sdk.identified = []
   window.localStorage.clear()
   nav('/kurzusok/kez')
   container = document.createElement('div')
@@ -241,5 +250,57 @@ describe('PostHog init-sorrend: a korai capture nem vész el', () => {
       ['$pageview', { $current_url: `${window.location.origin}/kurzusok/masik` }],
       ['course_viewed', { courseId: 8 }],
     ])
+  })
+})
+
+/**
+ * REGRESSZIÓ (2026-11-26): a közvetlenül megnyitott cikk `article_viewed`
+ * eseménye és a fiók-oldalon visszatérő vevő azonosítása. Mindkettő a layout
+ * gyerekeként, az init ELŐTT futó effectből indul, ugyanúgy, mint a fenti
+ * TrackEvent.
+ */
+describe('PostHog init-sorrend: cikk-megnyitás és fiók-azonosítás', () => {
+  it('tárolt hozzájárulással a közvetlenül megnyitott cikk article_viewed-je kimegy, egyszer', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted')
+    nav('/blog/teniszkonyok')
+
+    act(() => {
+      root.render(
+        createElement(
+          PostHogProvider,
+          null,
+          createElement(ArticleEngagement, {
+            articleSlug: 'teniszkonyok',
+            path: '/blog/teniszkonyok',
+          }),
+        ),
+      )
+    })
+    await settle()
+
+    expect(captured()).toEqual([
+      [
+        'article_viewed',
+        {
+          ...keletkezes('/blog/teniszkonyok'),
+          articleSlug: 'teniszkonyok',
+          path: '/blog/teniszkonyok',
+        },
+      ],
+    ])
+  })
+
+  it('a fiók-oldal hideg betöltésekor a bejelentkezett vevő azonosítója átmegy; hozzájárulás nélkül nem', async () => {
+    nav('/kurzusaim')
+    act(() => {
+      root.render(createElement(PostHogProvider, null, createElement(IdentifyUser, { userId: 42 })))
+    })
+    await settle()
+    expect(sdk.identified).toEqual([])
+
+    act(() => optInToAnalytics())
+    await settle()
+
+    expect(sdk.identified).toEqual(['42'])
   })
 })
