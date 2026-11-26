@@ -203,7 +203,21 @@ export function reportUnpricedPublishedCourses(
 }
 
 /** CTA-állapotgép ágai. A `free` ág a kurzusoldal igénylő űrlapját kapcsolja be — nem törölhető. */
-export type CourseCtaKind = 'buy' | 'purchased' | 'archived' | 'unavailable' | 'free'
+export type CourseCtaKind = 'buy' | 'purchased' | 'included' | 'archived' | 'unavailable' | 'free'
+
+/** Az a teljes program, amelyben a témakurzus benne van, és amelyet a látogató birtokol. */
+export interface IncludingProgram {
+  id: number
+  title: string
+}
+
+/**
+ * Az `included` ág magyarázó mondata (§3.2 #49). A program címe kettőspont
+ * után áll, így a névelő (a/az) nem függ a címtől.
+ */
+export function includedInProgramNote(programTitle: string): string {
+  return `Ez a témakurzus benne van az általad megvett teljes programban: ${programTitle}. Ott éred el a leckéit.`
+}
 
 export interface CourseCtaState {
   kind: CourseCtaKind
@@ -232,6 +246,7 @@ export interface CourseCtaState {
 export function resolveCourseCta(
   product: Pick<Product, 'id' | 'slug' | 'status' | 'priceInHUF' | 'priceInHUFEnabled'>,
   purchased: boolean,
+  includedIn: IncludingProgram | null = null,
 ): CourseCtaState {
   if (purchased) {
     return {
@@ -240,6 +255,17 @@ export function resolveCourseCta(
       href: myCoursePlayerHref(product.id),
       disabled: false,
       note: null,
+    }
+  }
+  // Témakurzus, amelynek teljes programját a látogató birtokolja: nincs mit
+  // megvennie, a program lejátszója a cél (a pénztár 409-cel el is utasítaná).
+  if (includedIn !== null) {
+    return {
+      kind: 'included',
+      label: ctaLabel('program-open-from-topic'),
+      href: myCoursePlayerHref(includedIn.id),
+      disabled: false,
+      note: includedInProgramNote(includedIn.title),
     }
   }
   if (product.status === 'archived') {

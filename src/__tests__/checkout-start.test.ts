@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { BarionApiError } from '../lib/barion'
 import type { Order, Product, User } from '../payload-types'
 import { createCheckoutStartHandler } from '../lib/checkout/route-handler'
+import { CHECKOUT_INCLUDED_IN_OWNED_PROGRAM } from '../lib/checkout/parent-course-block'
 import {
   CHECKOUT_ALREADY_PURCHASED,
   CHECKOUT_PAID_UNDER_REVIEW,
@@ -920,6 +921,28 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     const promise = startCheckout({ payload, user: mockUser, input: happyInput })
     await expect(promise).rejects.toMatchObject({ status: 409 })
     await expect(promise).rejects.toThrowError(CHECKOUT_ALREADY_PURCHASED)
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('témakurzus: a teljes program birtokosa 409-et kap, rendelés és Barion-hívás nélkül', async () => {
+    // A kapu szabályait a temakurzus-db.test.ts méri valódi sorokon; ez a
+    // teszt azt bizonyítja, hogy a pénztár a rendelés létrehozása előtt
+    // ténylegesen meghívja.
+    const programOwner = { ...mockUser, purchases: [9] } as unknown as User
+    const { payload, calls } = createMockPayload({
+      product: { ...publishedProduct, parentCourses: [9] } as unknown as Product,
+      findOrders: (where) =>
+        whereMentions(where, '"id":{"in":[9]}')
+          ? { docs: [{ id: 9, accessDurationDays: null }], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+    })
+
+    const promise = startCheckout({ payload, user: programOwner, input: happyInput })
+    await expect(promise).rejects.toMatchObject({
+      status: 409,
+      message: CHECKOUT_INCLUDED_IN_OWNED_PROGRAM,
+    })
     expect(calls.create).toHaveLength(0)
     expect(fetchMock).not.toHaveBeenCalled()
   })

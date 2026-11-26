@@ -5,6 +5,7 @@ import {
   EMPTY_APPOINTMENT_CONTEXT,
   type AppointmentSectionContext,
 } from '../../lib/appointment/context'
+import { isTopicCourse } from '../../lib/course-family'
 import { showcaseGridProducts } from '../../lib/course-showcase'
 import { resolveCtaBannerFigure } from '../../lib/cta-banner-course'
 import { logger } from '../../lib/logger'
@@ -176,11 +177,16 @@ export function RenderBlocks({
   szerkesztes = null,
 }: RenderBlocksProps) {
   const visibleProducts = products.filter(isPubliclyVisibleProduct)
+  // Témakurzus (src/lib/course-family.ts) nem kerül az „SOS vs. teljes
+  // program” összevetésbe és a rácsba (showcaseGridProducts maga szűri). A
+  // CTA-sáv pontos kurzus-címe a teljes `visibleProducts` listából oldódik
+  // fel, így témakurzusra is mutathat.
+  const programProducts = visibleProducts.filter((product) => !isTopicCourse(product))
   // A fizetős halmaz a GYIK „SOS vs. teljes program” összevetéséhez kell.
-  const paidProducts = visibleProducts.filter(isPaidProduct)
+  const paidProducts = programProducts.filter(isPaidProduct)
   // A nevesített SOS-sávba csak a kanonikus, publikált és explicit ingyenes
   // SOS kerülhet. Másik ingyenes vagy hiányosan árazott termék nem helyettesíti.
-  const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
+  const freeProduct = programProducts.find(isAvailableSosProduct) ?? null
   // A courseCards rács a teljes kínálat: fizetős kurzusok elöl, majd az
   // igazolt ingyenes SOS „Ingyenes” felirattal (WP12, tulajdonosi kérés
   // 2026-09-07; a 2026-08-15-i „csak fizetős” K2-szabály felülvizsgálva,

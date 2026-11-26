@@ -1,3 +1,4 @@
+import { isTopicCourse } from './course-family'
 import { COURSE_BASE_PATH, courseHref } from './course-url'
 import { courseTitle, isPaidCourse, parseCourseIdParam } from './courses'
 import type { Media, Product } from '../payload-types'
@@ -136,7 +137,8 @@ export function resolveCtaBannerCourseCover(
 
   let product: Product | undefined
   if (pathname === COURSE_BASE_PATH) {
-    product = products.find((candidate) => isPaidCourse(candidate))
+    // A listára mutató sáv a teljes program borítóját kapja, nem egy témakurzusét.
+    product = products.find((candidate) => isPaidCourse(candidate) && !isTopicCourse(candidate))
   } else if (pathname.startsWith(`${COURSE_BASE_PATH}/`)) {
     product = findCtaCourse(pathname, products)
   }

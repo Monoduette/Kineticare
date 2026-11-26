@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 
+import type { IncludingProgram } from '../../lib/courses'
 import type { Product } from '../../payload-types'
 import { Badge } from '../ui/Badge'
 import { PriceTag } from '../ui/PriceTag'
@@ -35,14 +36,16 @@ export interface CourseBuyboxProps {
    */
   product: Pick<Product, 'id' | 'slug' | 'status' | 'priceInHUF' | 'priceInHUFEnabled'>
   hasPurchased: boolean
+  /** Témakurzusnál a látogató által birtokolt teljes program (§3.2 #49). */
+  includedIn?: IncludingProgram | null
   /**
- * A CTA HELYÉRE kerülő egyedi tartalom. Megadva a `CourseCta` állapotgép
- * helyett ez renderelődik, ugyanazon a helyen és ugyanabban a sorrendben
- * (ár → cselekvés → előnyök), tehát a kutatás szerinti felépítés nem sérül.
- * MA EGY HÍVÓJA VAN: az INGYENES kurzus igénylő űrlapja
- * (`FreeCourseRequestForm`). Ott a cselekvés nem link, hanem beküldés (név +
- * e-mail → hozzáférés + belépő link), amit egy `href`-alapú gomb nem tud
- */
+   * A CTA HELYÉRE kerülő egyedi tartalom. Megadva a `CourseCta` állapotgép
+   * helyett ez renderelődik, ugyanazon a helyen és ugyanabban a sorrendben
+   * (ár → cselekvés → előnyök), tehát a kutatás szerinti felépítés nem sérül.
+   * MA EGY HÍVÓJA VAN: az INGYENES kurzus igénylő űrlapja
+   * (`FreeCourseRequestForm`). Ott a cselekvés nem link, hanem beküldés (név +
+   * e-mail → hozzáférés + belépő link), amit egy `href`-alapú gomb nem tud
+   */
   ctaSlot?: ReactNode
 }
 
@@ -61,6 +64,7 @@ export function CourseBuybox({
   secondaryLabel,
   product,
   hasPurchased,
+  includedIn = null,
   ctaSlot,
 }: CourseBuyboxProps) {
   return (
@@ -81,7 +85,14 @@ export function CourseBuybox({
         <p className="kc-course-buybox__price kc-course-buybox__price--free">Ingyenes</p>
       ) : null}
 
-      {ctaSlot ?? <CourseCta hasPurchased={hasPurchased} id={ctaId} product={product} />}
+      {ctaSlot ?? (
+        <CourseCta
+          hasPurchased={hasPurchased}
+          id={ctaId}
+          includedIn={includedIn}
+          product={product}
+        />
+      )}
 
       {highlights.length > 0 ? (
         <ul className="kc-course-checklist" role="list">

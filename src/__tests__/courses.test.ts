@@ -102,6 +102,29 @@ describe('kurzuslista kategória-szűrés', () => {
   })
 })
 
+describe('témakurzus CTA-ja (§3.2 #49)', () => {
+  const topic = { id: 21, status: 'published', priceInHUF: 19990, priceInHUFEnabled: true } as const
+  const program = { id: 1, title: 'Otthoni KézRehab Program' }
+
+  it('a program birtokosa vásárlás helyett a program lejátszóját kapja, magyarázattal', () => {
+    const cta = resolveCourseCta(topic, false, program)
+    expect(cta).toEqual({
+      kind: 'included',
+      label: ctaLabel('program-open-from-topic'),
+      href: myCoursePlayerHref(1),
+      disabled: false,
+      note: 'Ez a témakurzus benne van az általad megvett teljes programban: Otthoni KézRehab Program. Ott éred el a leckéit.',
+    })
+  })
+
+  it('a saját vásárlás megelőzi: a megvett témakurzus a saját lejátszóját nyitja', () => {
+    expect(resolveCourseCta(topic, true, program)).toMatchObject({
+      kind: 'purchased',
+      href: myCoursePlayerHref(21),
+    })
+  })
+})
+
 describe('archived kurzus CTA-ja', () => {
   it('archived + nem vevő: a CTA inaktív, href nélkül, „nem vásárolható" jelöléssel', () => {
     const cta = resolveCourseCta(
