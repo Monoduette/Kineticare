@@ -5,6 +5,7 @@ import {
   RATE_LIMIT_RULES,
   SlidingWindowRateLimiter,
   checkForgotPasswordEmailRateLimit,
+  withPayloadRestRateLimit,
 } from '../../lib/security/rate-limit'
 import { readBodyBytesWithCap, readBodyWithCap } from '../../lib/security/request-body'
 
@@ -18,8 +19,11 @@ import { readBodyBytesWithCap, readBodyWithCap } from '../../lib/security/reques
  * húzott a memóriába — pont azon a végponton, amelyik hitelesítés nélkül,
  * bárki által hívható.
  *
- * A keret VISELKEDÉSE nem változik: túl nagy törzsnél nincs cím-kulcsú keret
- * (marad az IP-keret), a normál törzs pedig ugyanúgy fogyaszt.
+ * A normál törzs ugyanúgy fogyasztja a cím-keretet. Az a törzs, amelyből a
+ * keret nem olvas ki egyértelmű címet (plafon fölötti vagy kétértelmű
+ * multipart), a belépésen és a jelszó-emlékeztetőn 400-at kap, és el sem jut
+ * a Payloadig. A Payload 2 MiB-ig, multipartot busboy-jal olvas, így az ilyen
+ * törzsből különben levelet küldene a cím-keret megkerülésével.
  */
 
 const TEN_MINUTES = 10 * 60_000
@@ -36,6 +40,13 @@ const FORGOT_URL = 'https://kineticare.test/api/users/forgot-password'
 /** JSON-törzs `pad` mezővel, hogy a méret pontosan állítható legyen. */
 function jsonBody(padBytes: number): string {
   return JSON.stringify({ email: 'aldozat@example.test', pad: 'x'.repeat(padBytes) })
+}
+
+/** Multipart törzs a Payload admin alakjában (`_payload` JSON-mező). */
+function multipartInit(ip: string, payloadJson: string): RequestInit {
+  const form = new FormData()
+  form.set('_payload', payloadJson)
+  return { method: 'POST', headers: { 'x-forwarded-for': ip }, body: form }
 }
 
 /** Streamelt (chunked) törzs — a Node ilyenkor NEM ad `content-length`-t. */
@@ -115,7 +126,7 @@ describe('readBodyWithCap — a tényleges méret dönt', () => {
   })
 })
 
-describe('checkForgotPasswordEmailRateLimit — a keret viselkedése változatlan', () => {
+describe('cím-keret és törzs-plafon a belépésen és a jelszó-emlékeztetőn', () => {
   it('NORMÁL törzsnél a cím-keret ugyanúgy fogyaszt', async () => {
     const limiter = new SlidingWindowRateLimiter()
     const body = jsonBody(4)
@@ -133,22 +144,64 @@ describe('checkForgotPasswordEmailRateLimit — a keret viselkedése változatla
     ).not.toBeNull()
   })
 
-  it('PLAFON FÖLÖTTI, content-length nélküli törzsnél nincs cím-keret', async () => {
-    const limiter = new SlidingWindowRateLimiter()
+  it('PLAFON FÖLÖTTI törzs: 400, a Payload-handler nem fut (a cím-keret nem kerülhető meg)', async () => {
+    let forwarded = 0
+    const handler = withPayloadRestRateLimit(
+      async () => {
+        forwarded += 1
+        return Response.json({ message: 'ok' })
+      },
+      { limiter: new SlidingWindowRateLimiter(), rules },
+    )
     const big = jsonBody(MAX_FORGOT_BODY_BYTES + 1)
+    const loginUrl = 'https://kineticare.test/api/users/login'
 
     for (const ip of ['203.0.113.71', '198.51.100.71', '192.0.2.71']) {
-      expect(
-        await checkForgotPasswordEmailRateLimit(streamedRequest(big, ip), { limiter, rules }),
-      ).toBeNull()
+      expect((await handler(streamedRequest(big, ip))).status).toBe(400)
+      expect((await handler(new Request(FORGOT_URL, multipartInit(ip, big)))).status).toBe(400)
+      expect((await handler(new Request(loginUrl, multipartInit(ip, big)))).status).toBe(400)
     }
-    // Egyetlen helyet sem fogyasztott: a normál kérés még belefér a keretbe.
-    expect(
-      await checkForgotPasswordEmailRateLimit(streamedRequest(jsonBody(4), '192.0.2.72'), {
-        limiter,
-        rules,
-      }),
-    ).toBeNull()
+    expect(forwarded).toBe(0)
+
+    // Egyetlen helyet sem fogyasztott: a normál kérés átmegy, a második már nem.
+    expect((await handler(streamedRequest(jsonBody(4), '192.0.2.72'))).status).toBe(200)
+    expect((await handler(streamedRequest(jsonBody(4), '192.0.2.73'))).status).toBe(429)
+    expect(forwarded).toBe(1)
+  })
+
+  /**
+   * A FormData és a Payload busboy-parsere másképp olvassa a kétszer küldött
+   * `_payload`-ot: a FormData az elsőt (üres → nincs cím), a Payload az utolsó
+   * nem üreset (az áldozat címe). Fájl-részként küldött első `_payload`-nál
+   * ugyanez a helyzet. Ezért csak pontosan egy szöveges `_payload` fogadható.
+   */
+  it('kétértelmű multipart `_payload` → 400, a Payload-handler nem fut', async () => {
+    let forwarded = 0
+    const handler = withPayloadRestRateLimit(
+      async () => {
+        forwarded += 1
+        return Response.json({ message: 'ok' })
+      },
+      { limiter: new SlidingWindowRateLimiter(), rules },
+    )
+    const victim = JSON.stringify({ email: 'aldozat@example.test' })
+
+    const emptyFirst = new FormData()
+    emptyFirst.append('_payload', '')
+    emptyFirst.append('_payload', victim)
+    const fileFirst = new FormData()
+    fileFirst.append('_payload', new Blob(['x']), 'x.txt')
+    fileFirst.append('_payload', victim)
+
+    for (const body of [emptyFirst, fileFirst]) {
+      const request = new Request(FORGOT_URL, {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.75' },
+        body,
+      })
+      expect((await handler(request)).status).toBe(400)
+    }
+    expect(forwarded).toBe(0)
   })
 
   it('a multipart ág is a plafonig olvas, és a `_payload` mezőt így is érti', async () => {
@@ -169,20 +222,5 @@ describe('checkForgotPasswordEmailRateLimit — a keret viselkedése változatla
     expect(
       await checkForgotPasswordEmailRateLimit(multipart('198.51.100.73', 'x'), { limiter, rules }),
     ).not.toBeNull()
-
-    // A plafon fölötti multipart törzsből nem lesz cím-kulcs.
-    const nagyLimiter = new SlidingWindowRateLimiter()
-    expect(
-      await checkForgotPasswordEmailRateLimit(
-        multipart('192.0.2.73', 'x'.repeat(MAX_FORGOT_BODY_BYTES + 1)),
-        { limiter: nagyLimiter, rules },
-      ),
-    ).toBeNull()
-    expect(
-      await checkForgotPasswordEmailRateLimit(multipart('192.0.2.74', 'x'), {
-        limiter: nagyLimiter,
-        rules,
-      }),
-    ).toBeNull()
   })
 })

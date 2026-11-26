@@ -586,11 +586,11 @@ async function applyBarionStateTransitionLocked(
       try {
         customer = await resolveOrderCustomer({ payload, order, log })
       } catch (error) {
-        // Staff/owner e-mail: a kötés tilos, de generic Error örök retryt
-        // okozna (pénz már levonva). Terminális reject — closeEvent rejected.
+        // Staff/owner vagy aktivált vevő e-mailje: a kötés tilos, de generic
+        // Error örök retryt okozna (pénz már levonva). Terminális reject.
         if (error instanceof GuestBindPrivilegedAccountError) {
           log.error(
-            'RIASZTÁS: vendég-fizetés staff/owner fiók e-mailjére érkezett — kötés elutasítva, manuális ellenőrzés szükséges',
+            'RIASZTÁS: vendég-fizetés olyan fiók e-mailjére érkezett, amelyhez nem köthető (staff/owner vagy aktivált vevő) — kötés elutasítva, manuális ellenőrzés szükséges',
             { cimzett: maskEmail(error.email), role: error.role },
           )
           return { action: 'rejected', reason: 'guest-bind-privileged-account' }

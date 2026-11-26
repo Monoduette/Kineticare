@@ -187,7 +187,11 @@ describe('seedGuardErrors — éles környezetben a TELJES seed nem futhat', () 
   const live = 'https://kineticare.hu'
 
   it('az éles domain megtagadja a teljes seedet', () => {
-    const errors = seedGuardErrors({ seedScope: undefined, serverUrl: live, confirmLive: undefined })
+    const errors = seedGuardErrors({
+      seedScope: undefined,
+      serverUrl: live,
+      confirmLive: undefined,
+    })
     expect(errors).toHaveLength(1)
     expect(errors[0]).toContain('ÉLES')
     expect(errors[0]).toContain('SEED_SCOPE=kezdolap')

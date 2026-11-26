@@ -25,7 +25,7 @@ import { ctaLabel } from '../lib/cta-vocabulary'
  * A `POST /api/checkout/start` három olyan 409-es üzenetet adhat, amelyre a
  * pénztár eddig CSAK a hibadobozt tette ki, gomb nélkül:
  *
- *  1. `CHECKOUT_REFUNDED_PRIVILEGED` — vendégként munkatársi fiók e-mailjével
+ *  1. `CHECKOUT_REFUNDED_PRIVILEGED` — vendégként nem köthető fiók e-mailjével
  *     fizetett, a rendszer visszatérített. A kiút: belépés, és onnan vásárlás.
  *  2. `CHECKOUT_PAID_UNDER_REVIEW` — a fizetés beérkezett, a rendelést nem
  *     tudtuk lezárni, kézi rendezés jön. A kiút: kapcsolat (új fizetés TILOS).

@@ -60,12 +60,16 @@ describe('streamAssetReadAccess — a szerepkör-mátrix mind az öt esete', () 
       streamAssetReadAccess(fieldArgs({ id: 3, role: 'customer', purchases: [7, PRODUCT_ID] })),
     ).toBe(true)
     expect(
-      streamAssetReadAccess(fieldArgs({ id: 3, role: 'customer', purchases: [{ id: PRODUCT_ID }] })),
+      streamAssetReadAccess(
+        fieldArgs({ id: 3, role: 'customer', purchases: [{ id: PRODUCT_ID }] }),
+      ),
     ).toBe(true)
   })
 
   it('a NEM-VEVŐ customer nem olvassa', () => {
-    expect(streamAssetReadAccess(fieldArgs({ id: 3, role: 'customer', purchases: [7] }))).toBe(false)
+    expect(streamAssetReadAccess(fieldArgs({ id: 3, role: 'customer', purchases: [7] }))).toBe(
+      false,
+    )
     expect(streamAssetReadAccess(fieldArgs({ id: 3, role: 'customer', purchases: [] }))).toBe(false)
     expect(streamAssetReadAccess(fieldArgs({ id: 3, role: 'customer' }))).toBe(false)
   })
@@ -82,9 +86,9 @@ describe('streamAssetReadAccess — a szerepkör-mátrix mind az öt esete', () 
 
   it('a szülő-termék a doc-ból is feloldható, ha az id argumentum hiányzik', () => {
     const buyer: TestUser = { id: 3, role: 'customer', purchases: [PRODUCT_ID] }
-    expect(streamAssetReadAccess(fieldArgs(buyer, { doc: { id: PRODUCT_ID }, id: undefined }))).toBe(
-      true,
-    )
+    expect(
+      streamAssetReadAccess(fieldArgs(buyer, { doc: { id: PRODUCT_ID }, id: undefined })),
+    ).toBe(true)
     expect(streamAssetReadAccess(fieldArgs(buyer, { doc: { id: 999 }, id: undefined }))).toBe(false)
   })
 })
@@ -112,8 +116,7 @@ describe('a bekötés a VÉGLEGES, szanitált configban', () => {
   const findProductField = async (name: string): Promise<NamedTestField | undefined> => {
     const config = await configPromise
     const products = (config.collections ?? []).find((c) => c.slug === 'products') as
-      | CollectionConfig
-      | undefined
+      CollectionConfig | undefined
     expect(products, 'a products collection létezik').toBeDefined()
     return flattenFields(products?.fields ?? []).find(
       (field) => 'name' in field && field.name === name,

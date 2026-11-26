@@ -16,8 +16,7 @@ type Role = 'owner' | 'staff' | 'customer'
 const asAccessArgs = (user: { id: number; role: Role } | null) =>
   ({ req: { user } }) as unknown as Parameters<Access>[0]
 
-const asReq = (user: { id: number; role: Role } | null) =>
-  ({ user }) as unknown as PayloadRequest
+const asReq = (user: { id: number; role: Role } | null) => ({ user }) as unknown as PayloadRequest
 
 /**
  * A HIÁNYZÓ access-szabály. A Payload típusa `Access`-t vár, a FUTÁSIDEJŰ
