@@ -43,3 +43,25 @@ export const parentCoursesField: Field = {
       'Csak témakurzusnál töltsd ki, és csak akkor, ha a témakurzus teljes anyaga benne van a kiválasztott programban. Aki a programot megvette, ezen az oldalon nem vásárlógombot lát, hanem a programja linkjét, és a pénztár sem engedi újra fizetni. Csak a tulajdonos állíthatja.',
   },
 }
+
+/**
+ * A kurzusoldal elrendezése. A „Fotós fejléc” az akciós sablonból általánosított
+ * landing-elrendezés (src/components/courses/promo/PromoCourseView.tsx), az
+ * „Oldalsó vásárlódoboz” a mai rendes kurzusoldal. Megjelenési döntés, nem ár:
+ * a munkatárs is állíthatja. Élő akció idején a kurzusoldal mindig a fotós
+ * fejlécet kapja (a mai viselkedés).
+ */
+export const pageLayoutField: Field = {
+  name: 'pageLayout',
+  type: 'select',
+  label: 'Kurzusoldal kinézete',
+  defaultValue: 'standard',
+  options: [
+    { label: 'Oldalsó vásárlódoboz', value: 'standard' },
+    { label: 'Fotós fejléc', value: 'landing' },
+  ],
+  admin: {
+    description:
+      'A „Fotós fejléc” teljes szélességű fejlécet ad a borítóképpel (kép nélkül sötét háttérrel), alatta a kurzus szakaszaival és az árral. Témakurzushoz ezt ajánljuk. Élő akció idején a kurzusoldal mindig a fotós fejlécet kapja.',
+  },
+}

@@ -520,9 +520,13 @@ describe('a route forrása', () => {
     expect(route).toMatch(
       /const szalag = forrasSzalagok\?\.szakaszok\[szakaszId\]\s*return szalag \?/,
     )
-    // Az oldal- és az akciós szalag a `forrasSzalagok !== null` ágban.
-    const eleje = route.indexOf('      {forrasSzalagok !== null ? (')
-    const vege = route.indexOf('\n      ) : null}\n      {structuredHead}')
+    // Az oldal- és az akciós szalag a `forrasSzalagok !== null` ágban, egyetlen
+    // `elonezetSav` csomópontban, amelyet mindkét sablon (a rendes és a fotós /
+    // akciós) a `structuredHead` ELŐTT tesz ki.
+    const eleje = route.indexOf('const elonezetSav =\n    forrasSzalagok !== null ? (')
+    const vege = route.indexOf('\n    ) : null\n', eleje)
+    expect(route.split('{elonezetSav}\n')).toHaveLength(3)
+    expect(route.match(/\{elonezetSav\}\s*\{structuredHead\}/g)).toHaveLength(2)
     expect(eleje).toBeGreaterThan(0)
     expect(vege).toBeGreaterThan(eleje)
     const ag = route.slice(eleje, vege)

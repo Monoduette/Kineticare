@@ -24,8 +24,14 @@ import { LexicalContent } from '@/components/courses/LexicalContent'
 import { CourseDescriptionContent } from '@/components/courses/promo/CourseDescriptionContent'
 import { PreviewVideo, hasPreviewVideo } from '@/components/courses/PreviewVideo'
 import { PromoCourseView } from '@/components/courses/promo'
+import { coursePageLayout, isTopicCourse } from '@/lib/course-family'
 import { findOwnedIncludingProgram } from '@/lib/course-family-owned'
+import { findTopicCoursesOf } from '@/lib/course-family-topics'
 import { RelatedCourses } from '@/components/courses/RelatedCourses'
+import {
+  TOPIC_COURSES_SECTION_ID,
+  TopicCoursesSection,
+} from '@/components/courses/TopicCoursesSection'
 import { buildCourseSalesContent } from '@/components/courses/sales-content'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
@@ -372,16 +378,11 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
         : null
   const guaranteeLabel = sales.guarantee === null ? null : sales.guarantee.title
 
-  const usePromoView =
-    isCoursePromoDisplayed(product) && priceBadge === 'price' && price !== null && !isPreview
-  // Csak explicit, szerkeszthető CMS-blokk választja az új tartalmi kiosztást.
-  // A normál és az előnézeti oldalon a blokk a leírásban marad, tartalomvesztés nélkül.
-  const packageContent = usePromoView
-    ? extractCoursePackage(sales.body)
-    : { package: null, body: sales.body }
-
   const curriculumModules = curriculum.modules.filter((module) => module.lessons.length > 0)
 
+  // Él-e az akció (course-promo.ts közös szabálya); előnézetben sosem.
+  const promoLive =
+    isCoursePromoDisplayed(product) && priceBadge === 'price' && price !== null && !isPreview
   /**
    * FORRÁS-SZALAGOK (modul-térkép H50/A19), CSAK piszkozat-előnézetben: a lap
    * tetején a kurzus szerkesztője (és akciós kurzusnál a figyelmeztetés, hogy
@@ -408,7 +409,27 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
     ) : (
       node
     )
-  }
+  } /**
+   * „Fotós fejléc” kinézet (admin: Kurzusoldal kinézete). A témakurzusok
+   * landing-oldala: ugyanaz a teljes szélességű, fotós sablon, mint az akciós
+   * oldalé, akció nélkül (nincs „Akciós ár” jelzés, nincs áthúzott ár). Csak
+   * kiírt árú kurzuson: ingyenes vagy ár nélküli kurzuson a fejléc ár-sora
+   * értelmetlen lenne. Előnézetben is ez látszik, hogy a szerkesztő azt
+   * ellenőrizze, ami élesben megjelenik; kivétel, ha a kurzus élesben akciós
+   * elrendezést kapna: ott az előnézet szalagja kimondja, hogy a normál
+   * elrendezést mutatja, és ez az ígéret marad igaz.
+   */
+  const landingLayout =
+    coursePageLayout(product) === 'landing' &&
+    priceBadge === 'price' &&
+    price !== null &&
+    (forrasSzalagok?.akcios ?? null) === null
+  const usePromoView = promoLive || landingLayout
+  // Csak explicit, szerkeszthető CMS-blokk választja az új tartalmi kiosztást.
+  // A normál és az előnézeti oldalon a blokk a leírásban marad, tartalomvesztés nélkül.
+  const packageContent = usePromoView
+    ? extractCoursePackage(sales.body)
+    : { package: null, body: sales.body }
 
   // ── A szakaszok, dokumentum-sorrendben ────────────────────────────────────
   const sections: PageSection[] = []
@@ -476,6 +497,23 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           modules={curriculumModules}
         />,
       ),
+    })
+  }
+
+  // A teljes program oldalán a témakurzusai, közvetlenül a tananyag után
+  // (TopicCoursesSection fejléce). Témakurzuson nincs ilyen szakasz: a
+  // szerkezet egyszintű (course-family.ts).
+  const topicCourses = isTopicCourse(product)
+    ? []
+    : await findTopicCoursesOf({
+        payload: await getPayload({ config }),
+        programId: product.id,
+        logger,
+      })
+  if (topicCourses.length > 0) {
+    sections.push({
+      target: { id: TOPIC_COURSES_SECTION_ID, label: 'Témakurzusok' },
+      node: <TopicCoursesSection topics={topicCourses} />,
     })
   }
 
@@ -630,9 +668,28 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
     </>
   ) : null
 
+  // Az előnézet sávjai (szerkesztő-sáv, akciós figyelmeztetés, az egész
+  // kurzus forrása) MINDKÉT sablon tetején ugyanazok; nem előnézetben null.
+  // A fotós sablonon az akciós szalag sosem jelenik meg: előnézetben a fotós
+  // kinézet csak akkor él, ha a kurzus élesben nem lenne akciós.
+  const elonezetSav =
+    forrasSzalagok !== null ? (
+      <>
+        <PreviewBar
+          path={path}
+          szerkesztoHref={szekcioMelylink({ collection: 'products', id: product.id })}
+        />
+        {forrasSzalagok.akcios !== null ? (
+          <KurzusAkciosSzalag szalag={forrasSzalagok.akcios} />
+        ) : null}
+        <KurzusOldalForrasSzalag szalag={forrasSzalagok.oldal} />
+      </>
+    ) : null
+
   if (usePromoView && price !== null) {
     return (
       <>
+        {elonezetSav}
         {structuredHead}
         <PromoCourseView
           audienceLabel={audienceLabel}
@@ -653,7 +710,8 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           priceLabel={priceLabel}
           product={product}
           promo={promo}
-          related={relatedProductsOf(product)}
+          promoActive={promoLive}
+          related={isPreview ? [] : relatedProductsOf(product)}
           sales={sales}
           sections={sections}
           showBuyBar={showBuyBar}
@@ -665,18 +723,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
 
   return (
     <>
-      {forrasSzalagok !== null ? (
-        <>
-          <PreviewBar
-            path={path}
-            szerkesztoHref={szekcioMelylink({ collection: 'products', id: product.id })}
-          />
-          {forrasSzalagok.akcios !== null ? (
-            <KurzusAkciosSzalag szalag={forrasSzalagok.akcios} />
-          ) : null}
-          <KurzusOldalForrasSzalag szalag={forrasSzalagok.oldal} />
-        </>
-      ) : null}
+      {elonezetSav}
       {structuredHead}
 
       <Section>
