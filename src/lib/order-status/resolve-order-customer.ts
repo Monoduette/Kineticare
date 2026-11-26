@@ -5,20 +5,26 @@ import { withAdvisoryLock } from '../advisory-lock'
 import { maskEmail } from '../email/mask'
 import type { Logger } from '../logger'
 import { generateInitialPassword } from '../security/initial-password'
-import { isPaidFulfillmentBindableAccount } from './guest-bindable-account'
+import { isGuestBindableAccount } from './guest-bindable-account'
 
 /**
  * Fiók-feloldás vendég-vásárlásnál a paid-ágon (GetState v4 + összeg-assert
- * UTÁN). E-mail-zár alatt keresés/létrehozás. Aktivált customer-hez KÖT
- * (teljesítés-első); staff/owner: `GuestBindPrivilegedAccountError` — a hívó
- * terminálisan rejectel, nem próbálja újra. A checkout K2-kapuja
- * (`isGuestBindableAccount`) ettől független: ott aktivált fiókra 409.
- * Generált jelszó nem megy levélben.
+ * UTÁN). E-mail-zár alatt keresés/létrehozás. Meglévő fiókhoz csak akkor köt,
+ * ha az még jelszó nélküli vevőfiók (`isGuestBindableAccount`), ugyanaz a
+ * szabály, mint a checkout K2-kapujában. Minden más fiók (staff, owner,
+ * aktivált vevő): `GuestBindPrivilegedAccountError`, a hívó terminálisan
+ * rejectel, nem próbálja újra. Generált jelszó nem megy levélben.
+ *
+ * Miért nem köt aktivált fiókhoz: a Start óta csak úgy lehet aktivált fiók
+ * ezen a címen, hogy valaki a fizetés alatt regisztrálta vagy a saját
+ * fiókja e-mail-címét erre írta át. E-mail-megerősítés nincs, tehát ez
+ * bárki lehet, és megkapná a vendég által kifizetett kurzust.
  */
 
 /**
- * Vendég-fizetés staff/owner e-mailjére. Nem újrapróbálható: a kötés tilos,
- * a generic Error viszont örök webhook-retryt okozna (pénz levonva, paid nincs).
+ * Vendég-fizetés olyan fiók e-mailjére, amelyhez nem szabad kötni (staff,
+ * owner vagy aktivált vevő). Nem újrapróbálható: a kötés tilos, a generic
+ * Error viszont örök webhook-retryt okozna (pénz levonva, paid nincs).
  */
 export class GuestBindPrivilegedAccountError extends Error {
   readonly reason = 'guest-bind-privileged-account' as const
@@ -26,7 +32,7 @@ export class GuestBindPrivilegedAccountError extends Error {
   readonly role: string | null
 
   constructor(email: string, role?: string | null) {
-    super('a vendég-rendelés staff/owner fiókhoz nem köthető — a fizetés utáni kötés elutasítva')
+    super('a vendég-rendelés ehhez a fiókhoz nem köthető — a fizetés utáni kötés elutasítva')
     this.name = 'GuestBindPrivilegedAccountError'
     this.email = email
     this.role = role ?? null
@@ -171,7 +177,7 @@ export async function resolveOrderCustomer(input: {
     async (): Promise<{ user: User; created: boolean }> => {
       const existing = await findUserByEmail(payload, email)
       if (existing) {
-        if (!isPaidFulfillmentBindableAccount(existing)) {
+        if (!isGuestBindableAccount(existing)) {
           throw new GuestBindPrivilegedAccountError(email, existing.role)
         }
         return { user: existing, created: false }
@@ -216,7 +222,7 @@ export async function resolveOrderCustomer(input: {
         // ütközik. Ilyenkor a MÁSIK szál fiókját fogadjuk el — duplikátum nem jöhet létre.
         const raced = await findUserByEmail(payload, email)
         if (raced) {
-          if (!isPaidFulfillmentBindableAccount(raced)) {
+          if (!isGuestBindableAccount(raced)) {
             throw new GuestBindPrivilegedAccountError(email, raced.role)
           }
           log.warn(

@@ -7,6 +7,8 @@
  * kurzusát. Séma / `auth.verify` nélkül a fék: csak a rendszer által
  * létrehozott, még aktiválatlan `customer` fiók köthető (előző vendég-fizetés
  * vagy import). Owner/staff és aktivált vevő: a vendég jelentkezzen be.
+ * Ugyanez a szabály dönt a fizetés utáni kötésnél is
+ * (`resolve-order-customer.ts`).
  */
 
 export function isGuestBindableAccount(user: {
@@ -14,16 +16,4 @@ export function isGuestBindableAccount(user: {
   passwordSetupPending?: boolean | null
 }): boolean {
   return user.role === 'customer' && user.passwordSetupPending === true
-}
-
-/**
- * Paid-teljesítés fiók-kötése: a pénz MÁR le van vonva (GetState v4 +
- * összeg-assert után). Aktivált `customer` is köthető — a kurzus kiadása
- * előbbre való, mint a „jelentkezz be" K2-szabály. A K2-lopás a Starton
- * marad (`isGuestBindableAccount` + `CHECKOUT_GUEST_EXISTING_ACCOUNT`).
- *
- * Staff/owner ide NEM tartozik: azokhoz a paid-ág terminálisan rejectel.
- */
-export function isPaidFulfillmentBindableAccount(user: { role?: string | null }): boolean {
-  return user.role === 'customer'
 }

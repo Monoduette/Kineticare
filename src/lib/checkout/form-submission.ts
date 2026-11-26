@@ -145,8 +145,16 @@ export const CHECKOUT_PAYEE_EMAIL_ACCOUNT =
 export const CHECKOUT_REFUNDED_RETRY =
   'A fizetésed teljes összegét visszatérítettük, mert az összeg nem egyezett a rendeléssel. Hozzáférés nem jött létre. Indítsd újra a vásárlást.'
 
+/**
+ * Vendég-fizetés olyan fiók e-mailjére, amelyhez a vásárlás nem köthető
+ * (staff, owner, vagy a fizetés alatt aktivált vevőfiók). A szöveg csak azt
+ * mondja, ami minden esetben igaz: van fiók ezen a címen. WCAG 2.2 · 3.3.1
+ * (a hibát szövegben, pontosan kell leírni) és GOV.UK Error message: mondd
+ * meg, mi történt, és hogyan javítható
+ * (https://design-system.service.gov.uk/components/error-message/).
+ */
 export const CHECKOUT_REFUNDED_PRIVILEGED =
-  'A fizetésed teljes összegét visszatérítettük: ezzel az e-mail-címmel munkatársi fiók van, vendégként ide nem köthető vásárlás. Lépj be a fiókodba, és onnan indítsd a vásárlást.'
+  'A fizetésed teljes összegét visszatérítettük: ehhez az e-mail-címhez már van fiók, vendégként ide nem köthető vásárlás. Lépj be a fiókodba, és onnan indítsd a vásárlást.'
 
 export const CHECKOUT_PAID_UNDER_REVIEW =
   'A fizetésed beérkezett, de a rendelést nem tudtuk automatikusan lezárni. Rövid időn belül rendezzük: vagy megnyitjuk a hozzáférést, vagy a teljes összeget visszatérítjük. Addig ne indíts új fizetést.'

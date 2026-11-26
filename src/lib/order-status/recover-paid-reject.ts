@@ -118,7 +118,7 @@ export function hungarianAutoRefundReason(reason: AutoRefundRejectReason): strin
     case 'duplicate-paid-order':
       return 'Automatikus visszatérítés: a kurzushoz már van élő hozzáférés.'
     case 'guest-bind-privileged-account':
-      return 'Automatikus visszatérítés: a fizetés staff vagy owner fiók e-mailjére érkezett, kötés tilos.'
+      return 'Automatikus visszatérítés: a vendég-fizetés olyan fiók e-mailjére érkezett, amelyhez nem köthető (staff, owner vagy aktivált vevő).'
     case 'total-mismatch':
       return 'Automatikus visszatérítés: a Barion összege nem egyezik a rendeléssel.'
   }

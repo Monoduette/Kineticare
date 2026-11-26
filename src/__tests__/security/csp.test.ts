@@ -97,7 +97,10 @@ describe('buildContentSecurityPolicy — a bizonyított hiba nem térhet vissza'
   })
 
   it('a Cloudflare Stream forrásai KIKERÜLTEK (elfelejtett domain-csere ellen)', () => {
-    for (const csp of [buildContentSecurityPolicy(), buildContentSecurityPolicy('vz-a.b-cdn.net')]) {
+    for (const csp of [
+      buildContentSecurityPolicy(),
+      buildContentSecurityPolicy('vz-a.b-cdn.net'),
+    ]) {
       expect(csp).not.toContain('cloudflarestream.com')
       expect(csp).not.toContain('videodelivery.net')
     }

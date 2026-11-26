@@ -2,7 +2,11 @@ import type { Payload } from 'payload'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PASSWORD_MIN_LENGTH } from '../../lib/security/password-policy'
-import { RATE_LIMIT_MESSAGE, RATE_LIMIT_RULES, SlidingWindowRateLimiter } from '../../lib/security/rate-limit'
+import {
+  RATE_LIMIT_MESSAGE,
+  RATE_LIMIT_RULES,
+  SlidingWindowRateLimiter,
+} from '../../lib/security/rate-limit'
 import {
   createResetPasswordHandler,
   RESET_BODY_TOO_LARGE_MESSAGE,
@@ -392,8 +396,7 @@ describe('reset-password végpont — kérés-korlát (A2)', () => {
     const limiter = new SlidingWindowRateLimiter()
     const forwardToPayload = vi.fn(async () => Response.json({ ok: true }, { status: 200 }))
     const handler = createResetPasswordHandler({
-      getPayload: async () =>
-        ({ find: async () => ({ docs: [] }) }) as unknown as Payload,
+      getPayload: async () => ({ find: async () => ({ docs: [] }) }) as unknown as Payload,
       forwardToPayload,
       rateLimit: { limiter },
     })

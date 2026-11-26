@@ -28,9 +28,7 @@ const customer = { id: 3, role: 'customer' as Role }
  * felhasználó saját rekordjára mutat: így a „customer a saját fiókján" eset is
  * a valósághoz hűen áll elő.
  */
-const fieldArgs = (
-  user: { id: number; role: Role } | null,
-): Parameters<FieldAccess>[0] =>
+const fieldArgs = (user: { id: number; role: Role } | null): Parameters<FieldAccess>[0] =>
   ({
     req: { user },
     id: user?.id,
@@ -49,8 +47,7 @@ type NamedTestField = Field & {
 
 function findField(collection: CollectionConfig, name: string): NamedTestField | undefined {
   return collection.fields.find((field) => 'name' in field && field.name === name) as
-    | NamedTestField
-    | undefined
+    NamedTestField | undefined
 }
 
 async function purchasesField(): Promise<NamedTestField> {

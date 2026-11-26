@@ -136,7 +136,7 @@ describe('isPasswordResetRequest / JWT sid / jelölő', () => {
   })
 })
 
-function createDb(sessions: typeof current[]) {
+function createDb(sessions: (typeof current)[]) {
   const updates: Array<{ id: unknown; sessions: unknown; updatedAt: unknown }> = []
   const payload = {
     db: {
@@ -218,7 +218,11 @@ describe('afterChange / afterLogin kapuk', () => {
   it('afterChange a zászlóra ír, majd a zászlót törli (nincs újra-belépés)', async () => {
     const { payload, updates } = createDb([current, other])
     const context: Record<string, unknown> = { [CREDENTIAL_CHANGE_REVOKE_KEY]: true }
-    const req = { payload, user: { id: 7, _sid: 'sid-current' }, context } as unknown as PayloadRequest
+    const req = {
+      payload,
+      user: { id: 7, _sid: 'sid-current' },
+      context,
+    } as unknown as PayloadRequest
     await revokeOtherSessionsAfterCredentialChange({
       doc: { id: 7 },
       operation: 'update',
