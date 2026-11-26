@@ -57,6 +57,12 @@ export interface PromoHeroProps {
   guaranteeLabel: string | null
   /** Tényadatok (modulok, leckék, hozzáférés) — ellenőrizhető adat, nem ígéret. */
   facts: string[]
+  /**
+   * Él-e az akció. Hamis a fotós fejléces (landing) elrendezésben akció
+   * nélkül: ilyenkor nincs „Akciós ár" jelzés, és az ár rejtett címkéje is
+   * „Ár:" (a jelzés csak akkor igaz, ha az akció valóban él).
+   */
+  promoActive?: boolean
 }
 
 export const PROMO_HERO_TITLE_ID = 'kurzus-cim'
@@ -74,6 +80,7 @@ export function PromoHero({
   hasCurriculum,
   guaranteeLabel,
   facts,
+  promoActive = true,
 }: PromoHeroProps) {
   const trustRows = [...(guaranteeLabel === null ? [] : [guaranteeLabel]), ...facts]
   return (
@@ -99,7 +106,7 @@ export function PromoHero({
           {/* Nincs határidő-állítás: az időablak a MEGJELENÉST vezérli, az árat
               a szerkesztő állítja, ezért egy „…-ig” ígéret nem lenne igazolható
               (Codex, #278; UCPD tiltott lista: hamis korlátozott idejű ajánlat). */}
-          <p className="kc-promo-hero__badge">Akciós ár</p>
+          {promoActive ? <p className="kc-promo-hero__badge">Akciós ár</p> : null}
           <p className="kc-promo-hero__meta">
             {categoryLabel !== null ? <span>{categoryLabel}</span> : null}
             <span>{audienceLabel}</span>
@@ -115,6 +122,7 @@ export function PromoHero({
               note="egyszeri díj, további költség nincs"
               originalPriceHuf={originalPriceHuf}
               priceHuf={priceHuf}
+              promoActive={promoActive}
             />
 
             {/* A ragadós sáv horgonya CSAK az elsődleges gomb burka (nem a két gomb

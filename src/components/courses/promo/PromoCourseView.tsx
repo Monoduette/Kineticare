@@ -55,6 +55,12 @@ export interface PromoCourseViewProps {
   lead: string | null
   priceHuf: number
   promo: CoursePromo
+  /**
+   * Él-e az akció. Hamis, ha a lap a „Fotós fejléc" kinézet (pageLayout =
+   * landing) miatt kapja ezt a sablont akció nélkül: ilyenkor nincs
+   * akció-jelzés és áthúzott ár, a sablon szerkezete ugyanaz.
+   */
+  promoActive?: boolean
   sales: CourseSalesContent
   curriculumModules: CurriculumModule[]
   cta: CourseCtaState
@@ -131,6 +137,7 @@ export function PromoCourseView({
   lead,
   priceHuf,
   promo,
+  promoActive = true,
   sales,
   curriculumModules,
   cta,
@@ -151,6 +158,8 @@ export function PromoCourseView({
       ? product.coverImage
       : null
   const hasCurriculum = curriculumModules.length > 0
+  // Áthúzott „eredeti ár" csak élő akcióban: akció nélkül nincs mihez képest.
+  const originalPriceHuf = promoActive ? promo.originalPriceHuf : null
   const bands = groupSectionsIntoBands(sections)
   const featuredKeys = ['kinek-valo', 'hogyan-mukodik']
   const orderedBands = packageContent
@@ -168,7 +177,9 @@ export function PromoCourseView({
     : jumpTargets
 
   return (
-    <article className={`kc-promo-course${packageContent ? ' kc-promo-course--content' : ''}`}>
+    <article
+      className={`kc-promo-course${packageContent ? ' kc-promo-course--content' : ''}${promoActive ? '' : ' kc-promo-course--landing'}`}
+    >
       <PromoHero
         audienceLabel={audienceLabel}
         categoryLabel={category}
@@ -179,8 +190,9 @@ export function PromoCourseView({
         hasCurriculum={hasCurriculum}
         heroMedia={heroMedia}
         lead={lead}
-        originalPriceHuf={promo.originalPriceHuf}
+        originalPriceHuf={originalPriceHuf}
         priceHuf={priceHuf}
+        promoActive={promoActive}
         title={title}
       />
 
@@ -228,8 +240,9 @@ export function PromoCourseView({
         <PromoClosingCta
           guaranteeLabel={guaranteeLabel}
           href={cta.href}
-          originalPriceHuf={promo.originalPriceHuf}
+          originalPriceHuf={originalPriceHuf}
           priceHuf={priceHuf}
+          promoActive={promoActive}
         />
       ) : null}
 

@@ -53,7 +53,7 @@ import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import { courseSlugField } from '../fields/course-slug'
-import { parentCoursesField } from '../fields/course-family'
+import { pageLayoutField, parentCoursesField } from '../fields/course-family'
 import { courseFamilyGuard } from '../lib/course-family-guard'
 import { DUPLICATE_SKU_PUBLISH_MESSAGE, hasDuplicateSkuSuffix } from '../lib/course-family'
 import { forceDraftVersionOnDuplicate } from '../lib/duplicate'
@@ -124,6 +124,7 @@ function courseEditorTabs(fields: Field[]): Field[] {
                   'shortDescription',
                   'category',
                   'coverImage',
+                  'pageLayout',
                 ].includes(name)
               ? 0
               : 2
@@ -2919,6 +2920,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         },
       },
     },
+    pageLayoutField,
     {
       name: 'status',
       type: 'select',

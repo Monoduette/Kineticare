@@ -1796,6 +1796,10 @@ export interface Product {
    */
   category: number | Category;
   /**
+   * A „Fotós fejléc” teljes szélességű fejlécet ad a borítóképpel (kép nélkül sötét háttérrel), alatta a kurzus szakaszaival és az árral. Témakurzushoz ezt ajánljuk. Élő akció idején a kurzusoldal mindig a fotós fejlécet kapja.
+   */
+  pageLayout?: ('standard' | 'landing') | null;
+  /**
    * A kurzus egyedi azonosítója, két kurzusnak nem lehet ugyanaz. Ez áll a számlán, a rendeléseken, a vásárlási visszaigazoló e-mailben és a Barion fizetőoldalán (egy módosítás a következő vásárlástól látszik). A weboldalon a fenti „Kurzus címe” látszik, ha ki van töltve, különben ez az azonosító.
    */
   sku?: string | null;
@@ -4102,6 +4106,7 @@ export interface ProductsSelect<T extends boolean = true> {
   shortDescription?: T;
   coverImage?: T;
   category?: T;
+  pageLayout?: T;
   sku?: T;
   priceInHUFEnabled?: T;
   priceInHUF?: T;
