@@ -225,6 +225,23 @@ describe('CtaBanner — kurzus-borító a sávban', () => {
     expect(lista).toContain('kurzus-1-640.jpg')
   })
 
+  it('témakurzus: a pontos címe a saját borítóját kapja, a lista-link a teljes programét', () => {
+    // A friss témakurzus a -createdAt rendezésben a program elé kerül; a
+    // kiemelő felületek kihagyják, de a rá mutató sáv nem veszítheti el a képét.
+    const tema = product({
+      id: 8,
+      sku: 'Csuklófájdalom témakurzus',
+      slug: 'csuklofajdalom-temakurzus',
+      parentCourses: [1],
+      coverImage: media({ id: 8, alt: 'Csukló témakurzus borító' }),
+    })
+    const html = renderLayout([ctaBlock('/kurzusok/csuklofajdalom-temakurzus')], [tema, PROGRAM])
+    expect(html).toContain('kurzus-8-640.jpg')
+    const lista = renderLayout([ctaBlock('/kurzusok')], [tema, PROGRAM])
+    expect(lista).toContain('kurzus-1-640.jpg')
+    expect(lista).not.toContain('kurzus-8-640.jpg')
+  })
+
   it('csak publikált kurzus képe jöhet (piszkozat/archivált termék nem)', () => {
     const rejtett = product({ ...PROGRAM, status: 'draft' })
     const html = renderLayout([ctaBlock('/kurzusok/otthoni-kezrehab-program')], [rejtett])

@@ -1,4 +1,4 @@
-import { resolveCourseCta } from '../../lib/courses'
+import { resolveCourseCta, type IncludingProgram } from '../../lib/courses'
 import type { Product } from '../../payload-types'
 import { Button } from '../ui/Button'
 
@@ -15,6 +15,8 @@ export interface CourseCtaProps {
   product: Pick<Product, 'id' | 'slug' | 'status' | 'priceInHUF' | 'priceInHUFEnabled'>
   /** Bejelentkezett felhasználó purchases-listája alapján (csak olvasás). */
   hasPurchased: boolean
+  /** Témakurzusnál a látogató által birtokolt teljes program (§3.2 #49), különben null. */
+  includedIn?: IncludingProgram | null
   /**
    * A CTA-blokk horgonya. A ragadós vásárlósáv (CourseBuyBar) EZT figyeli
    * IntersectionObserverrel: a sáv pontosan akkor jelenik meg, amikor ez a
@@ -24,8 +26,8 @@ export interface CourseCtaProps {
   id?: string
 }
 
-export function CourseCta({ product, hasPurchased, id }: CourseCtaProps) {
-  const cta = resolveCourseCta(product, hasPurchased)
+export function CourseCta({ product, hasPurchased, includedIn = null, id }: CourseCtaProps) {
+  const cta = resolveCourseCta(product, hasPurchased, includedIn)
 
   // Az `id` a ragadós vásárlósáv horgonya: az IntersectionObserver ezt a
   // CTA-blokkot figyeli, nem a teljes dobozt — így pontosan akkor gyújt,

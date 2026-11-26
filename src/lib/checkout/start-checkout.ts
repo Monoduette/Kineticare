@@ -71,6 +71,7 @@ import {
 import { classifyStartFailure } from './start-failure'
 import { checkOrderLimits, reportGuestOrderBurst } from './abuse-limits'
 import { CheckoutLockBusyError, withCheckoutLockSlot } from './lock-slots'
+import { assertNotIncludedInOwnedProgram, ParentCourseBlockError } from './parent-course-block'
 
 export {
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
@@ -1139,6 +1140,28 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     // nélküli vevő a belépési oldal jelszó-beállító linkjével folytatja.
     if (user === null && buyer.existingUser !== null) {
       throw new CheckoutError(409, CHECKOUT_GUEST_EXISTING_ACCOUNT)
+    }
+
+    // Témakurzus: a teljes program birtokosa (vagy élő program-fizetés) nem
+    // fizet újra a benne foglalt részért. A zárban, a duplavásárlás előtt fut,
+    // hogy a program és a témakurzus fizetése ugyanannál a vevőnél sorba álljon.
+    try {
+      await assertNotIncludedInOwnedProgram({
+        payload,
+        product,
+        loggedIn: user !== null,
+        accountId: buyer.existingUser?.id ?? null,
+        ...(user !== null ? { accountPurchases: user.purchases } : {}),
+        email: buyer.email,
+        nowMs,
+        paymentWindowMs: paymentWindowToMs(),
+        log,
+      })
+    } catch (error) {
+      if (error instanceof ParentCourseBlockError) {
+        throw new CheckoutError(error.status, error.message)
+      }
+      throw error
     }
 
     const duplicateCtx = {

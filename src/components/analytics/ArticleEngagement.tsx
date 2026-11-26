@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 
-import { ANALYTICS_EVENTS, captureAnalyticsEvent } from '@/lib/analytics/posthog'
+import { ANALYTICS_EVENTS, captureAnalyticsEvent, whenPostHogReady } from '@/lib/analytics/posthog'
 
 /**
  * ArticleEngagement — a cikk/hub tartalmi funnel-eseményei egy helyen.
@@ -47,7 +47,17 @@ export function ctaKindOf(target: Element): { cta: string; href: string } | null
 
 export function ArticleEngagement({ articleSlug, path }: ArticleEngagementProps): null {
   useEffect(() => {
-    captureAnalyticsEvent(ANALYTICS_EVENTS.articleViewed, { articleSlug, path })
+    // Közvetlen cikk-megnyitáskor (keresőből, hirdetésből, megosztott
+    // linkről) ez az effect a PostHogProvider initje ELŐTT fut, mert a React
+    // a gyerek effectjét a szülőé előtt futtatja. A közvetlen capture ilyenkor
+    // no-op volt, és pont a belépő olvasók article_viewed-je veszett el
+    // (2026-11-26). Ugyanaz az út, mint a PostHogPageView és a TrackEvent
+    // esetén: az init utánra vár, és unmountkor visszavonja a még el nem
+    // küldöttet. A kattintás, a GYIK és az article_read később, már az init
+    // után történik, azok maradnak közvetlenek.
+    const cancelViewed = whenPostHogReady(() =>
+      captureAnalyticsEvent(ANALYTICS_EVENTS.articleViewed, { articleSlug, path }),
+    )
 
     const onClick = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return
@@ -92,6 +102,7 @@ export function ArticleEngagement({ articleSlug, path }: ArticleEngagementProps)
     }
 
     return () => {
+      cancelViewed()
       document.removeEventListener('click', onClick)
       document.removeEventListener('toggle', onToggle, true)
       observer?.disconnect()

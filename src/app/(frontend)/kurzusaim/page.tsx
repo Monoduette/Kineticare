@@ -6,6 +6,7 @@ import { headers } from 'next/headers'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { CourseList } from '@/components/account/CourseList'
+import { IdentifyUser } from '@/components/analytics/IdentifyUser'
 import {
   buildCourseCardView,
   courseListSummary,
@@ -169,6 +170,7 @@ export default async function KurzusaimPage() {
           {summary === null ? null : <p className="kc-mycourses__summary-line">{summary}</p>}
         </header>
         <CourseList cards={cards} />
+        <IdentifyUser userId={user.id} />
       </Container>
     </Section>
   )

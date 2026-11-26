@@ -7,6 +7,7 @@
  */
 
 import type { Product } from '../payload-types'
+import { isTopicCourse } from './course-family'
 import { isPaidCourse } from './courses'
 import { isAvailableSosProduct } from './sos-offer'
 
@@ -180,8 +181,18 @@ export function splitEditorialTitle(title: string): { head: string; tail: string
  */
 export const KURZUSRACS_LIMIT = 12
 
+/**
+ * A rácsba kerülő fizetős kurzus: témakurzus nem (src/lib/course-family.ts).
+ * A `-createdAt` rendezés miatt egy friss témakurzus különben kiszorítaná a
+ * teljes programot a rács elejéről; a témakurzusok a program oldaláról és a
+ * saját hirdetési linkjükről nyílnak.
+ */
+function isShowcasePaidCourse(product: Product): boolean {
+  return isPaidCourse(product) && !isTopicCourse(product)
+}
+
 export function showcaseProducts(visibleProducts: readonly Product[]): Product[] {
-  const paid = visibleProducts.filter((product) => isPaidCourse(product))
+  const paid = visibleProducts.filter(isShowcasePaidCourse)
   const sos = visibleProducts.find(isAvailableSosProduct)
   return sos ? [...paid, sos] : paid
 }
@@ -197,7 +208,7 @@ export function showcaseGridProducts(
   visibleProducts: readonly Product[],
   limit: number = KURZUSRACS_LIMIT,
 ): Product[] {
-  const paid = visibleProducts.filter((product) => isPaidCourse(product))
+  const paid = visibleProducts.filter(isShowcasePaidCourse)
   const sos = visibleProducts.find(isAvailableSosProduct)
   if (!sos) return paid.slice(0, limit)
   return [...paid.slice(0, Math.max(limit - 1, 0)), sos].slice(0, limit)

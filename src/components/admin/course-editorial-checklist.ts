@@ -1,7 +1,9 @@
+import { hasDuplicateSkuSuffix, isTopicCourse } from '../../lib/course-family'
 import { resolveCoursePromo } from '../../lib/course-promo'
 import { buildCurriculum } from '../../lib/curriculum/curriculum'
 import { coursePriceBadgeKind } from '../../lib/courses'
 import { formatPriceHuf } from '../../lib/format-price'
+import { lexicalPlainText, pricesInText } from '../../lib/text-prices'
 import type { Product } from '../../payload-types'
 
 export interface EditorialCheck {
@@ -64,6 +66,34 @@ function promoSentence(product: Partial<Product>, now: Date): { text: string; in
   }
 }
 
+/**
+ * Témakurzus: a teljes programból másolt szövegben a program ára maradhatott
+ * („79 500 Ft”), ami a témakurzus oldalán hamis állítás lenne (UCPD, valótlan
+ * ár). A kurzusoldal árát a mező adja, a szövegben nem kell ár.
+ */
+function topicCourseCheck(product: Partial<Product>): EditorialCheck {
+  const places: Array<[string, unknown]> = [
+    ['Rövid leírás', product.shortDescription],
+    ['Részletes leírás', product.longDescription],
+    ['Garancia címe', product.guaranteeTitle],
+    ['Garancia szövege', product.guaranteeText],
+  ]
+  const found = places
+    .map(([place, value]) => [place, pricesInText(lexicalPlainText(value))] as const)
+    .filter(([, prices]) => prices.length > 0)
+  return {
+    key: 'topic-course',
+    label: 'Témakurzus',
+    ready: found.length === 0,
+    detail:
+      found.length === 0
+        ? 'A teljes programja beállítva. Aki azt megvette, itt a programja linkjét látja.'
+        : `Kézzel írt ár áll a szövegben: ${found
+            .map(([place, prices]) => `${place} (${prices.join(', ')})`)
+            .join('; ')}. A témakurzus árát az ár mező adja, ezt a szövegből vedd ki.`,
+  }
+}
+
 /** Advisory only. The canonical curriculum owns precedence and playable semantics. */
 export function courseEditorialChecklist(product: Partial<Product>, now: Date = new Date()) {
   const curriculum = buildCurriculum(product, false)
@@ -106,6 +136,21 @@ export function courseEditorialChecklist(product: Partial<Product>, now: Date = 
       detail: lessonsDetail(curriculum.lessons.length, videoLessons.length, pendingVideoCount),
     },
   ]
+  // Duplikált kurzus: a „- Copy” jelölés a számlára és a Barion-oldalra is
+  // kikerülne. Csak akkor jelenik meg, ha ott áll (a közzétételt a belső
+  // azonosító mező is elutasítja).
+  const copyMarked = [product.sku, product.displayTitle].some(hasDuplicateSkuSuffix)
+  if (copyMarked) {
+    items.push({
+      key: 'copy-marker',
+      label: 'Másolat jelölése',
+      ready: false,
+      detail: 'A cím vagy a belső azonosító még „- Copy” végű. Közzététel előtt írd át.',
+    })
+  }
+  if (isTopicCourse(product)) {
+    items.push(topicCourseCheck(product))
+  }
   return {
     items,
     lessonCount: curriculum.lessons.length,

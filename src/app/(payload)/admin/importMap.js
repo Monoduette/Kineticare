@@ -51,6 +51,7 @@ import { PaidCourseField as PaidCourseField_b4f6042227f4825e1f7bb4feea4ef763 } f
 import { PriceCell as PriceCell_e27bf7b8cc50640dcdd584767b8eac3c } from '@payloadcms/plugin-ecommerce/client'
 import { HufPriceField as HufPriceField_b4f6042227f4825e1f7bb4feea4ef763 } from '../../../components/admin/HufPriceField'
 import { CoursePromoStatus as CoursePromoStatus_dafdca7d9ed2fe5c084a35d5f5b14d33 } from '../../../components/admin/CoursePromoStatus'
+import { TopicCoursesPanel as TopicCoursesPanel_d2bdce50276289104d04ae5d95465594 } from '../../../components/admin/TopicCoursesPanel'
 import { BlocksFeatureClient as BlocksFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { PublicBunnyVideoField as PublicBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68 } from '../../../components/admin/BunnyVideoField'
 import { ProtectedBunnyVideoField as ProtectedBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68 } from '../../../components/admin/BunnyVideoField'
@@ -138,6 +139,7 @@ export const importMap = {
   "@payloadcms/plugin-ecommerce/client#PriceCell": PriceCell_e27bf7b8cc50640dcdd584767b8eac3c,
   "/components/admin/HufPriceField#HufPriceField": HufPriceField_b4f6042227f4825e1f7bb4feea4ef763,
   "/components/admin/CoursePromoStatus#CoursePromoStatus": CoursePromoStatus_dafdca7d9ed2fe5c084a35d5f5b14d33,
+  "/components/admin/TopicCoursesPanel#TopicCoursesPanel": TopicCoursesPanel_d2bdce50276289104d04ae5d95465594,
   "@payloadcms/richtext-lexical/client#BlocksFeatureClient": BlocksFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "/components/admin/BunnyVideoField#PublicBunnyVideoField": PublicBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68,
   "/components/admin/BunnyVideoField#ProtectedBunnyVideoField": ProtectedBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68,
