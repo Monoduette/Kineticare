@@ -35,6 +35,7 @@ Railway stagingen ugyanígy (Variables). Üres kulcs = az analitika kikapcsolt
   oldalfrissítés nélkül. Addig: semmi nem mérődik. Ugyanerre az állapotgépre
   (`src/lib/analytics/consent.ts`) van kötve a Google Analytics 4 is — lásd
   `docs/ga4.md`.
+  Kivétel a bekapcsolható süti nélküli mérés az elutasítóknak, lásd a 3b. pontot.
 - **`person_profiles: 'identified_only'`** — anonim forgalomból nem készül
   person-profil (költség- és adatminimalizálás).
 
@@ -62,6 +63,46 @@ A `reset()` nem opcionális: nélküle a kijelentkezés utáni események továb
 az előző felhasználó profiljára mennének. Közös gépen (rendelői tablet, családi
 laptop) ez két különböző ember viselkedését olvasztaná egy profilba — egyszerre
 mérési és adatvédelmi hiba.
+
+### 3b. Süti nélküli mérés az elutasítóknak (tulajdonosi döntés, 2026-11-26)
+
+A tulajdonos 2026-11-26-án úgy döntött, hogy a süti-sávot elutasító látogatók
+oldalmegtekintései és üzleti eseményei is látszódjanak, süti és azonosító
+nélkül. A mérés a posthog-js `cookieless_mode: 'on_reject'` módja
+(https://posthog.com/tutorials/cookieless-tracking): a látogató gépére semmi
+nem kerül (süti, localStorage, sessionStorage), az eseményeket a PostHog
+szervere egy naponta cserélődő, nem tárolt hash-sel számolja össze.
+
+**Kapcsoló:** `NEXT_PUBLIC_POSTHOG_COOKIELESS=true` (Railway-változó, build-időben
+ég be). Hiányzó vagy más érték: kikapcsolva, az elutasítóról semmi nem megy ki.
+Bekapcsolás előtt két dolognak élnie kell:
+
+1. az adatvédelmi tájékoztató leírja ezt a mérést (CMS, Adatvédelem oldal);
+2. a PostHog-projektben be van kapcsolva a süti nélküli mérés
+   (`cookieless_server_hash_mode`), különben a PostHog az eseményeket eldobja.
+
+| Állapot | Mérés | Azonosítás (`identify`) |
+|---|---|---|
+| Elfogadta | sütivel (`consent` mód) | igen |
+| Elutasította, kapcsoló be, nincs GPC/DNT | süti nélkül (`cookieless` mód) | **soha** |
+| Elutasította, a böngésző GPC-t vagy DNT-t küld | semmi | soha |
+| Elutasította, kapcsoló ki | semmi | soha |
+| Még nem döntött | semmi | soha |
+
+- **GPC/DNT tiltakozásnak számít** (CNIL, „mesure d'audience” 16. lap; GDPR 21. cikk):
+  aki a böngészőjében jelzi, hogy nem kér követést, arról süti nélkül sem megy ki semmi.
+- **Elutasítás után elfogadás ugyanazon a lapon:** az SDK új azonosítóval sütis
+  módba vált, és az `IdentifyUser` ekkor fut le (`whenPostHogConsentReady`).
+- **Elfogadás után elutasítás:** az SDK süti nélküli módba vált, ha a kapcsoló be
+  van kapcsolva és a lap már süti nélküli képességgel indult; különben a
+  következő oldalbetöltésig nem mér.
+- **Korábbi elfogadás tárolt SDK-jele:** ha a sáv szerint elutasított, de az SDK
+  tárolt jele „in”, az indulás `opt_out_capturing()`-gal süti nélküli módba
+  kényszeríti.
+- A süti-sáv szövege a kapcsolóval együtt vált: bekapcsolva azt mondja, hogy
+  elutasításkor a látogatást sütik és tartós azonosító nélkül számoljuk.
+
+Teszt: `src/__tests__/analytics/posthog-suti-nelkul.test.tsx`.
 
 ## 4. Esemény-regiszter
 
@@ -267,7 +308,8 @@ előfordulás.
 - **Fizetési és kártyaadat**: a Barion-folyamat a saját szigetén fut, ide
   semmi nem kerül be.
 - **Anonim felhasználók person-profilja** (`identified_only`).
-- **Consent nélkül: SEMMIT.** A kulcs beállítása önmagában nem indít mérést.
+- **Consent nélkül: SEMMIT**, a 3b. pont bekapcsolható kivételével (elutasítás
+  után süti és azonosítás nélkül). A kulcs beállítása önmagában nem indít mérést.
 - **Személyes adat az esemény-tulajdonságokban**: e-mail, név, telefonszám,
   üzenetszöveg, cím SOHA. Kurzus- és lecke-azonosító igen. (A
   `src/lib/logger.ts` redact-listája a NAPLÓRA véd, a PostHog-hívásra nem —
@@ -296,3 +338,8 @@ PostHoghoz kerül. A jogalap itt nem a süti-hozzájárulás (a látogató eszk�
 semmit nem tárolunk), hanem maga a szándékos beküldés, de a tájékoztatónak ezt
 ki kell mondania. Ez tulajdonosi és ügyvédi feladat. Amíg nincs meg, a munkamenet-felvétel
 bekapcsolása különösen nem javasolt.
+
+**2026-11-26-i bővülés:** a süti nélküli mérést (3b. pont) a kapcsoló
+bekapcsolása előtt a tájékoztatónak le kell írnia: mit számolunk, hogy a
+látogató gépén semmit nem tárolunk, a jogalapot (jogos érdek) és a
+tiltakozás módját (GPC/DNT, e-mail).

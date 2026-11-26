@@ -310,14 +310,18 @@ describe('Shop — consent-kapu: nincs /ingest vagy gtag a hozzájárulás előt
     expect(POSTHOG_API_HOST).toBe('/ingest')
     const init = fuggvenyTorzs(olvas('src/lib/analytics/posthog.ts'), 'initPostHog')
     expect(init).toMatch(/isPostHogConfigured\(\)/)
-    expect(init).toMatch(/hasAnalyticsConsent\(\)/)
+    // 2026-11-26 óta a kapu a mérési mód: hozzájárulás, vagy elutasítás után a
+    // kapcsolóval engedett süti nélküli mérés (docs/posthog.md 3b). A módot a
+    // `currentMeasurementMode` dönti el; döntés nélkül (unknown) null, és nincs
+    // letöltés. A viselkedést a posthog-suti-nelkul.test.tsx gyakorolja.
+    expect(init).toMatch(/currentMeasurementMode\(\)/)
     // 2026-10-16 óta az SDK lustán töltődik (loadSdk), az init a betöltés után
-    // fut: a hozzájárulás-kapu a LETÖLTÉS és az init előtt is áll.
+    // fut: a mód-kapu a LETÖLTÉS és az init előtt is áll.
     const sdkBetoltes = init.indexOf('loadSdk(')
     const sdkInit = init.search(/\.init\(POSTHOG_KEY/)
     expect(sdkBetoltes).toBeGreaterThan(-1)
     expect(sdkInit).toBeGreaterThan(sdkBetoltes)
-    expect(init.indexOf('hasAnalyticsConsent')).toBeLessThan(sdkBetoltes)
+    expect(init.indexOf('currentMeasurementMode')).toBeLessThan(sdkBetoltes)
     expect(init.indexOf('return false')).toBeLessThan(sdkBetoltes)
   })
 

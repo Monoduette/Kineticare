@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 
-import { identifyUser, whenPostHogReady } from '@/lib/analytics/posthog'
+import { identifyUser, whenPostHogConsentReady } from '@/lib/analytics/posthog'
 
 /**
  * IdentifyUser — a bejelentkezett vevő azonosítása a fiók-oldalakon.
@@ -16,7 +16,9 @@ import { identifyUser, whenPostHogReady } from '@/lib/analytics/posthog'
  * (course_started, lesson_completed) vevőhöz nem köthetők, és a „hányan
  * fejezték be” kérdésre a PostHog nem ad választ.
  *
- * MŰKÖDÉS. A hozzájárulásra vár (whenPostHogReady), mint a PostHogPageView.
+ * MŰKÖDÉS. A hozzájárulásra vár (whenPostHogConsentReady). A süti nélküli
+ * mérés (elutasítás után) nem indítja el: ott azonosítani nem szabad, és egy
+ * ezen a lapon később adott elfogadás után fut le.
  * A posthog-js `identify` ugyanarra az azonosítóra nem küld újabb eseményt
  * (1.430.3, posthog-core.js `identify`: `$identify` csak névtelenből
  * azonosítottba váltáskor megy ki), ezért minden oldalbetöltéskor nyugodtan
@@ -31,6 +33,6 @@ export interface IdentifyUserProps {
 }
 
 export function IdentifyUser({ userId }: IdentifyUserProps): null {
-  useEffect(() => whenPostHogReady(() => void identifyUser(userId)), [userId])
+  useEffect(() => whenPostHogConsentReady(() => void identifyUser(userId)), [userId])
   return null
 }
