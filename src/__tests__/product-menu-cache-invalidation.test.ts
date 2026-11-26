@@ -21,6 +21,7 @@ vi.mock('../lib/logger', async (importOriginal) => ({
 }))
 
 import { MENUS_CACHE_TAG } from '../lib/cache-tags'
+import { indexNowAfterChange } from '../lib/indexnow'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import {
   ecommerce,
@@ -69,8 +70,10 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
       beforeOperation: [beforeOperation],
     }
     const products = await registeredProducts(hooks)
-    expect(products.hooks?.afterChange).toHaveLength(3)
+    // Gyári hookok, menü-gyorsítótár, végül az IndexNow-jelzés (src/lib/indexnow.ts).
+    expect(products.hooks?.afterChange).toHaveLength(4)
     expect(products.hooks?.afterChange?.slice(0, 2)).toEqual(hooks.afterChange)
+    expect(products.hooks?.afterChange?.at(-1)).toBe(indexNowAfterChange)
     expect(products.hooks?.afterDelete).toHaveLength(3)
     expect(products.hooks?.afterDelete?.slice(0, 2)).toEqual(hooks.afterDelete)
     expect(products.hooks?.beforeDelete).toHaveLength(3)
@@ -108,7 +111,7 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     '%s után azonnali lejáratot kér, és ugyanazt a dokumentumot adja vissza',
     async (_, changes) => {
       const products = await registeredProducts()
-      expect(products.hooks?.afterChange).toHaveLength(1)
+      expect(products.hooks?.afterChange).toHaveLength(2)
       const changed = Object.freeze({ ...doc, ...changes }) as typeof doc
       expect(await callHook(products.hooks?.afterChange?.[0], changed)).toBe(changed)
       expect(runtime.revalidate).toHaveBeenCalledExactlyOnceWith(MENUS_CACHE_TAG, { expire: 0 })
@@ -130,7 +133,7 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
       runtime.revalidate.mockImplementation(() => {
         throw new Error('Nincs kéréskörnyezet')
       })
-      expect(products.hooks?.[event]).toHaveLength(1)
+      expect(products.hooks?.[event]).toHaveLength(event === 'afterChange' ? 2 : 1)
       expect(await callHook(products.hooks?.[event]?.[0])).toBe(doc)
       expect(runtime.warn).toHaveBeenCalledOnce()
       expect(runtime.warn.mock.calls[0]?.[0]).toContain('menü-gyorsítótár ürítése sikertelen')
