@@ -1,6 +1,7 @@
 import type { CaptureResult, PostHog, PostHogConfig, Properties } from 'posthog-js'
 
 import {
+  CONSENT_DENIED,
   CONSENT_EVENT,
   CONSENT_GRANTED,
   CONSENT_STORAGE_KEY,
@@ -16,6 +17,7 @@ import {
   POSTHOG_API_HOST,
   POSTHOG_HOST,
   POSTHOG_KEY,
+  isCookielessMeasurementEnabled,
   type AnalyticsEventName,
 } from './posthog-config'
 
@@ -27,10 +29,13 @@ import {
  * - A kliens a /ingest elsőfél-proxyt használja (next.config.ts rewrites) —
  *   így a hívások első félként mennek ki (ad-blocker-ellenállóbb, és a
  *   PostHog-sütik first-partyként működnek).
- * - CONSENT-FIRST: a PostHog CSAK a látogató analytics-hozzájárulása után
- *   inicializálódik (kc_analytics_consent=granted). A jövőbeli consent-
- *   banner ezt a kulcsot írja, és 'kc:analytics-consent' eseményt szór —
- *   a provider erre (is) figyel.
+ * - CONSENT-FIRST: süti és tartós azonosító CSAK a látogató analytics-
+ *   hozzájárulása után (kc_analytics_consent=granted). A banner ezt a kulcsot
+ *   írja, és 'kc:analytics-consent' eseményt szór, a provider erre (is) figyel.
+ * - Elutasítás után, ha a süti nélküli mérés be van kapcsolva
+ *   (isCookielessMeasurementEnabled), az SDK süti nélküli módban indul: a
+ *   látogatás névtelenül számolódik, a gépre semmi nem kerül. Döntés előtt
+ *   semmi nem megy ki.
  * - Kulcs nélkül a teljes analitika kikapcsolt (no-op) — ugyanaz a filozófia,
  *   mint az e-mail/Számlázz.hu opcionális integrációknál.
  */
@@ -65,9 +70,75 @@ export function hasAnalyticsConsent(storage?: ConsentReader): boolean {
   return readConsent(storage) === CONSENT_GRANTED
 }
 
+/**
+ * A mérés módja: hozzájárulással (sütivel, tartós azonosítóval) vagy
+ * elutasítás után süti nélkül. `null`: nincs mérés (nincs döntés, vagy
+ * elutasítás kikapcsolt süti nélküli méréssel).
+ */
+export type MeasurementMode = 'consent' | 'cookieless'
+
+/**
+ * A böngésző tiltakozó jelzése (Global Privacy Control vagy Do Not Track).
+ *
+ * MIÉRT: a hozzájárulás nélküli látogatásmérés feltétele, hogy a látogató
+ * tiltakozhasson (CNIL, Sheet n°16: „To give them the ability to object”,
+ * https://www.cnil.fr/en/sheet-ndeg16-use-analytics-your-websites-and-applications;
+ * GDPR 21. cikk). Aki ezt a jelzést küldi, arról süti nélkül sem mérünk. A
+ * kifejezett elfogadás ennél erősebb döntés, azt nem írja felül.
+ */
+function browserObjectsToMeasurement(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+  const nav = navigator as Navigator & { globalPrivacyControl?: boolean }
+  return nav.globalPrivacyControl === true || nav.doNotTrack === '1'
+}
+
+/** A tárolt döntésből adódó mérési mód. */
+export function currentMeasurementMode(storage?: ConsentReader): MeasurementMode | null {
+  const consent = readConsent(storage)
+  if (consent === CONSENT_GRANTED) {
+    return 'consent'
+  }
+  if (
+    consent === CONSENT_DENIED &&
+    isCookielessMeasurementEnabled() &&
+    !browserObjectsToMeasurement()
+  ) {
+    return 'cookieless'
+  }
+  return null
+}
+
+/**
+ * A süti nélküli mód kiegészítő opciói (posthog-js 1.430.3, mérve).
+ *
+ * - `cookieless_mode: 'on_reject'`: elutasított állapotban az SDK a
+ *   `$posthog_cookieless` helyőrző azonosítót küldi `$cookieless_mode: true`
+ *   jelzéssel, a valódi azonosítót a PostHog szervere számolja. A tartós
+ *   tárolás ki van kapcsolva (posthog-core.js `_is_persistence_disabled`).
+ * - `opt_out_capturing_by_default: true`: ebben a módban csak tárolt
+ *   elutasítással indulunk, és a posthog-js így a még döntés nélküli SDK-t is
+ *   elutasítottnak veszi (consent.js `isRejected`), tehát azonnal süti nélkül
+ *   mér, és a saját opt-out jelét sem írja a gépre. A PostHog dokumentációja
+ *   e kettő együttesét ott ellenzi, ahol az SDK a döntés ELŐTT is fut; nálunk
+ *   nem fut (https://posthog.com/docs/privacy/data-collection).
+ *
+ * Mérve happy-dom alatt a valódi posthog-js-szel (2026-11-26): a
+ * `$pageview` `distinct_id: "$posthog_cookieless"`, `$device_id: null` és
+ * `$cookieless_mode: true` mezővel ment ki, a süti, a localStorage és a
+ * sessionStorage üres maradt; a későbbi `opt_in_capturing` új azonosítót
+ * kezdett.
+ */
+const COOKIELESS_OPTIONS = {
+  cookieless_mode: 'on_reject',
+  opt_out_capturing_by_default: true,
+} as const satisfies Partial<PostHogConfig>
+
 /** A posthog.init opciói (tiszta függvény — egységtesztelhető). */
-export function buildPostHogOptions(): Partial<PostHogConfig> {
+export function buildPostHogOptions(mode: MeasurementMode = 'consent'): Partial<PostHogConfig> {
   return {
+    ...(mode === 'cookieless' ? COOKIELESS_OPTIONS : {}),
     api_host: POSTHOG_API_HOST,
     ui_host: POSTHOG_HOST,
     // Csak azonosított felhasználókról készül person-profil (anonim forgalom
@@ -343,6 +414,20 @@ function loadSdk(): Promise<PostHog> {
 let initStarted = false
 
 /**
+ * Melyik módban indult az SDK. A módot a betöltés alatt és utána is a tárolt
+ * döntéssel vetjük össze: ami az egyik módban keletkezett, a másikban nem
+ * mehet ki.
+ */
+let initMode: MeasurementMode | null = null
+
+/**
+ * Az SDK a süti nélküli opciókkal indult-e (egy ezen a lapon később adott
+ * hozzájárulás után is így marad). Ilyen kliensen a visszavonás a posthog-js
+ * saját útján azonnal süti nélküli módba vált.
+ */
+let sdkCookielessCapable = false
+
+/**
  * Aktív-e a rögzítés: inicializált kliens, amelyen nincs érvényben opt-out.
  * Opt-out után az init megmarad, de a posthog-js a capture-t eldobja, ezért
  * a várakozó kérések ilyenkor is várnak az újbóli bekapcsolásig.
@@ -364,6 +449,13 @@ let capturing = false
  * a belépő oldal megtekintését. Hozzájárulás nélkül semmi nem megy ki.
  */
 const readyCallbacks = new Set<() => void>()
+
+/**
+ * Csak hozzájárulással induló várakozók (azonosítás). Süti nélküli módban a
+ * rögzítés aktív, de azonosítani nem szabad, ezért ezek a hozzájárulásig
+ * várnak (egy ezen a lapon később adott elfogadásig is).
+ */
+const consentCallbacks = new Set<() => void>()
 
 /**
  * A hozzájárulás UTÁN, de az SDK megérkezése ELŐTT hívott közvetlen hívások
@@ -587,7 +679,7 @@ function originProperties(): Record<string, string> {
  * A visszaadott függvény visszavonja a még várakozó callbacket.
  */
 export function whenPostHogReady(callback: () => void): () => void {
-  if (capturing || isLoadingWithConsent()) {
+  if (capturing || isLoadingInCurrentMode()) {
     callback()
     return () => {}
   }
@@ -598,38 +690,74 @@ export function whenPostHogReady(callback: () => void): () => void {
 }
 
 /**
- * PostHog inicializálása (idempotens; csak konfigurált + hozzájárulás esetén).
+ * Mint a `whenPostHogReady`, de csak hozzájárulással induló rögzítésnél fut
+ * (süti nélküli módban vár). Az azonosítás (IdentifyUser) használja.
+ */
+export function whenPostHogConsentReady(callback: () => void): () => void {
+  if (initMode === 'consent' && (capturing || isLoadingInCurrentMode())) {
+    callback()
+    return () => {}
+  }
+  consentCallbacks.add(callback)
+  return () => {
+    consentCallbacks.delete(callback)
+  }
+}
+
+/**
+ * PostHog inicializálása (idempotens; csak konfigurált kulccsal és mérési
+ * móddal: hozzájárulás, vagy elutasítás bekapcsolt süti nélküli méréssel).
  * Igazat ad, ha az init elindult vagy már kész; a tényleges `posthog.init` az
  * SDK megérkezése után fut.
  */
 export function initPostHog(): boolean {
   if (initialized || initStarted) {
     // Újbóli hozzájárulás a betöltés alatt: a közben várakozók is sorba állnak.
-    if (isLoadingWithConsent()) {
+    if (isLoadingInCurrentMode()) {
       runReadyCallbacks()
     }
     return true
   }
-  if (!isPostHogConfigured() || !hasAnalyticsConsent()) {
+  const mode = isPostHogConfigured() ? currentMeasurementMode() : null
+  if (mode === null) {
     return false
   }
   scrubSensitiveQueryFromAddressBar()
   dropPostHogToolbarLaunchState()
   initStarted = true
+  initMode = mode
   // A hozzájárulásra várók most az SDK-sorba kerülnek, a keletkezési
   // oldalukkal (lásd readyCallbacks): a betöltés alatti route-váltás már nem
   // vonhatja vissza őket.
   runReadyCallbacks()
   void loadSdk().then(
     (client) => {
-      // A betöltés alatt visszavont hozzájárulás: az SDK nem indul el, a
-      // várakozó hívások eldobódnak, egy későbbi elfogadás újraindít.
-      if (!hasAnalyticsConsent()) {
+      // A betöltés alatt megváltozott döntés: az SDK ebben a módban nem
+      // indul el, a várakozó hívások eldobódnak (ami hozzájárulással
+      // keletkezett, süti nélkül sem mehet ki, és fordítva). Ha az új döntés
+      // is mér, abban a módban indul újra.
+      if (currentMeasurementMode() !== mode) {
         initStarted = false
+        initMode = null
         dropPendingCalls()
+        initPostHog()
         return
       }
-      client.init(POSTHOG_KEY, buildPostHogOptions())
+      client.init(POSTHOG_KEY, buildPostHogOptions(mode))
+      if (mode === 'cookieless') {
+        sdkCookielessCapable = true
+        // Egy korábbi elfogadásból tárolt SDK-hozzájárulás mellett a
+        // posthog-js sütivel mérne. Az `opt_out_capturing` ilyenkor elengedi a
+        // régi azonosítót, és süti nélküli módba vált (posthog-core.js
+        // `opt_out_capturing`, on_reject ág). Tárolt jel nélkül nem hívjuk,
+        // mert az a gépre írna.
+        if (!client.has_opted_out_capturing()) {
+          client.opt_out_capturing()
+        }
+        initialized = true
+        startCapturing()
+        return
+      }
       // Ide csak tárolt 'granted' hozzájárulással jutunk. Ha a látogató
       // korábban elutasított, az SDK a saját opt-outját tartósan tárolja, és
       // újratöltés után is azzal indul. Ilyenkor a várakozó eseményeket (lent)
@@ -653,6 +781,7 @@ export function initPostHog(): boolean {
       // A csomag nem töltődött be (hálózat, blokkoló): a mérés marad ki, a
       // felület nem. Egy későbbi hozzájárulás-esemény újrapróbálja.
       initStarted = false
+      initMode = null
       sdkLoad = null
       dropPendingCalls()
     },
@@ -661,13 +790,13 @@ export function initPostHog(): boolean {
 }
 
 /**
- * Az SDK úton van, és a hozzájárulás most is áll. A hozzájárulást minden
- * hívásnál újra kell nézni: a betöltés alatti visszavonás nem állítja le a
- * letöltést, csak a kiküldést, és az alatt keletkezett esemény egy újbóli
- * elfogadás után sem mehet ki.
+ * Az SDK úton van, és a döntés most is ugyanazt a mérési módot adja, amelyben
+ * elindult. Minden hívásnál újra kell nézni: a betöltés alatti visszavonás nem
+ * állítja le a letöltést, csak a kiküldést, és az alatt keletkezett esemény
+ * egy újbóli elfogadás után sem mehet ki.
  */
-function isLoadingWithConsent(): boolean {
-  return initStarted && !initialized && hasAnalyticsConsent()
+function isLoadingInCurrentMode(): boolean {
+  return initStarted && !initialized && initMode !== null && currentMeasurementMode() === initMode
 }
 
 /**
@@ -683,7 +812,7 @@ function withClient(call: (client: PostHog) => void): boolean {
     call(posthog)
     return true
   }
-  if (isLoadingWithConsent()) {
+  if (isLoadingInCurrentMode()) {
     pendingCalls.push(call)
     return true
   }
@@ -699,7 +828,7 @@ function captureEvent(event: string, properties?: Record<string, unknown>): void
     posthog.capture(event, properties)
     return
   }
-  if (isLoadingWithConsent()) {
+  if (isLoadingInCurrentMode()) {
     const origin = originProperties()
     pendingCalls.push((client) => client.capture(event, { ...origin, ...properties }))
   }
@@ -716,6 +845,10 @@ function dropPendingCalls(): void {
 function runReadyCallbacks(): void {
   const pending = [...readyCallbacks]
   readyCallbacks.clear()
+  if (initMode === 'consent') {
+    pending.push(...consentCallbacks)
+    consentCallbacks.clear()
+  }
   for (const callback of pending) {
     callback()
   }
@@ -747,8 +880,11 @@ export function isPostHogInitialized(): boolean {
  */
 export function enableAnalyticsCapture(): boolean {
   if (initialized && posthog) {
-    // Ugyanezen a lapon, a visszavonás alatt történt kijelentkezés jele.
+    // Ugyanezen a lapon, a visszavonás alatt történt kijelentkezés jele. Süti
+    // nélküli módból az `opt_in_capturing` új azonosítóval indul, a süti
+    // nélküli látogatás nem kötődik hozzá (posthog-core.js `opt_in_capturing`).
     syncGrantedCapture(posthog, takeIdentityPending())
+    initMode = 'consent'
     startCapturing()
     return true
   }
@@ -761,8 +897,14 @@ export function enableAnalyticsCapture(): boolean {
  * initPostHog consent-kapuja tiltja, amíg a tárolt állapot 'denied'.
  */
 export function disableAnalyticsCapture(): void {
+  // Már süti nélkül mér (vagy úgy töltődik): az elutasítás ezt nem érinti. A
+  // banner a döntést kétszer is jelezheti (esemény, majd közvetlen hívás), és
+  // a második nem dobhatja el a belépő oldal sorban álló megtekintését.
+  if (initMode === 'cookieless') {
+    return
+  }
   // Betöltés közben: a várakozó hívások eldobódnak, és az SDK megérkezésekor
-  // a hozzájárulás-ellenőrzés (initPostHog) meg sem indítja a klienst.
+  // a módellenőrzés (initPostHog) ebben a módban meg sem indítja a klienst.
   dropPendingCalls()
   // Egy függő belépés-jel visszavonás után nem élhet tovább: egy későbbi
   // hozzájárulás különben a régi felhasználóként azonosítaná a gépet. A
@@ -772,9 +914,28 @@ export function disableAnalyticsCapture(): void {
   if (pending?.id) {
     writePendingIdentity({ reset: pending.reset, id: null })
   }
+  if (initialized && posthog && sdkCookielessCapable && currentMeasurementMode() === 'cookieless') {
+    // Süti nélküli opciókkal indult kliens (elutasítás, elfogadás, majd újra
+    // elutasítás ugyanazon a lapon): az `opt_out_capturing` elengedi a
+    // hozzájárulással kapott azonosítót, és süti nélkül mér tovább
+    // (posthog-core.js `opt_out_capturing`, on_reject ág).
+    posthog.opt_out_capturing()
+    initMode = 'cookieless'
+    return
+  }
   if (initialized && posthog) {
+    // Ezen a lapon a mérés leáll. A süti nélküli mód a következő
+    // oldalbetöltéstől indul: a hozzájárulással indított SDK opcióit nem
+    // írjuk át futás közben.
     posthog.opt_out_capturing()
     capturing = false
+    initMode = null
+    return
+  }
+  // Még el sem indult (döntés előtti első látogatás): süti nélküli mérés
+  // bekapcsolt állapotban most indul, a belépő oldal megtekintésével együtt.
+  if (!initStarted) {
+    initPostHog()
   }
 }
 
@@ -879,7 +1040,10 @@ export function capturePageView(url: string): void {
 export function resetPostHogForTests(): void {
   initialized = false
   initStarted = false
+  initMode = null
+  sdkCookielessCapable = false
   capturing = false
   readyCallbacks.clear()
+  consentCallbacks.clear()
   dropPendingCalls()
 }
