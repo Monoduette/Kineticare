@@ -118,9 +118,11 @@ ellenőrizendő, ezért a D4 nyitva marad. A többi sort a tulajdonos ellenőriz
   (`?utm_source=instagram&utm_medium=social`, Linktree-nél `utm_source=linktree`)
   átírni, mert a közösségi appok böngészője a hivatkozót gyakran elhagyja: a
   PostHogban a munkamenetek fele „közvetlen” forrású.
-- Döntésre vár: mérjük-e a süti-sávot elutasító látogatókat süti nélküli
-  (cookieless) módban. Ma aki nem fogad el, az a PostHogban egyáltalán nem
-  látszik.
+- Eldöntve (2026-11-26): a süti-sávot elutasító látogatókat süti nélkül,
+  azonosítás nélkül mérjük (`docs/posthog.md` 3b. pont). A kód kapcsoló mögött
+  van. Hátra van: (1) a tulajdonos beilleszti az adatvédelmi tájékoztatóba az
+  erről szóló bekezdést (admin, Adatvédelem oldal); (2) utána a Railway-on
+  `NEXT_PUBLIC_POSTHOG_COOKIELESS=true`, és ellenőrzés a PostHogban.
 
 ### 4. Tulajdonosi döntésre szándékosan parkolva
 

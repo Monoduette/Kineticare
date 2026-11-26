@@ -28,6 +28,28 @@ export const POSTHOG_HOST = (
 export const POSTHOG_API_HOST = '/ingest'
 
 /**
+ * Süti nélküli mérés az elutasítóknak (tulajdonosi döntés, 2026-11-26).
+ *
+ * Bekapcsolva a sütiket elutasító látogató oldalmegtekintései és üzleti
+ * eseményei is kimennek, a posthog-js `cookieless_mode: 'on_reject'` módjában:
+ * semmi nem kerül a gépére (süti, localStorage, sessionStorage), az azonosítót
+ * a PostHog szervere számolja napi sóval az IP-ből és a böngésző-azonosítóból,
+ * és nem tárolja (https://posthog.com/tutorials/cookieless-tracking).
+ *
+ * Miért kapcsoló: a bekapcsolás előtt két dolognak kell élnie. Az adatvédelmi
+ * tájékoztatónak le kell írnia ezt a mérést (az a CMS-ben él, a tulajdonos
+ * írja át), és a PostHog-projektben be kell kapcsolni a süti nélküli mérést,
+ * különben a PostHog ezeket az eseményeket eldobja. Hiányzó vagy `'true'`-tól
+ * eltérő érték: kikapcsolva, az elutasítóról semmi nem megy ki (a 2026-11-26
+ * előtti viselkedés). `NEXT_PUBLIC_` kulcs, tehát build-időben ég be.
+ *
+ * Függvény, nem konstans: a tesztek a modul újratöltése nélkül kapcsolják.
+ */
+export function isCookielessMeasurementEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_POSTHOG_COOKIELESS === 'true'
+}
+
+/**
  * Üzleti esemény-nevek EGY helyen — a funnel-riportok ezekre épülnek.
  *
  * KÉT funnel él egymás után:
