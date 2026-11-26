@@ -147,9 +147,9 @@ describe('blockForeignCredentialChange — idegen rekord jelszó-/e-mail-cseréj
     // A Payload admin a mentéskor minden mezőt visszaküld — a nagybetűs/whitespace-es
     // alak sem számíthat cserének, különben egy sima név-mentés is 403-at kapna.
     const data = { email: '  Aldozat@Kineticare.TEST ', name: 'Új Név' }
-    expect(
-      run({ data, originalDoc: victim, operation: 'update', req: { user: staff } }),
-    ).toEqual(data)
+    expect(run({ data, originalDoc: victim, operation: 'update', req: { user: staff } })).toEqual(
+      data,
+    )
   })
 })
 
@@ -211,7 +211,10 @@ describe('jelszó-visszaállítás — a beforeChange lánc megkerülése (Paylo
   it('a resetPassword művelet forrása nem hívja a beforeChange hookokat', async () => {
     const { readFile } = await import('node:fs/promises')
     const source = await readFile(
-      new URL('../../../node_modules/payload/dist/auth/operations/resetPassword.js', import.meta.url),
+      new URL(
+        '../../../node_modules/payload/dist/auth/operations/resetPassword.js',
+        import.meta.url,
+      ),
       'utf8',
     )
     expect(source).not.toContain('beforeChange')
@@ -221,9 +224,7 @@ describe('jelszó-visszaállítás — a beforeChange lánc megkerülése (Paylo
 
   it('a jelszó-visszaállítás után futó afterLogin hook be van kötve', () => {
     const afterLogin = Users.hooks?.afterLogin ?? []
-    expect(afterLogin.map((hook) => hook.name)).toContain(
-      'clearPasswordSetupPendingAfterLogin',
-    )
+    expect(afterLogin.map((hook) => hook.name)).toContain('clearPasswordSetupPendingAfterLogin')
   })
 })
 

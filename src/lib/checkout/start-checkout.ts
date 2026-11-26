@@ -49,7 +49,6 @@ import {
   type PendingResumeExpectation,
 } from './pending-payment'
 import { billingSummaryMessage, validateBilling, type NormalizedBilling } from './billing'
-import { isGuestBindableAccount } from '../order-status/guest-bindable-account'
 import {
   CHECKOUT_ALREADY_PURCHASED_ERROR,
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
@@ -1134,13 +1133,12 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
   const lockedPhase = async (): Promise<
     Exclude<DuplicateCheckResult, { kind: 'ok' }> | { kind: 'created'; order: Order }
   > => {
-    // K2 + W4: aktivált / staff / owner fiókra a vendég nem indít fizetést.
-    // Az üzenet azonos, akár van kurzusuk, akár nincs.
-    if (
-      user === null &&
-      buyer.existingUser !== null &&
-      !isGuestBindableAccount(buyer.existingUser)
-    ) {
+    // K2 + W4: meglévő fiók e-mailjére a vendég nem indít fizetést, a fiók
+    // állapotától függetlenül (aktivált, még jelszó nélküli, staff, owner).
+    // Ez a kapu a duplavásárlás-ellenőrzés ELŐTT áll, így a válasz semmit nem
+    // árul el arról, hogy a cím tulajdonosa megvette-e a kurzust. A jelszó
+    // nélküli vevő a belépési oldal jelszó-beállító linkjével folytatja.
+    if (user === null && buyer.existingUser !== null) {
       throw new CheckoutError(409, CHECKOUT_GUEST_EXISTING_ACCOUNT)
     }
 

@@ -71,6 +71,18 @@ export function courseFamilyViolation(input: {
 }
 
 /**
+ * A kurzusoldal elrendezése (`pageLayout`). Ismeretlen vagy üres érték: a mai,
+ * oldalsó vásárlódobozos oldal, így a régi soroknál semmi nem változik.
+ */
+export type CoursePageLayout = 'standard' | 'landing'
+
+export function coursePageLayout(
+  product: { pageLayout?: unknown } | null | undefined,
+): CoursePageLayout {
+  return product?.pageLayout === 'landing' ? 'landing' : 'standard'
+}
+
+/**
  * A kurzus leckesorainak száma: a modulok leckéi, ha van ilyen, különben a régi
  * videólista (ugyanaz a sorrend, mint a buildCurriculum-ban). Sorokat számol,
  * nem lejátszható leckéket, mert mentés előtt az új soroknak még nincs

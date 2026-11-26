@@ -251,6 +251,8 @@ export const optionalBunnyStreamEnvVars = [
  *
  * - `NEXT_PUBLIC_POSTHOG_KEY` — a PostHog nyilvános projekt-kulcsa (docs/posthog.md).
  * - `NEXT_PUBLIC_POSTHOG_HOST` — felülírható PostHog-host (alap: EU-cloud).
+ * - `NEXT_PUBLIC_POSTHOG_COOKIELESS` — `'true'`: elutasítás után süti nélküli
+ *   PostHog-mérés (src/lib/analytics/posthog-config.ts). Más érték: kikapcsolva.
  * - `NEXT_PUBLIC_GA_MEASUREMENT_ID` — GA4 mérési azonosító (`G-…`, docs/ga4.md).
  * - `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` — Search Console domain-ellenőrző
  *   meta (nyilvános, nem titok). Üres = nincs `verification.google` a layoutban.
@@ -276,6 +278,7 @@ export const optionalBunnyStreamEnvVars = [
 export const optionalAnalyticsEnvVars = [
   'NEXT_PUBLIC_POSTHOG_KEY',
   'NEXT_PUBLIC_POSTHOG_HOST',
+  'NEXT_PUBLIC_POSTHOG_COOKIELESS',
   'NEXT_PUBLIC_GA_MEASUREMENT_ID',
   'NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION',
   'NEXT_PUBLIC_GOOGLE_ADS_ID',

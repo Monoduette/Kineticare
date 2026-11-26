@@ -18,6 +18,7 @@ import {
   SlidingWindowRateLimiter,
   UNKNOWN_IP_KEY,
   withPayloadRestRateLimit,
+  EMAIL_UNREADABLE,
   type RateLimitRule,
 } from '../../lib/security/rate-limit'
 
@@ -709,10 +710,17 @@ describe('withPayloadRestRateLimit — Payload REST POST beburkolása', () => {
       return Response.json({ ok: true }, { status: 200 })
     }
     const handler = withPayloadRestRateLimit(inner, { limiter })
+    let attempt = 0
+    // Minden kérés más címmel megy, hogy csak az IP-keret számítson.
     const send = () =>
-      handler(makeRequest('https://kineticare.test/api/users/login', { ip: '203.0.113.40' }), {
-        params: Promise.resolve({ slug: ['users', 'login'] }),
-      })
+      handler(
+        new Request('https://kineticare.test/api/users/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.40' },
+          body: JSON.stringify({ email: `vevo${(attempt += 1)}@example.test`, password: 'x' }),
+        }),
+        { params: Promise.resolve({ slug: ['users', 'login'] }) },
+      )
 
     for (let index = 0; index < RATE_LIMIT_RULES.login.limit; index += 1) {
       expect((await send()).status).toBe(200)
@@ -853,10 +861,11 @@ describe('checkForgotPasswordEmailRateLimit — per-cím keret', () => {
       rules,
     })
 
-    expect(rejection).not.toBeNull()
-    expect(rejection?.routeClass).toBe('password-forgot-email')
-    expect(rejection?.message).toBe(RATE_LIMIT_MESSAGE)
-    expect(rejection?.retryAfterSeconds).toBeGreaterThan(0)
+    expect(rejection).toMatchObject({
+      routeClass: 'password-forgot-email',
+      message: RATE_LIMIT_MESSAGE,
+    })
+    expect((rejection as { retryAfterSeconds: number }).retryAfterSeconds).toBeGreaterThan(0)
   })
 
   it('ugyanarról az IP-ről MÁS cím szabadon kérhető (a keret a címhez tartozik)', async () => {
@@ -946,7 +955,7 @@ describe('checkForgotPasswordEmailRateLimit — per-cím keret', () => {
     ).not.toBeNull()
   })
 
-  it('cím nélküli / értelmezhetetlen törzs → nincs cím-keret (nem dob, nem is fogyaszt)', async () => {
+  it('cím nélküli / értelmezhetetlen törzs → elutasítás (nem dob, nem is fogyaszt)', async () => {
     const limiter = new SlidingWindowRateLimiter()
     const raw = (body: string, contentType = 'application/json'): Request =>
       new Request('https://kineticare.test/api/users/forgot-password', {
@@ -955,19 +964,21 @@ describe('checkForgotPasswordEmailRateLimit — per-cím keret', () => {
         body,
       })
 
-    expect(
-      await checkForgotPasswordEmailRateLimit(raw('ez nem json {'), { limiter, rules }),
-    ).toBeNull()
-    expect(await checkForgotPasswordEmailRateLimit(raw('{}'), { limiter, rules })).toBeNull()
+    expect(await checkForgotPasswordEmailRateLimit(raw('ez nem json {'), { limiter, rules })).toBe(
+      EMAIL_UNREADABLE,
+    )
+    expect(await checkForgotPasswordEmailRateLimit(raw('{}'), { limiter, rules })).toBe(
+      EMAIL_UNREADABLE,
+    )
     expect(
       await checkForgotPasswordEmailRateLimit(raw(JSON.stringify({ email: 42 })), {
         limiter,
         rules,
       }),
-    ).toBeNull()
+    ).toBe(EMAIL_UNREADABLE)
     expect(
       await checkForgotPasswordEmailRateLimit(raw('valami', 'text/plain'), { limiter, rules }),
-    ).toBeNull()
+    ).toBe(EMAIL_UNREADABLE)
     expect(limiter.trackedKeyCount).toBe(0)
   })
 

@@ -24,6 +24,8 @@ export interface PromoClosingCtaProps {
   /** A pénztár címe (a `buy` ág `href`-je) — a felirat a szótár #1 sora. */
   href: string
   guaranteeLabel: string | null
+  /** Él-e az akció: akció nélkül a cím nem ígér akciós árat. */
+  promoActive?: boolean
 }
 
 export const PROMO_CLOSING_ID = 'akcios-vasarlas'
@@ -35,6 +37,7 @@ export function PromoClosingCta({
   originalPriceHuf,
   href,
   guaranteeLabel,
+  promoActive = true,
 }: PromoClosingCtaProps) {
   return (
     <Section
@@ -46,12 +49,13 @@ export function PromoClosingCta({
       <Container className="kc-promo-closing__inner">
         <div className="kc-promo-closing__copy">
           <h2 className="kc-promo-closing__title" id={`${PROMO_CLOSING_ID}-cim`}>
-            Kezdd el az akciós áron
+            {promoActive ? <>Kezdd el az akciós áron</> : <>Kezdd el a kurzust</>}
           </h2>
           <PromoPrice
             className="kc-promo-closing__price"
             originalPriceHuf={originalPriceHuf}
             priceHuf={priceHuf}
+            promoActive={promoActive}
           />
           {guaranteeLabel !== null ? (
             <p className="kc-promo-closing__guarantee">

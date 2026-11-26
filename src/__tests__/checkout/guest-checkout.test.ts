@@ -352,33 +352,50 @@ describe('startCheckout — vendég-vásárlás', () => {
     expect(calls.orderWhere).toHaveLength(0)
   })
 
-  it('aktiválatlan customer e-maillel, még meg nem vett kurzusra: rendelés fiók nélkül', async () => {
-    fetchMock.mockResolvedValueOnce(barionStartSuccess())
-    const { payload, calls } = createMockPayload({
-      existingUser: {
-        id: 7,
-        email: GUEST.email,
-        name: 'Régi Név',
-        role: 'customer',
-        passwordSetupPending: true,
-      } as unknown as User,
-    })
+  /**
+   * Jelszó nélküli (aktiválatlan) fiók e-mailjére sem indul vendég-fizetés.
+   * Korábban ez a fiók átment a kapun, és a duplavásárlás-ellenőrzés más
+   * választ adott, ha a cím tulajdonosa megvette a kurzust (409), mint ha nem
+   * (200 és Barion-oldal): bárki kikérdezhette egy idegen e-mail-cím
+   * vásárlásait. Most a válasz ugyanaz, és a rendelés-táblát nem kérdezzük.
+   */
+  it.each([
+    ['meg nem vett', false],
+    ['már megvett', true],
+  ])(
+    'aktiválatlan fiók, %s kurzus → ugyanaz a 409, nincs vásárlás-orákulum',
+    async (_label, owned) => {
+      const { payload, calls } = createMockPayload({
+        existingUser: {
+          id: 7,
+          email: GUEST.email,
+          name: 'Régi Név',
+          role: 'customer',
+          passwordSetupPending: true,
+        } as unknown as User,
+        findOrders: (where) =>
+          owned && JSON.stringify(where ?? {}).includes('"paid"')
+            ? { docs: [{ id: 55 }], totalDocs: 1 }
+            : { docs: [], totalDocs: 0 },
+      })
 
-    await startCheckout({
-      payload,
-      input: {
-        productId: 42,
-        consentWithdrawalWaiver: true,
-        consentTerms: true,
-        billing: BILLING,
-        guest: GUEST,
-      },
-    })
-
-    const created = calls.create[0]
-    expect(created.customer).toBeUndefined()
-    expect(created.customerEmail).toBe(GUEST.email)
-  })
+      const promise = startCheckout({
+        payload,
+        input: {
+          productId: 42,
+          consentWithdrawalWaiver: true,
+          consentTerms: true,
+          billing: BILLING,
+          guest: GUEST,
+        },
+      })
+      await expect(promise).rejects.toMatchObject({ status: 409 })
+      await expect(promise).rejects.toThrowError(CHECKOUT_GUEST_EXISTING_ACCOUNT)
+      expect(calls.create).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(calls.orderWhere).toHaveLength(0)
+    },
+  )
 
   /**
    * P1 / W2 — AZ E-MAIL-HATÓKÖRŰ DUPLAVÁSÁRLÁS-BLOKK (start-checkout.ts:

@@ -23,6 +23,12 @@ export interface PromoPriceProps {
   /** A díj-megjegyzés (a vásárlódoboz szövegével azonosan) — a záró sávban elhagyható. */
   note?: string | null
   className?: string
+  /**
+   * Akciós-e az ár. A fotós fejléces (landing) kurzusoldal ugyanezt a sort
+   * használja akció nélkül is: ott az ár rejtett címkéje „Ár:", mert egy
+   * „Akciós ár:" felolvasás hamis állítás lenne (WCAG 2.2 SC 1.3.1).
+   */
+  promoActive?: boolean
 }
 
 export function PromoPrice({
@@ -30,6 +36,7 @@ export function PromoPrice({
   originalPriceHuf,
   note = null,
   className,
+  promoActive = true,
 }: PromoPriceProps) {
   const classes = ['kc-promo-price', className ?? ''].filter(Boolean).join(' ')
   return (
@@ -41,7 +48,7 @@ export function PromoPrice({
         </span>
       ) : null}
       <span className="kc-promo-price__now">
-        <span className="kc-visually-hidden">Akciós ár: </span>
+        <span className="kc-visually-hidden">{promoActive ? 'Akciós ár: ' : 'Ár: '}</span>
         {formatPriceHuf(priceHuf)}
       </span>
       {note ? <span className="kc-promo-price__note">{note}</span> : null}

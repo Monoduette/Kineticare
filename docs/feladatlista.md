@@ -118,9 +118,11 @@ ellenőrizendő, ezért a D4 nyitva marad. A többi sort a tulajdonos ellenőriz
   (`?utm_source=instagram&utm_medium=social`, Linktree-nél `utm_source=linktree`)
   átírni, mert a közösségi appok böngészője a hivatkozót gyakran elhagyja: a
   PostHogban a munkamenetek fele „közvetlen” forrású.
-- Döntésre vár: mérjük-e a süti-sávot elutasító látogatókat süti nélküli
-  (cookieless) módban. Ma aki nem fogad el, az a PostHogban egyáltalán nem
-  látszik.
+- Eldöntve (2026-11-26): a süti-sávot elutasító látogatókat süti nélkül,
+  azonosítás nélkül mérjük (`docs/posthog.md` 3b. pont). A kód kapcsoló mögött
+  van. Hátra van: (1) a tulajdonos beilleszti az adatvédelmi tájékoztatóba az
+  erről szóló bekezdést (admin, Adatvédelem oldal); (2) utána a Railway-on
+  `NEXT_PUBLIC_POSTHOG_COOKIELESS=true`, és ellenőrzés a PostHogban.
 
 ### 4. Tulajdonosi döntésre szándékosan parkolva
 
@@ -170,6 +172,7 @@ kérésre, külön PR-ben (`CLAUDE.md`, TILOS ZÓNÁK 5.). A 3.90.2-re és a Nex
 | TK2 | Témakurzusok: leckeválasztó gomb a duplikált kurzushoz | A témakurzus ma a program duplikálásával és a felesleges leckék törlésével készül. Egy „leckék átvétele a programból” gomb gyorsítaná, de nem kell az induláshoz. |
 | TK3 | Témakurzusok: mélylink a program adott leckéjére | A program birtokosa a témakurzus oldalán ma a program lejátszójának elejére jut. Jobb volna a témának megfelelő leckére vinni. |
 | TK4 | A program leírásának „119 000 Ft … 79 500 Ft” mondata | A fő kurzus szövegében kézzel írt áthúzott ár áll. Akció nélkül ez UCPD-kockázat, és duplikáláskor a témakurzusba is átkerül (a szerkesztői ellenőrzőlista jelzi). Tulajdonosi döntés kell a szövegről. |
+| TK5 | Témakurzusok: a csuklós minta jóváhagyása és élesben létrehozása | A `npm run temakurzus:minta` próbafutásban megmondja, mit hozna létre; íráshoz `OWNER_TEMAKURZUS_CONFIRM=igen` (tulajdonosi jóváhagyással). A minta rejtett piszkozat, a látogató nem látja. Jóváhagyandó: a szöveg (a program mondatai a csuklóra szűkítve), a 30 napos garancia a témakurzuson, és a 19 900 Ft-os mintaár helyett a valódi ár. |
 
 ## Kész 2026 szeptemberében (#283–#307)
 

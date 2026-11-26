@@ -42,11 +42,7 @@ function loginContext(): RouteContext {
   return { params: Promise.resolve({ slug: ['users', 'login'] }) }
 }
 
-function jsonRequest(
-  path = LOGIN_PATH,
-  headers: HeadersInit = {},
-  method = 'POST',
-): Request {
+function jsonRequest(path = LOGIN_PATH, headers: HeadersInit = {}, method = 'POST'): Request {
   return new Request(`${APP_ORIGIN}${path}`, {
     method,
     headers: {
@@ -62,10 +58,7 @@ function jsonRequest(
 
 function multipartRequest(headers: HeadersInit = {}): Request {
   const body = new FormData()
-  body.set(
-    '_payload',
-    JSON.stringify({ email: 'DUMMY@example.test', password: 'DUMMY_PASSWORD' }),
-  )
+  body.set('_payload', JSON.stringify({ email: 'DUMMY@example.test', password: 'DUMMY_PASSWORD' }))
   return new Request(`${APP_ORIGIN}${LOGIN_PATH}`, {
     method: 'POST',
     headers,
@@ -241,9 +234,7 @@ describe('Payload login CSRF pre-handler', () => {
     const limiter = new SlidingWindowRateLimiter()
     const limiterCheck = vi.spyOn(limiter, 'check')
     const inner = passthroughHandler()
-    const handler = withPayloadLoginCsrfProtection(
-      withPayloadRestRateLimit(inner, { limiter }),
-    )
+    const handler = withPayloadLoginCsrfProtection(withPayloadRestRateLimit(inner, { limiter }))
     const request = jsonRequest(LOGIN_PATH, { origin: 'https://evil.example.test' })
     const clone = vi.fn(() => {
       throw new Error('A CSRF guard utan a request.clone nem futhat le')
@@ -380,9 +371,7 @@ describe('Payload login CSRF pre-handler', () => {
   it('a 11. szabalyos login tovabbra is a meglevo limiter 429 valasza', async () => {
     const limiter = new SlidingWindowRateLimiter()
     const inner = passthroughHandler()
-    const handler = withPayloadLoginCsrfProtection(
-      withPayloadRestRateLimit(inner, { limiter }),
-    )
+    const handler = withPayloadLoginCsrfProtection(withPayloadRestRateLimit(inner, { limiter }))
     const send = () =>
       handler(
         jsonRequest(LOGIN_PATH, {

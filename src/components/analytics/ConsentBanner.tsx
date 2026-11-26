@@ -21,6 +21,7 @@ import {
   type ConsentState,
 } from '@/lib/analytics/consent'
 import { optInToAnalytics, optOutOfAnalytics } from '@/lib/analytics/posthog'
+import { isCookielessMeasurementEnabled } from '@/lib/analytics/posthog-config'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 
 import '../../app/(frontend)/styles/consent-banner.css'
@@ -211,9 +212,23 @@ export function ConsentBanner() {
           {isMetaPixelConfigured()
             ? ', valamint a Facebook- és Instagram-hirdetéseink méréséhez (Meta Pixel)'
             : ''}
-          . Az analitika csak a hozzájárulásával kapcsol be. Részletek az{' '}
-          <Link href="/adatvedelem">adatvédelmi tájékoztatóban</Link>.
+          .{' '}
+          {isCookielessMeasurementEnabled()
+            ? 'Elutasításkor a látogatást sütik és tartós azonosító nélkül számoljuk.'
+            : 'Az analitika csak a hozzájárulásával kapcsol be.'}{' '}
+          Részletek az <Link href="/adatvedelem">adatvédelmi tájékoztatóban</Link>.
         </p>
+        {/* A SÜTI NÉLKÜLI MÉRÉS MONDATA (2026-11-26). Bekapcsolt süti nélküli
+            mérésnél a régi „csak a hozzájárulásával kapcsol be” mondat már nem
+            igaz, mert az elutasító látogatása is számolódik. A sávnak ki kell
+            mondania, mi történik elutasításkor: a CNIL szerint a hozzájárulás
+            nélküli látogatásmérés feltétele a látogató tájékoztatása és a
+            tiltakozás lehetősége (https://www.cnil.fr/en/sheet-ndeg16-use-analytics-your-websites-and-applications),
+            a GOV.UK sávja pedig a sütikről beszél, és a két gomb mondja meg,
+            mit fogad el a látogató (https://design-system.service.gov.uk/components/cookie-banner/).
+            Ezért a régi mondat helyére egyetlen mondat kerül az elutasításról.
+            Mérve Chromiumban (2026-11-26): 320 px-en a sáv magassága nem nőtt
+            (277 px), 375 px-en 231-ről 255 px-re; vízszintes görgetés nincs. */}
         {/* A KÉT FELIRAT A SZÓTÁRBÓL (§3.2 #18, 2026-08-18). A korábbi
             „Elfogadom" nem mondta meg, MIRE vonatkozik az elfogadás (NN/g,
             Better Link Labels — „Substantial"), az „Elutasítom" pedig

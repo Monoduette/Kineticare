@@ -541,16 +541,28 @@ const MAX_EMAIL_KEY_LENGTH = 254
 
 /**
  * Ekkora törzsnél nagyobbat el sem olvasunk a cím kinyeréséhez: a keret-kulcs
- * nem érhet meg egy több megabájtos puffert. Ilyenkor az IP-keret marad az
- * egyetlen fék (a Payload maga úgyis elutasítja az értelmetlen törzset).
+ * nem érhet meg egy több megabájtos puffert.
  */
 export const MAX_FORGOT_BODY_BYTES = 64 * 1024
+
+/**
+ * A belépés vagy a jelszó-emlékeztető törzséből nem olvasható ki egyértelműen
+ * a cím. Az ilyen kérés NEM jut el a Payloadig: a Payload a törzset másképp
+ * olvassa (2 MiB-ig, multipartot busboy-jal), így egy kitömött vagy kétértelmű
+ * törzsből ő még kiolvashatná a címet, és a cím-keret kimaradna. Valódi
+ * kliens mindig egyértelmű címet küld (a nyilvános űrlap és az admin is
+ * kötelező mezőként).
+ */
+export const EMAIL_UNREADABLE = Symbol('email-unreadable')
+
+export const EMAIL_UNREADABLE_MESSAGE =
+  'A kérés nem dolgozható fel. Add meg az e-mail-címedet, és próbáld újra.'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** `null` = nincs használható cím a törzsben (a hívó ilyenkor kihagyja a keretet). */
+/** `null` = nincs használható cím a törzsben (a hívó ilyenkor elutasítja a kérést). */
 function normalizeEmailKey(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null
@@ -570,9 +582,9 @@ function normalizeEmailKey(value: unknown): string | null {
  *  - `multipart/form-data` — a Payload ADMIN űrlapjai, amelyek a mezőket
  *    egyetlen `_payload` nevű JSON-sztringbe csomagolják.
  *
- * Bármilyen hiba (olvashatatlan törzs, ismeretlen content-type) esetén `null`:
- * a cím-keret ilyenkor kimarad, de az IP-keret már lefutott — a bemenet-hiba
- * SOSEM nyithat rést és sosem dobhat a hívó felé.
+ * Bármilyen hiba (plafon fölötti vagy olvashatatlan törzs, ismeretlen
+ * content-type, nem egyetlen `_payload` mező) esetén `null`, és a hívó
+ * elutasítja a kérést (`EMAIL_UNREADABLE`). Sosem dob a hívó felé.
  */
 async function readJsonOrMultipartEmail(request: Request): Promise<string | null> {
   const rawContentType = request.headers.get('content-type') ?? ''
@@ -589,7 +601,11 @@ async function readJsonOrMultipartEmail(request: Request): Promise<string | null
         headers: { 'content-type': rawContentType },
         body: bytes,
       })
-      const raw = (await bounded.formData()).get('_payload')
+      // Pontosan egy szöveges `_payload` kell: a Payload busboy-parsere az
+      // üres vagy fájl-részt másképp kezeli, mint a FormData, és a kettő közti
+      // eltérés a cím-keret megkerülését jelentené.
+      const parts = (await bounded.formData()).getAll('_payload')
+      const raw = parts.length === 1 ? parts[0] : null
       if (typeof raw !== 'string') {
         return null
       }
@@ -622,19 +638,20 @@ async function readJsonOrMultipartEmail(request: Request): Promise<string | null
  * A nyers cím SOSEM kerül naplóba (maszkolva megy), és a kereten kívül
  * sehol nem tárolódik.
  *
- * `null` = szabad az út (nem ez az útvonal, nincs cím a törzsben, vagy belefér
- * a keretbe).
+ * `null` = szabad az út (nem ez az útvonal, vagy belefér a keretbe).
+ * `EMAIL_UNREADABLE` = a törzsből nem olvasható ki a cím, a kérést el kell
+ * utasítani.
  */
 export async function checkForgotPasswordEmailRateLimit(
   request: Request,
   options: CheckRequestRateLimitOptions = {},
-): Promise<RateLimitRejection | null> {
+): Promise<RateLimitRejection | typeof EMAIL_UNREADABLE | null> {
   if (classifyRateLimitedRoute(request.method, safePathname(request.url)) !== 'password-forgot') {
     return null
   }
   const email = await readJsonOrMultipartEmail(request)
-  if (!email) {
-    return null
+  if (email === null) {
+    return EMAIL_UNREADABLE
   }
   return consumeRateLimit({
     routeClass: 'password-forgot-email',
@@ -658,19 +675,20 @@ export async function checkForgotPasswordEmailRateLimit(
  * A nyers cím SOSEM kerül naplóba (maszkolva megy), és a kereten kívül
  * sehol nem tárolódik.
  *
- * `null` = szabad az út (nem ez az útvonal, nincs cím a törzsben, vagy belefér
- * a keretbe).
+ * `null` = szabad az út (nem ez az útvonal, vagy belefér a keretbe).
+ * `EMAIL_UNREADABLE` = a törzsből nem olvasható ki a cím, a kérést el kell
+ * utasítani.
  */
 export async function checkLoginEmailRateLimit(
   request: Request,
   options: CheckRequestRateLimitOptions = {},
-): Promise<RateLimitRejection | null> {
+): Promise<RateLimitRejection | typeof EMAIL_UNREADABLE | null> {
   if (classifyRateLimitedRoute(request.method, safePathname(request.url)) !== 'login') {
     return null
   }
   const email = await readJsonOrMultipartEmail(request)
-  if (!email) {
-    return null
+  if (email === null) {
+    return EMAIL_UNREADABLE
   }
   return consumeRateLimit({
     routeClass: 'login-email',
@@ -722,6 +740,12 @@ export function withPayloadRestRateLimit<Args extends unknown[]>(
     const emailRejection =
       (await checkForgotPasswordEmailRateLimit(request, options)) ??
       (await checkLoginEmailRateLimit(request, options))
+    if (emailRejection === EMAIL_UNREADABLE) {
+      return Response.json(
+        { errors: [{ message: EMAIL_UNREADABLE_MESSAGE }] },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
     if (emailRejection) {
       return payloadRestRateLimitResponse(emailRejection)
     }
