@@ -62,7 +62,7 @@ type BenignRequestErrorReason = 'client_abort' | 'next_control_flow'
 /**
  * A React szerveres renderelőjének üzenete, ha a cél-stream a render vége
  * előtt bezárul (a kliens megszakította a kérést vagy továbbnavigált).
- * Forrás (next 16.4.3): node_modules/next/dist/compiled/next-server/
+ * Forrás (next 16.4.6): node_modules/next/dist/compiled/next-server/
  * app-page-turbo.runtime.prod.js (`e.on("close", …("The destination stream
  * closed early."))`); a node_modules/next/dist/server/app-render/
  * stream-ops.node.js 487–490. sora is ezt nevezi meg.
@@ -70,7 +70,7 @@ type BenignRequestErrorReason = 'client_abort' | 'next_control_flow'
 const REACT_STREAM_CLOSED_EARLY = 'The destination stream closed early'
 
 /**
- * A Next saját „a válasz megszakadt” hibájának neve. Forrás (next 16.4.3):
+ * A Next saját „a válasz megszakadt” hibájának neve. Forrás (next 16.4.6):
  * node_modules/next/dist/server/web/spec-extension/adapters/next-request.js
  * 39–42. sor (`ResponseAbortedName = 'ResponseAborted'`, `class
  * ResponseAborted`); a stream-ops.node.js 491–494. sora ezzel abortálja a
@@ -80,7 +80,7 @@ const REACT_STREAM_CLOSED_EARLY = 'The destination stream closed early'
 const NEXT_RESPONSE_ABORTED_NAME = 'ResponseAborted'
 
 /**
- * A Next `DynamicServerError` digestje. Forrás (next 16.4.3):
+ * A Next `DynamicServerError` digestje. Forrás (next 16.4.6):
  * node_modules/next/dist/client/components/hooks-server-context.js 23–33.
  * sor (`DYNAMIC_ERROR_CODE = 'DYNAMIC_SERVER_USAGE'`, `isDynamicServerError`).
  * Az `isDynamicServerError`-t nem importáljuk: a `next/dist/...` belső út,
