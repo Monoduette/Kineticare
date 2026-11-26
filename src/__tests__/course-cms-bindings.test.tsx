@@ -53,4 +53,26 @@ describe('courseCards CMS bindings', () => {
       expect(render({})).toContain(ctaLabel('free-course-claim'))
     },
   )
+
+  it('a témakurzus nem kerül a kurzusrácsba, a teljes program igen', () => {
+    const tema = {
+      id: 3,
+      sku: 'Csuklo temakurzus',
+      slug: 'csuklo-temakurzus',
+      status: 'published',
+      priceInHUFEnabled: true,
+      priceInHUF: 19900,
+      parentCourses: [1],
+    } as Product
+    const html = renderToStaticMarkup(
+      <RenderBlocks
+        layout={[{ blockType: 'courseCards' }]}
+        products={[tema, ...products]}
+        posts={[]}
+        testimonials={[]}
+      />,
+    )
+    expect(html).toContain('href="/kurzusok/program"')
+    expect(html).not.toContain('href="/kurzusok/csuklo-temakurzus"')
+  })
 })

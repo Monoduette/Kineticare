@@ -33,6 +33,11 @@ export interface CartViewProps {
    * elvegyük.
    */
   alreadyPurchasedProductId?: number | null
+  /**
+   * Témakurzus, amelynek teljes programját a vevő birtokolja: a pénztár 409-et
+   * adna, a következő lépés a program lejátszója (§3.2 #49).
+   */
+  includedProgram?: { productId: number; programId: number } | null
 }
 
 /**
@@ -99,7 +104,11 @@ function CartRow({ item, onRemove }: { item: CartItem; onRemove: () => void }) {
   )
 }
 
-export function CartView({ initialItem, alreadyPurchasedProductId = null }: CartViewProps) {
+export function CartView({
+  initialItem,
+  alreadyPurchasedProductId = null,
+  includedProgram = null,
+}: CartViewProps) {
   const { state, add, remove, summary, isEmpty } = useCart()
 
   useEffect(() => {
@@ -167,6 +176,10 @@ export function CartView({ initialItem, alreadyPurchasedProductId = null }: Cart
               WCAG 2.2 · 3.3.1).
             */
             <Button href={myCoursePlayerHref(target.productId)}>{ctaLabel('course-start')}</Button>
+          ) : includedProgram !== null && includedProgram.productId === target.productId ? (
+            <Button href={myCoursePlayerHref(includedProgram.programId)}>
+              {ctaLabel('program-open-from-topic')}
+            </Button>
           ) : (
             /*
               Vendég és belépett ugyanazt a gombot kapja: a /penztar vendég-

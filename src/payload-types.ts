@@ -1828,6 +1828,10 @@ export interface Product {
    */
   promoPriceHuf?: number | null;
   promoOriginalPriceHuf?: number | null;
+  /**
+   * Csak témakurzusnál töltsd ki, és csak akkor, ha a témakurzus teljes anyaga benne van a kiválasztott programban. Aki a programot megvette, ezen az oldalon nem vásárlógombot lát, hanem a programja linkjét, és a pénztár sem engedi újra fizetni. Csak a tulajdonos állíthatja.
+   */
+  parentCourses?: (number | Product)[] | null;
   inventory?: number | null;
   /**
    * Ma sehol nem jelenik meg a weboldalon: a kurzuskártya a kezdőlapon és a Kurzusok oldalon a címet, a célközönséget, az árat és a gombot mutatja. A beírt sorok megmaradnak. A kurzusoldal pipás sorait a lenti „Fő előnyök (pipás sorok)” mezőben írod.
@@ -4107,6 +4111,7 @@ export interface ProductsSelect<T extends boolean = true> {
   promoEnd?: T;
   promoPriceHuf?: T;
   promoOriginalPriceHuf?: T;
+  parentCourses?: T;
   inventory?: T;
   cardHighlights?:
     | T

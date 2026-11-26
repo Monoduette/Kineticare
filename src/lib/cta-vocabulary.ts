@@ -52,6 +52,7 @@ export type CtaAction =
   | 'feedback-close'
   | 'withdrawal-open'
   | 'withdrawal-confirm'
+  | 'program-open-from-topic'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -645,6 +646,17 @@ export const CTA_VOCABULARY = [
     person: 'nominal',
     weight: 'primary',
     progress: 'send',
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #49 – témakurzus oldaláról a már birtokolt teljes program lejátszója.
+    section: '#49',
+    action: 'program-open-from-topic',
+    label: 'Nyisd meg a programodat',
+    person: 'e2',
+    weight: 'primary',
+    progress: null,
     patterned: false,
     pattern: null,
   },

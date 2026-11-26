@@ -9,11 +9,13 @@ import { CartView } from '@/components/checkout/CartView'
 import type { CartItem, CartItemAvailability } from '@/lib/cart'
 import { logger } from '@/lib/logger'
 import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
+import { findOwnedIncludingProgram } from '@/lib/course-family-owned'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import {
   coursePriceHuf,
   courseTitle,
   hasUserPurchased,
+  includedInProgramNote,
   isFreeCourse,
   isPaidCourse,
   myCoursePlayerHref,
@@ -143,6 +145,15 @@ export default async function KosarPage({ searchParams }: KosarPageProps) {
     termekProduct !== null &&
     hasUserPurchased(user.purchases, termekItem.productId) &&
     (await hasLiveAccess(user.id, termekProduct))
+  const includedIn =
+    alreadyPurchased || termekProduct === null
+      ? null
+      : await findOwnedIncludingProgram({
+          payload: await getPayload({ config }),
+          user,
+          product: termekProduct,
+          logger,
+        })
 
   return (
     <Section>
@@ -158,9 +169,24 @@ export default async function KosarPage({ searchParams }: KosarPageProps) {
             </p>
           </div>
         ) : null}
+        {includedIn !== null ? (
+          <div className="kc-cart-notice" role="status">
+            <p>
+              {includedInProgramNote(includedIn.title)}{' '}
+              <Link href={myCoursePlayerHref(includedIn.id)}>
+                {ctaLabel('program-open-from-topic')}
+              </Link>
+            </p>
+          </div>
+        ) : null}
         <CartView
           alreadyPurchasedProductId={
             alreadyPurchased && termekItem !== null ? termekItem.productId : null
+          }
+          includedProgram={
+            includedIn !== null && termekItem !== null
+              ? { productId: termekItem.productId, programId: includedIn.id }
+              : null
           }
           initialItem={termekItem}
         />

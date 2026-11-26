@@ -52,6 +52,10 @@ import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import { courseSlugField } from '../fields/course-slug'
+import { parentCoursesField } from '../fields/course-family'
+import { courseFamilyGuard } from '../lib/course-family-guard'
+import { DUPLICATE_SKU_PUBLISH_MESSAGE, hasDuplicateSkuSuffix } from '../lib/course-family'
+import { forceDraftVersionOnDuplicate } from '../lib/duplicate'
 import { budapestDateString } from '../lib/date/budapest'
 import { formatPriceHuf } from '../lib/format-price'
 import { logger } from '../lib/logger'
@@ -106,6 +110,8 @@ function courseEditorTabs(fields: Field[]): Field[] {
         : ['modules', 'videos'].includes(name ?? '')
           ? 3
           : name === 'accessDurationDays' ||
+              name === 'parentCourses' ||
+              name === 'topicCoursesPanel' ||
               (name !== undefined && coursePromoFieldNameSet.has(name)) ||
               isCoursePromoCollapsible(field) ||
               !name
@@ -2138,6 +2144,9 @@ export const trashWritesStayDraft: CollectionBeforeChangeHook = ({ data, operati
  * a régi sorokon üres, és a useAsTitle-t rá állítva az admin listája ezeknél
  * csak az azonosítót mutatná.
  */
+/** Duplikáláskor üresre álló mező (a másolat nem örököl SEO-szöveget, akciót). */
+const nullOnDuplicate = (): null => null
+
 const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) => ({
   ...defaultCollection,
   labels: {
@@ -2190,6 +2199,14 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       ...(defaultCollection.hooks?.beforeChange ?? []),
       // A lista végén, közvetlenül az audit plugin hozzáfűzött hookja előtt.
       productUpdateLocksRow,
+      // Témakurzus-szerkezet: a saját sor zárja után, a validálás előtt.
+      courseFamilyGuard,
+    ],
+    // Duplikáláskor a másolat szerkesztői változata is piszkozat (a REST
+    // alapból draft:true-val hív, a local API nem), mint a pages/posts-on.
+    beforeValidate: [
+      ...(defaultCollection.hooks?.beforeValidate ?? []),
+      forceDraftVersionOnDuplicate,
     ],
     // A menü szövege az ártól és a publikációtól is függ; mentés és törlés után újraépítendő.
     afterChange: [
@@ -2554,6 +2571,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       name: 'seoTitle',
       type: 'text',
       label: 'SEO-cím',
+      hooks: { beforeDuplicate: [nullOnDuplicate] },
       admin: {
         description: 'Ha üresen hagyod, a Google a kurzus nevét használja.',
       },
@@ -2562,6 +2580,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       name: 'seoDescription',
       type: 'text',
       label: 'SEO-leírás',
+      hooks: { beforeDuplicate: [nullOnDuplicate] },
       admin: {
         description: 'A Google találati listáján megjelenő rövid leírás (kb. 150 karakter).',
       },
@@ -2572,6 +2591,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       type: 'upload',
       relationTo: 'media',
       label: 'Megosztási kép',
+      hooks: { beforeDuplicate: [nullOnDuplicate] },
       admin: {
         // H47: a Pages.ts ogImage-súgójának mintája, a kurzus képtartalékával
         // (src/lib/seo.ts productSeoDoc + resolveOgImage).
@@ -2767,6 +2787,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           type: 'checkbox',
           defaultValue: false,
           label: 'Akciós kurzus',
+          hooks: { beforeDuplicate: [() => false] },
           // WP63 óta a pipa és a két dátum dönti el, hogy a vevő az akciós vagy
           // a rendes árat fizeti (`coursePriceHuf`), tehát ár-mező: az Ár és az
           // Akciós ár mezővel azonos owner-only írás védi (T-011).
@@ -2780,6 +2801,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           name: 'promoStart',
           type: 'date',
           label: 'Akció kezdete',
+          hooks: { beforeDuplicate: [nullOnDuplicate] },
           access: promoWindowFieldAccess,
           admin: {
             description:
@@ -2800,6 +2822,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           name: 'promoEnd',
           type: 'date',
           label: 'Akció vége',
+          hooks: { beforeDuplicate: [nullOnDuplicate] },
           access: promoWindowFieldAccess,
           validate: validatePromoEnd,
           admin: {
@@ -2812,6 +2835,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           name: 'promoPriceHuf',
           type: 'number',
           label: 'Akciós ár (Ft)',
+          hooks: { beforeDuplicate: [nullOnDuplicate] },
           // A tényleges alsó határt a validatePromoPriceHuf kényszeríti ki;
           // a `min` ugyanazt mondja, hogy a konfiguráció ne állítson mást.
           min: MIN_PRICE_HUF,
@@ -2881,6 +2905,17 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           'Kimarad a listákból, ajánlókból és menükből, de linkkel megnyitható és megvásárolható. Ez nem hozzáférés-védelem. Csak a tulajdonos állíthatja.',
       },
     },
+    parentCoursesField,
+    {
+      // A teljes program lapján: mely témakurzusok hivatkoznak rá (csak olvasás).
+      name: 'topicCoursesPanel',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '/components/admin/TopicCoursesPanel#TopicCoursesPanel',
+        },
+      },
+    },
     {
       name: 'status',
       type: 'select',
@@ -2897,6 +2932,11 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
        * (CourseVisibilityNotice) pedig a lap tetején cáfolja a téves üzenetet.
        */
       label: 'Megjelenés a weboldalon',
+      // Duplikáláskor a másolat mindig piszkozat: a forrás „Közzétéve” értéke
+      // nem öröklődhet, mert a bolt (lista, pénztár) ezt a mezőt nézi, és a
+      // szerkesztetlen másolat a program árán, a teljes tananyaggal
+      // megvásárolható lett volna (témakurzus-terv, támadói átnézés).
+      hooks: { beforeDuplicate: [() => 'draft'] },
       // Alapérték, hogy a mező SOSE maradjon jelöletlen: az üres select („Válassz
       // egy értéket”, korábban „Válasszon ki egy értéket”) volt a csapda egyik fele.
       defaultValue: 'draft',
@@ -2930,6 +2970,16 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       type: 'text',
       unique: true,
       label: 'Belső azonosító',
+      // Duplikáláskor a Payload „ - Copy” végződést tesz az egyedi szövegre.
+      // Ez a számlára és a Barion-tételre kerülne, ezért közzétett kurzuson nem
+      // maradhat (a piszkozat menthető vele, a szerkesztő ott javítja).
+      validate: (value: unknown, { data }: { data: unknown }) =>
+        typeof data === 'object' &&
+        data !== null &&
+        (data as { status?: unknown }).status === 'published' &&
+        hasDuplicateSkuSuffix(value)
+          ? DUPLICATE_SKU_PUBLISH_MESSAGE
+          : true,
       admin: {
         // H25, mérve: a rendelés LÉTREHOZÁSAKOR készül pillanatkép a sku-ról
         // (order-integrity.ts: `item.titleSnapshot = product.sku`, csak
@@ -2950,6 +3000,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       relationTo: 'products',
       hasMany: true,
       label: 'Kapcsolódó kurzusok',
+      hooks: { beforeDuplicate: [() => []] },
       admin: {
         // H37 (B20): a sáv címe és bevezetője a RelatedCourses.tsx
         // konstansaiban él (RELATED_COURSES_HEADING, CROSS_SELL_HEADING,

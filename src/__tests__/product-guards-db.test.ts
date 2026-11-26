@@ -112,6 +112,8 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
   let payload: Payload
   let owner: Doc
   let staff: Doc
+  /** A témakurzus-sor (TK-a) teljes programja; a beforeAll hozza létre. */
+  let staleRowProgramId = 0
   let categoryId: number
   const stamp = Date.now()
   const productIds: number[] = []
@@ -419,6 +421,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       overrideAccess: true,
     })) as unknown as Doc
     categoryId = category.id
+    staleRowProgramId = await createPublished('elavult-program')
   }, 240_000)
 
   afterAll(async () => {
@@ -1114,11 +1117,13 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     }
 
     // Payload 3.90.2-től a másolat a tulajdonos kivett pipáját nem örökli
-    // (lásd BRK-D1): az azonnal közzétett másolat élő, de ár nélküli sor.
+    // (lásd BRK-D1). Témakurzusok (2026-11-26) óta a másolat `?draft=false`
+    // mellett is piszkozat (ecommerce.ts beforeDuplicate): ár nélküli,
+    // nem élő sor.
     const live = await duplicateAsStaff(false)
     if (Array.isArray(live)) throw new Error(`a másolat elutasítva: ${JSON.stringify(live)}`)
     const liveRow = await mainRow(live.id)
-    expect(liveRow._status).toBe('published')
+    expect(liveRow._status).toBe('draft')
     expect(liveRow.priceInHUFEnabled).toBeNull()
     expect(liveRow.priceInHUF).toBeNull()
     expect(liveRow.status).toBe('draft')
@@ -1442,10 +1447,10 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       if (!Array.isArray(errors)) throw error
       result = errors.map(({ path, message }) => ({ path, message }))
     }
-    // Lásd az előző esetet: élő, ár nélküli sor, a 7 950 Ft nélkül.
+    // Lásd az előző esetet: piszkozat, ár nélküli sor, a 7 950 Ft nélkül.
     if (Array.isArray(result)) throw new Error(`a másolat elutasítva: ${JSON.stringify(result)}`)
     const row = await mainRow(result.id)
-    expect(row._status).toBe('published')
+    expect(row._status).toBe('draft')
     expect(row.priceInHUF).toBeNull()
   }, 120_000)
 
@@ -1995,6 +2000,21 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       ownerData: { unlisted: true },
       second: staffFixesTypo,
       expected: { unlisted: true },
+    },
+    {
+      // Témakurzusok (src/fields/course-family.ts): a „Teljes program,
+      // amelynek része” tulajdonosi mező. A program azonosítója csak a
+      // beforeAll után ismert, ezért a két érték getter.
+      tag: 'TK-a',
+      who: 'munkatárs közzététele',
+      decision: 'témakurzussá tételét',
+      get ownerData() {
+        return { parentCourses: [staleRowProgramId] }
+      },
+      second: staffFixesTypo,
+      get expected() {
+        return { parentCourses: [staleRowProgramId] }
+      },
     },
     {
       tag: 'T2-c',
