@@ -109,6 +109,19 @@ ellenőrizendő, ezért a D4 nyitva marad. A többi sort a tulajdonos ellenőriz
 | M2  | Az átállási értesítő levél kiküldése (email-job, `MIGRATION_NOTICE_CONFIRM`) | **Csak a végleges domain élesedése után.**                                                        |
 | M3  | A Systeme.io előfizetés lemondása                                            | **T+14 előtt ne.** Addig a visszaállás útja is ez.                                                |
 
+### 3a. Mérés: a tulajdonosoknál maradó teendők (2026-11-26)
+
+- Az Instagram-bió és a Linktree linkje ma a `kineticare-production.up.railway.app`
+  címre mutat (60 nap alatt a PostHog-munkamenetek 6%-a érkezett így). A kód
+  ezt már átirányítja a `www.kineticare.hu`-ra (`src/lib/canonical-host.ts`),
+  de a linket érdemes a saját domainre és kampány-paraméterrel
+  (`?utm_source=instagram&utm_medium=social`, Linktree-nél `utm_source=linktree`)
+  átírni, mert a közösségi appok böngészője a hivatkozót gyakran elhagyja: a
+  PostHogban a munkamenetek fele „közvetlen” forrású.
+- Döntésre vár: mérjük-e a süti-sávot elutasító látogatókat süti nélküli
+  (cookieless) módban. Ma aki nem fogad el, az a PostHogban egyáltalán nem
+  látszik.
+
 ### 4. Tulajdonosi döntésre szándékosan parkolva
 
 Ezekhez nem nyúlunk, amíg a tulajdonos nem dönt:

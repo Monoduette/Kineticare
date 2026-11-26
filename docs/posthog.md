@@ -52,6 +52,7 @@ Ezért:
 | Mikor | Mi történik | Hol |
 |---|---|---|
 | Sikeres belépés / regisztráció | `identifyUser(users.id)` | `LoginForm`, `RegisterForm` |
+| A fiók-oldalak (`/kurzusaim`, `/kurzusaim/[id]`) minden betöltése, a hozzájárulás után | `identifyUser(users.id)` (ugyanarra az azonosítóra a posthog-js nem küld új eseményt) | `IdentifyUser` |
 | Kijelentkezés | `resetAnalyticsIdentity()` | `src/lib/logout-client.ts` |
 
 Az azonosító a Payload **numerikus `users.id`** — a saját rendszerünkön kívül

@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { cache } from 'react'
 
 import { CoursePlayer } from '@/components/account/CoursePlayer'
+import { IdentifyUser } from '@/components/analytics/IdentifyUser'
 import { logger } from '@/lib/logger'
 import { resolvePlayerGate, type CourseAccessState } from '@/lib/course-access'
 import { lookupPurchaseDates, resolveSingleCourseAccess } from '@/lib/course-access-lookup'
@@ -163,19 +164,22 @@ export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPag
   const curriculum = buildCurriculum(tananyagForras, hasAccess)
 
   return (
-    <CoursePlayer
-      curriculum={curriculum}
-      expiredMessage={resolved.gate?.message ?? null}
-      gateKind={resolved.gate?.kind}
-      hasAccess={hasAccess}
-      materials={buildCourseMaterials(product, hasAccess)}
-      product={{
-        id: product.id,
-        slug: product.slug ?? null,
-        title: courseTitle(product),
-      }}
-      watchedRefs={watchedRefs}
-    />
+    <>
+      <IdentifyUser userId={user.id} />
+      <CoursePlayer
+        curriculum={curriculum}
+        expiredMessage={resolved.gate?.message ?? null}
+        gateKind={resolved.gate?.kind}
+        hasAccess={hasAccess}
+        materials={buildCourseMaterials(product, hasAccess)}
+        product={{
+          id: product.id,
+          slug: product.slug ?? null,
+          title: courseTitle(product),
+        }}
+        watchedRefs={watchedRefs}
+      />
+    </>
   )
 }
 

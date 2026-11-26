@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
+import { canonicalHostRedirectUrl } from './lib/canonical-host'
 import { LEGACY_GONE_HTML, isLegacyGonePath } from './lib/legacy-redirects'
 import { REQUEST_ID_HEADER, resolveRequestId } from './lib/request-id'
 
@@ -112,6 +113,24 @@ function isUnexpectedMultipartPagePost(request: NextRequest): boolean {
  */
 export function middleware(request: NextRequest): NextResponse {
   const requestId = resolveRequestId(request.headers.get(REQUEST_ID_HEADER))
+
+  // A Railway-hostra érkező oldal-kérés a saját domainre megy (308, a metódus
+  // és a query megmarad). Indoklás és kivételek: src/lib/canonical-host.ts.
+  const canonicalUrl = canonicalHostRedirectUrl({
+    method: request.method,
+    // Csak a `Host`: az `X-Forwarded-Host`-ot a kliens is küldheti, és egy
+    // gyorsítótár elé tett, a fejlécet nem kulcsoló réteg mellett a www-re
+    // szánt választ önmagára mutató átirányítással mérgezhetné.
+    host: request.headers.get('host'),
+    pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
+    serverUrl: process.env.NEXT_PUBLIC_SERVER_URL,
+  })
+  if (canonicalUrl !== null) {
+    const moved = NextResponse.redirect(canonicalUrl, 308)
+    moved.headers.set(REQUEST_ID_HEADER, requestId)
+    return moved
+  }
 
   if (isLegacyGonePath(request.nextUrl.pathname)) {
     const gone = new NextResponse(LEGACY_GONE_HTML, {
