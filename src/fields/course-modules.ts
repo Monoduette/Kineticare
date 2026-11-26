@@ -190,7 +190,15 @@ const lessonFields: Field[] = [
     name: 'attachments',
     type: 'array',
     validate: validateCourseAttachments,
-    hooks: { afterRead: [hideLegacyAttachmentFallback] },
+    hooks: {
+      afterRead: [hideLegacyAttachmentFallback],
+      // Duplikáláskor a védett kurzusfájl a FORRÁS kurzushoz kötött
+      // (CourseFiles.course nem írható át), a másolat vevője nem tölthetné le,
+      // és a mentés is elbukna a filterOptions miatt. Ezek a sorok kimaradnak,
+      // a régi nyilvános fájlos sorok maradnak; a védett fájlt a másolathoz
+      // újra kell feltölteni.
+      beforeDuplicate: [dropProtectedAttachmentsOnDuplicate],
+    },
     label: 'Letölthető anyagok',
     labels: {
       singular: 'Melléklet',
@@ -238,6 +246,16 @@ const lessonFields: Field[] = [
     ],
   },
 ]
+
+function dropProtectedAttachmentsOnDuplicate({ value }: { value?: unknown }): unknown[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (row) =>
+      typeof row === 'object' &&
+      row !== null &&
+      ((row as { protectedFile?: unknown }).protectedFile ?? null) === null,
+  )
+}
 
 /**
  * A `products.modules` mező.

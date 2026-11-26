@@ -251,8 +251,7 @@ type NamedTestField = Field & {
 
 const findField = (collection: CollectionConfig, name: string): NamedTestField | undefined =>
   flattenFields(collection.fields).find((field) => 'name' in field && field.name === name) as
-    | NamedTestField
-    | undefined
+    NamedTestField | undefined
 
 describe('collection access bekötés a végleges configban', () => {
   it('pages/posts/menus/categories/media a mátrix szerint bekötve', async () => {
@@ -383,11 +382,10 @@ describe('collection access bekötés a végleges configban', () => {
   it('products: kereskedelmi mezők és status owner-only írásúak', async () => {
     const config = await configPromise
     const products = (config.collections ?? []).find((c) => c.slug === 'products') as
-      | CollectionConfig
-      | undefined
+      CollectionConfig | undefined
     expect(products).toBeDefined()
 
-    for (const name of ['priceInHUF', 'priceInHUFEnabled']) {
+    for (const name of ['priceInHUF', 'priceInHUFEnabled', 'parentCourses']) {
       const field = findField(products as CollectionConfig, name)
       expect(field, name).toBeDefined()
       expect(field?.access?.create, name).toBe(isOwnerFieldAccess)
@@ -440,8 +438,7 @@ describe('collection access bekötés a végleges configban', () => {
   it('orders: pénzügyi/személyes mezők read owner-only', async () => {
     const config = await configPromise
     const orders = (config.collections ?? []).find((c) => c.slug === 'orders') as
-      | CollectionConfig
-      | undefined
+      CollectionConfig | undefined
     expect(orders).toBeDefined()
 
     for (const name of ['customerSnapshot', 'ipAddress', 'invoiceNumber', 'barionPaymentId']) {
@@ -454,8 +451,7 @@ describe('collection access bekötés a végleges configban', () => {
   it('orders: számla/stornó/helyesbítő mezőket staff és owner REST-en sem ír (K5)', async () => {
     const config = await configPromise
     const orders = (config.collections ?? []).find((c) => c.slug === 'orders') as
-      | CollectionConfig
-      | undefined
+      CollectionConfig | undefined
     expect(orders).toBeDefined()
 
     const locked = [
@@ -488,8 +484,7 @@ describe('collection access bekötés a végleges configban', () => {
   it('orders: a rendszermezőket staff és owner sem írhatja create/update során', async () => {
     const config = await configPromise
     const orders = (config.collections ?? []).find((c) => c.slug === 'orders') as
-      | CollectionConfig
-      | undefined
+      CollectionConfig | undefined
     expect(orders).toBeDefined()
 
     for (const name of [
@@ -521,8 +516,7 @@ describe('collection access bekötés a végleges configban', () => {
   it('orders: orderNumber + snapshot-mezők bekötve, integritási hook create-kor fut', async () => {
     const config = await configPromise
     const orders = (config.collections ?? []).find((c) => c.slug === 'orders') as
-      | CollectionConfig
-      | undefined
+      CollectionConfig | undefined
     expect(orders).toBeDefined()
 
     const orderNumber = findField(orders as CollectionConfig, 'orderNumber')

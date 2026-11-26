@@ -24,6 +24,7 @@ import { LexicalContent } from '@/components/courses/LexicalContent'
 import { CourseDescriptionContent } from '@/components/courses/promo/CourseDescriptionContent'
 import { PreviewVideo, hasPreviewVideo } from '@/components/courses/PreviewVideo'
 import { PromoCourseView } from '@/components/courses/promo'
+import { findOwnedIncludingProgram } from '@/lib/course-family-owned'
 import { RelatedCourses } from '@/components/courses/RelatedCourses'
 import { buildCourseSalesContent } from '@/components/courses/sales-content'
 import { Container } from '@/components/ui/Container'
@@ -288,6 +289,17 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
     user !== null &&
     hasUserPurchased(user.purchases, product.id) &&
     (await hasLiveAccess(user.id, product))
+  // Témakurzus: ha a látogató a teljes programot birtokolja, vásárlás helyett
+  // a programja nyílik (§3.2 #49). A saját vásárlás ezt megelőzi.
+  const includedIn =
+    purchased || user === null
+      ? null
+      : await findOwnedIncludingProgram({
+          payload: await getPayload({ config }),
+          user,
+          product,
+          logger,
+        })
 
   const title = courseTitle(product)
   const cover = courseCover(product)
@@ -324,7 +336,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   // VÁLTOZATLAN. A ragadós vásárlósáv csak a ténylegesen vásárolható
   // állapotban jelenik meg: „már megvetted" vagy „nem vásárolható" mellett
   // egyedül a vásárlódoboz jelzése marad.
-  const cta = resolveCourseCta(product, purchased)
+  const cta = resolveCourseCta(product, purchased, includedIn)
 
   /**
    * A `free` ág (published + `isFreeCourse` + még nem a vevőé) eddig egy
@@ -707,6 +719,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
                 guaranteeLabel={guaranteeLabel}
                 hasPurchased={purchased}
                 highlights={sales.highlights}
+                includedIn={includedIn}
                 id={BUYBOX_ID}
                 lead={
                   typeof product.shortDescription === 'string'

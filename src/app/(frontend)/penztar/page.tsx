@@ -10,6 +10,7 @@ import { Section } from '@/components/ui/Section'
 import { CheckoutForm } from '@/components/checkout/CheckoutForm'
 import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { courseCtaHref } from '@/lib/course-url'
+import { findOwnedIncludingProgram } from '@/lib/course-family-owned'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import {
   FREE_COURSE_ALREADY_GRANTED_TEXT,
@@ -21,6 +22,7 @@ import {
   coursePriceHuf,
   courseTitle,
   hasUserPurchased,
+  includedInProgramNote,
   isFreeCourse,
   isPaidCourse,
   myCoursePlayerHref,
@@ -147,6 +149,32 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
     user !== null &&
     hasUserPurchased(user.purchases, product.id) &&
     (await hasLiveAccess(user.id, product))
+  // Témakurzus, amelynek teljes programját a vevő birtokolja: nincs mit
+  // fizetnie, a program lejátszója a cél (§3.2 #49). A szerver akkor is 409-et
+  // adna, ha ez a lekérdezés elszállna (checkout/parent-course-block.ts).
+  const includedIn = alreadyPurchased
+    ? null
+    : await findOwnedIncludingProgram({
+        payload: await getPayload({ config }),
+        user,
+        product,
+        logger,
+      })
+  if (includedIn !== null) {
+    return (
+      <Section>
+        <Container size="narrow">
+          <h1>Pénztár</h1>
+          <div className="kc-cart-empty" role="status">
+            <p>{includedInProgramNote(includedIn.title)}</p>
+            <Button href={myCoursePlayerHref(includedIn.id)} variant="primary">
+              {ctaLabel('program-open-from-topic')}
+            </Button>
+          </div>
+        </Container>
+      </Section>
+    )
+  }
   const price = coursePriceHuf(product)
   const isFree = isFreeCourse(product)
 

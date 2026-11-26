@@ -21,6 +21,7 @@ vi.mock('../lib/logger', async (importOriginal) => ({
 }))
 
 import { MENUS_CACHE_TAG } from '../lib/cache-tags'
+import { courseFamilyGuard } from '../lib/course-family-guard'
 import { indexNowAfterChange } from '../lib/indexnow'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import {
@@ -88,9 +89,11 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     // product-guards-db X1 és B1 tesztje méri). PR #305 (codex4 rev1): a
     // mentés alapjának forrását jegyző hook a beforeOperation lista végén áll,
     // hogy a végleges argumentumokból döntsön (productUpdateLocksRow).
-    expect(products.hooks?.beforeChange).toHaveLength(4)
+    expect(products.hooks?.beforeChange).toHaveLength(5)
     expect(products.hooks?.beforeChange?.slice(2, 3)).toEqual(hooks.beforeChange)
     expect(products.hooks?.beforeChange).toContain(productUpdateLocksRow)
+    // A témakurzus-őr a sorzár UTÁN olvas (a zár alatt ellenőriz).
+    expect(products.hooks?.beforeChange?.at(-1)).toBe(courseFamilyGuard)
     expect(products.hooks?.beforeOperation).toHaveLength(3)
     expect(products.hooks?.beforeOperation?.slice(0, 1)).toEqual(hooks.beforeOperation)
     expect(products.hooks?.beforeOperation?.at(-1)).toBe(productUpdateRemembersSource)

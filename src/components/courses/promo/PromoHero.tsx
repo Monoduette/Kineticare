@@ -132,6 +132,12 @@ export function PromoHero({
                       {ctaLabel('course-start')}
                     </Button>
                   </span>
+                ) : cta.kind === 'included' && cta.href !== null ? (
+                  <span className="kc-promo-hero__primary" id={ctaId}>
+                    <Button className="kc-promo-hero__button" href={cta.href} variant="primary">
+                      {ctaLabel('program-open-from-topic')}
+                    </Button>
+                  </span>
                 ) : cta.kind === 'buy' && cta.href !== null ? (
                   <span className="kc-promo-hero__primary" id={ctaId}>
                     <Button className="kc-promo-hero__button" href={cta.href} variant="primary">

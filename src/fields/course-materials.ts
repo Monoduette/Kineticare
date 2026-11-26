@@ -28,6 +28,9 @@ export const courseMaterialsField: ArrayField = {
   label: 'Segédanyagok a kurzushoz',
   labels: { singular: 'Segédanyag', plural: 'Segédanyagok' },
   access: { read: courseContentReadAccess },
+  // Duplikáláskor üres: minden sor a forrás kurzushoz kötött védett fájlra
+  // mutat, ami a másolatban nem tölthető le (src/access/courseFileRead.ts).
+  hooks: { beforeDuplicate: [() => []] },
   admin: { description: COURSE_MATERIALS_ADMIN_DESCRIPTION },
   fields: [
     {
