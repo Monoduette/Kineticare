@@ -318,14 +318,15 @@ path”** beállítása erre mutat (`CLAUDE.md` 2. tanulság). Közös minta:
 
 ### 7.2 A többi job-fájl
 
-| Fájl                        | Mit futtat                                       | Kapu, megjegyzés                                                                                                      |
-| --------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `railway.seed-job.json`     | `seed-menu.ts`, majd `restore-legacy-content.ts` | `MENU_SEED_DRY_RUN`, `LEGACY_RESTORE_CONFIRM` (`.env.example`)                                                        |
-| `railway.tudastar-job.json` | Tudástár-cikkek és tünet-oldalak betöltése       | `OWNER_TUDASTAR_CONFIRM`, `OWNER_TUDASTAR_PUBLISH`; a napló kiírja a commitot (`docs/tudastar-cikkek-betoltese.md`)   |
-| `railway.email-job.json`    | Átállási értesítő (`send-migration-notice.ts`)   | `MIGRATION_NOTICE_CONFIRM`, argumentumok az `EMAIL_JOB_ARGS`-ból; futás után ürítsd (`docs/vasarlo-migracio-terv.md`) |
-| `railway.import-job.json`   | Vevő-import (`scripts/import-job.sh`)            | `docs/vasarlo-migracio-terv.md`                                                                                       |
-| `railway.legacy-job.json`   | `restore-legacy-content.ts`                      | `LEGACY_RESTORE_CONFIRM`                                                                                              |
-| `railway.demo.json`         | —                                                | Történeti, a `Kineticare-demo` kivezetve. Ne használd.                                                                |
+| Fájl                          | Mit futtat                                         | Kapu, megjegyzés                                                                                                                                                                                                     |
+| ----------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `railway.seed-job.json`       | `seed-menu.ts`, majd `restore-legacy-content.ts`   | `MENU_SEED_DRY_RUN`, `LEGACY_RESTORE_CONFIRM` (`.env.example`)                                                                                                                                                       |
+| `railway.tudastar-job.json`   | Tudástár-cikkek és tünet-oldalak betöltése         | `OWNER_TUDASTAR_CONFIRM`, `OWNER_TUDASTAR_PUBLISH`; a napló kiírja a commitot (`docs/tudastar-cikkek-betoltese.md`)                                                                                                  |
+| `railway.email-job.json`      | Átállási értesítő (`send-migration-notice.ts`)     | `MIGRATION_NOTICE_CONFIRM`, argumentumok az `EMAIL_JOB_ARGS`-ból; futás után ürítsd (`docs/vasarlo-migracio-terv.md`)                                                                                                |
+| `railway.import-job.json`     | Vevő-import (`scripts/import-job.sh`)              | `docs/vasarlo-migracio-terv.md`                                                                                                                                                                                      |
+| `railway.temakurzus-job.json` | A csuklós témakurzus-minta (`temakurzus-minta.ts`) | `OWNER_TEMAKURZUS_CONFIRM`; a `content-job` szolgáltatáson fut, a „Config file path” ideiglenes átállításával, utána vissza a `railway.content-job.json`-ra (`docs/szerkesztoi-utmutato.md`, „Témakurzus készítése”) |
+| `railway.legacy-job.json`     | `restore-legacy-content.ts`                        | `LEGACY_RESTORE_CONFIRM`                                                                                                                                                                                             |
+| `railway.demo.json`           | —                                                  | Történeti, a `Kineticare-demo` kivezetve. Ne használd.                                                                                                                                                               |
 
 Egyszeri job után a szolgáltatás törölhető (a `content-job` tartósan
 megmarad, a kapuja zárva).
